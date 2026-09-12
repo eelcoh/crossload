@@ -1,0 +1,30 @@
+[package]
+name = "xteink"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+description = "Import Kobo books into local EPUB files"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+comfy-table = "8"
+flamberge-keys = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
+flamberge-schemes = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
+roxmltree = "0.20"
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+aes = "0.8"
+base64 = "0.22"
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+
+[profile.release]
+lto = "thin"
+strip = true
