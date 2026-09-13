@@ -60,6 +60,7 @@ impl Fixture {
             optimize: true,
             organized: true,
             repair: false,
+            exclude: vec![],
         }
     }
     fn run(&self, apply: bool) -> sync::Report {
@@ -194,4 +195,48 @@ fn cli_defaults_to_dry_run_and_json_stays_machine_readable() {
     assert_eq!(report["books"][0]["status"], "transfer");
     assert!(!f.output.exists());
     assert_eq!(fs::read_dir(f.card).unwrap().count(), 0);
+}
+
+#[test]
+fn explicit_exclusion_keeps_existing_variant_and_syncs_remaining_books() {
+    let f = Fixture::new();
+    f.add(
+        "store",
+        &epub("store variant", CompressionMethod::Stored),
+        false,
+    );
+    let existing = epub("calibre variant", CompressionMethod::Stored);
+    f.add("sideload", &existing, false);
+    fs::create_dir(f.card.join("Author")).unwrap();
+    fs::write(f.card.join("Author/Book.epub"), &existing).unwrap();
+    let report = f.run(false);
+    let failure = report
+        .books
+        .iter()
+        .find(|b| b.status == Status::Failed)
+        .unwrap();
+    assert!(failure.detail.contains("--exclude store"));
+    assert!(!failure.detail.contains("--repair"));
+    let mut options = f.options(true);
+    options.exclude = vec!["store".into()];
+    let report = sync::run(
+        &Library::open(&f.device).unwrap(),
+        &Destination::Card(f.card.clone()),
+        &options,
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(report.excluded, 1);
+    assert_eq!(report.failures(), 0);
+    assert_eq!(report.books.len(), 1);
+    assert_eq!(report.books[0].status, Status::Present);
+    assert_eq!(fs::read(f.card.join("Author/Book.epub")).unwrap(), existing);
+    options.exclude = vec!["typo".into()];
+    assert!(sync::run(
+        &Library::open(&f.device).unwrap(),
+        &Destination::Card(f.card.clone()),
+        &options,
+        |_| {}
+    )
+    .is_err());
 }

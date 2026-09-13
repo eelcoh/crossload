@@ -179,6 +179,9 @@ impl Transfer {
 enum KoboCommand {
     /// Plan additive sync; --apply imports and transfers missing books.
     Sync {
+        /// Skip this Kobo book ID (repeat for multiple books).
+        #[arg(long)]
+        exclude: Vec<String>,
         #[command(flatten)]
         device: Device,
         #[arg(long)]
@@ -361,6 +364,7 @@ fn run() -> Result<()> {
         }
         Command::Kobo { command } => match command {
             KoboCommand::Sync {
+                exclude,
                 device,
                 output,
                 to,
@@ -403,6 +407,7 @@ fn run() -> Result<()> {
                         optimize: !cli.no_optimize,
                         organized: !cli.flat,
                         repair,
+                        exclude,
                     },
                     |progress| eprintln!("{}", printable(progress)),
                 )?;
@@ -423,10 +428,11 @@ fn run() -> Result<()> {
                     }
                 }
                 eprintln!(
-                    "{}: {} books; {} previews skipped; {} failures.{}",
+                    "{}: {} books; {} previews skipped; {} excluded; {} failures.{}",
                     if apply { "Sync" } else { "Dry run" },
                     report.books.len(),
                     report.previews_skipped,
+                    report.excluded,
                     report.failures(),
                     if apply {
                         ""
@@ -434,7 +440,15 @@ fn run() -> Result<()> {
                         " Use --apply to transfer missing books."
                     }
                 );
-                anyhow::ensure!(report.failures() == 0, "Sync has failures; successful copies are retained. Resolve the reported issues and rerun.");
+                anyhow::ensure!(
+                    report.failures() == 0,
+                    "{} Resolve the reported issues and rerun.",
+                    if apply {
+                        "Sync has failures; successful copies are retained."
+                    } else {
+                        "Dry run has conflicts or failures; no books were transferred."
+                    }
+                );
                 if apply && matches!(destination, crossload::inventory::Destination::Card(_)) {
                     eprintln!("Safely eject the card before disconnecting it.");
                 }

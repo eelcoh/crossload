@@ -208,6 +208,11 @@ nonzero exit status. For a matching incomplete Wi-Fi file, add `--repair`:
 the apply run preserves the partial file under a backup name before sending a
 fresh copy. An unreadable inventory aborts sync before any transfers.
 
+Calibre-converted copies can differ from store versions even when they share a
+title. To keep the reader's copy and skip a conflicting source, add
+`--exclude BOOK_ID` to both the dry run and apply command. Repeat the option for
+multiple books; unknown IDs are rejected. Exclusions apply only to that command.
+
 ## Send to CrossPoint over Wi-Fi
 
 The transfer target is **Xteink X4 with CrossPoint 1.6.0**. EPUB reading has been

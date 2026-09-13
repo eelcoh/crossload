@@ -18,6 +18,7 @@ pub struct Options {
     pub optimize: bool,
     pub organized: bool,
     pub repair: bool,
+    pub exclude: Vec<String>,
 }
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +43,7 @@ pub struct Row {
 pub struct Report {
     pub apply: bool,
     pub previews_skipped: usize,
+    pub excluded: usize,
     pub books: Vec<Row>,
 }
 impl Report {
@@ -66,16 +68,29 @@ pub fn run(
         "--repair is supported for Wi-Fi sync only"
     );
     let books = library.books()?;
+    for id in &options.exclude {
+        ensure!(
+            books.iter().any(|b| &b.id == id),
+            "Unknown excluded Kobo book ID: {id}"
+        );
+    }
     progress("Reading destination inventory (this can take time over Wi-Fi)…");
     let inventory = Inventory::scan(destination, |path| progress(&format!("Checking {path}")))?;
     let mut report = Report {
         apply: options.apply,
         previews_skipped: books.iter().filter(|b| b.preview).count(),
+        excluded: books
+            .iter()
+            .filter(|b| !b.preview && options.exclude.contains(&b.id))
+            .count(),
         books: vec![],
     };
     // This records only planned or successfully transferred copies, never failed jobs.
     let mut planned: Vec<(Identity, Identity, String)> = Vec::new();
-    for book in books.into_iter().filter(|b| !b.preview) {
+    for book in books
+        .into_iter()
+        .filter(|b| !b.preview && !options.exclude.contains(&b.id))
+    {
         progress(&format!(
             "{}: {}",
             if options.apply { "Syncing" } else { "Planning" },
@@ -145,13 +160,16 @@ pub fn run(
                 "Different books map to the same destination: {target}"
             );
             let repair = if let Some(existing) = inventory.at(&target) {
-                ensure!(options.repair && !existing.file.directory && existing.file.size < data.len() as u64,
-                    "A different file exists at {target}; nothing will be overwritten. For an incomplete Wi-Fi upload use --apply --repair");
-                let partial = destination.read(&existing.file)?;
+                let conflict = format!("Different contents occupy {target}; nothing was overwritten. To keep the reader's copy, rerun with --exclude {}", book.id);
                 ensure!(
-                    data.starts_with(&partial),
-                    "Existing file is not a matching incomplete prefix: {target}"
+                    matches!(destination, Destination::Reader(_))
+                        && !existing.file.directory
+                        && existing.file.size < data.len() as u64,
+                    "{conflict}"
                 );
+                let partial = destination.read(&existing.file)?;
+                ensure!(data.starts_with(&partial), "{conflict}");
+                ensure!(options.repair, "Verified incomplete upload at {target}; use --apply --repair to preserve it and send a fresh copy");
                 true
             } else {
                 false
