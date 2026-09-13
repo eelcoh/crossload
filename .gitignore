@@ -1,2 +1,13 @@
 /target/
 /dist/
+
+# Local ebook and activation material
+*.acsm
+*.ascm
+/debug/
+*.epub
+devicesalt
+activation.xml
+activation.dat
+/.adept/
+/state/

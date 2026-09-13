@@ -117,3 +117,25 @@ This investigation reviewed source and build configuration. No compilation or
 real-book tests were run; Cargo, rustc, and a C++ compiler were not on PATH in
 this workspace. Source checkouts were placed in `/tmp`; no credentials or books
 were accessed.
+
+## Implementation update (2026-09-12)
+
+The Kobo backend has since been built and tested with the user's device. The
+libgourou bridge now builds as part of Cargo, with its native libraries bundled;
+the Linux executable has only platform C/C++ runtime dependencies. Activation
+export import and ACSM fulfillment/download/decryption are implemented. Nine
+synthetic ADEPT tests include a local HTTP round trip and receipt reuse after
+a failed download. Live ByteBooks and macOS execution remain unverified. See
+[README.md](README.md) for current commands/limits and
+[native/README.md](native/README.md) for pins and integration changes.
+
+## Implementation update (2026-09-13)
+
+The user confirmed a live Linux ACSM import and successful reading on CrossPoint
+1.6.0 on the Xteink X4. WebSocket transfer now stages uploads and verifies them
+before publishing; a 3,054,220-byte book was verified and read on the device.
+Mounted-card copy and source/binary packaging are implemented. The package
+workflow targets Linux x86-64 and Intel/Apple Silicon macOS. Linux archives are
+built locally; macOS still needs native CI execution. A TUI now provides local/Kobo browsing, search, background import/transfer and
+stage progress through the same backends. Author/title folders and X4 image
+optimization are implemented and confirmed on the physical reader.

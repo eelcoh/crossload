@@ -1,13 +1,29 @@
 [package]
-name = "xteink"
+name = "crossload"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.98"
-description = "Import Kobo books into local EPUB files"
+description = "Import and prepare books for CrossPoint readers"
+default-run = "crossload"
 license = "MIT"
+
+[[bin]]
+name = "crossload"
+path = "src/main.rs"
+
+[[bin]]
+name = "xteink"
+path = "src/compat.rs"
 
 [dependencies]
 anyhow = "1"
+crossterm = "0.29"
+futures = "0.3"
+tears = { version = "=0.8.0", default-features = false }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+unicode-width = "0.2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 clap = { version = "4", features = ["derive"] }
 comfy-table = "8"
 flamberge-keys = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
@@ -19,8 +35,22 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+curl-sys = { version = "0.4", features = ["static-curl", "static-ssl"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
+libz-sys = { version = "1", features = ["static"] }
+openssl-probe = "0.1"
+fs2 = "0.4"
+curl = "0.4"
+url = "2"
+tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+
+[build-dependencies]
+cc = "1"
+cmake = "0.1"
 
 [dev-dependencies]
+openssl = "0.10"
+flate2 = "1"
 aes = "0.8"
 base64 = "0.22"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }

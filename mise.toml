@@ -1,0 +1,39 @@
+# Rust remains pinned in rust-toolchain.toml; rustup owns the toolchain.
+# No host tool downloads are required when using the Podman backend.
+[tasks.build]
+description = "Build release binaries (native Rust, or Podman on Linux)"
+run = "bash scripts/dev.sh build"
+
+[tasks.check]
+description = "Check formatting, lint, test and build"
+run = "bash scripts/dev.sh check"
+
+[tasks.test]
+description = "Run tests; additional arguments are passed to cargo test"
+run = "bash scripts/dev.sh test"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "bash scripts/dev.sh fmt"
+
+[tasks.lint]
+description = "Run Clippy with warnings denied"
+run = "bash scripts/dev.sh lint"
+
+[tasks.run]
+description = "Build and run Crossload on the host; pass CLI arguments after --"
+run = "bash scripts/dev.sh run"
+raw = true
+
+[tasks.package]
+description = "Build binary and offline source archives; accepts --output DIR"
+run = "bash scripts/dev.sh package"
+
+[tasks."container:build"]
+description = "Build or refresh the Linux build image"
+run = "bash scripts/dev.sh container-image"
+
+[tasks."test:tui"]
+description = "Run synthetic TUI keyboard/copy/error checks in a pseudo-terminal"
+depends = ["build"]
+run = "python3 scripts/test-tui.py"

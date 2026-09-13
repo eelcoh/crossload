@@ -8,13 +8,13 @@ use aes::cipher::{
     BlockEncryptMut, KeyInit,
 };
 use base64::Engine;
-use rusqlite::Connection;
-use sha2::{Digest, Sha256};
-use tempfile::TempDir;
-use xteink::{
+use crossload::{
     epub,
     kobo::{Library, Source},
 };
+use rusqlite::Connection;
+use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const ID: &str = "test-volume-001";
@@ -481,7 +481,8 @@ fn cli_labels_previews_in_table_and_json() {
     mark_preview(&device);
     for json in [false, true] {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_xteink"));
-        cmd.args(["kobo", "list", "--device"]).arg(device.path());
+        cmd.args(["kobo", "list", "--show-previews", "--device"])
+            .arg(device.path());
         if json {
             cmd.arg("--json");
         }
@@ -497,6 +498,24 @@ fn cli_labels_previews_in_table_and_json() {
             }
             assert!(text.contains("Preview"));
             assert!(text.contains(ID));
+        }
+    }
+    for json in [false, true] {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_crossload"));
+        cmd.args(["kobo", "list", "--device"]).arg(device.path());
+        if json {
+            cmd.arg("--json");
+        }
+        let output = cmd.output().unwrap();
+        assert!(output.status.success());
+        assert!(!String::from_utf8_lossy(&output.stdout).contains(ID));
+        if json {
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+                serde_json::json!([])
+            );
+        } else {
+            assert!(String::from_utf8_lossy(&output.stderr).contains("--show-previews"));
         }
     }
     let output_dir = tempfile::tempdir().unwrap();

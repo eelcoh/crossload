@@ -1,0 +1,72 @@
+# Crossload backlog
+
+## Completed
+
+- [x] GitHub access
+  Changed origin from HTTPS to SSH, verified authentication and pushed main.
+  Current Crossload features are included in the next checkpoint push.
+
+- [x] Rename to Crossload
+  Renamed the package, CLI, TUI and release artifacts. `xteink` remains a
+  compatibility command. Existing activation data is preserved. Repository name
+  and checkout directory are unchanged. Linux with CrossPoint on Xteink X4 is
+  tested; macOS execution still needs verification.
+
+## Implementation sequence
+
+1. [x] Saved defaults — implemented
+   Stores device, output, reader address, mounted-card destination, local browsing
+   directory and remote base folder in ~/.config/crossload/config.json (respect
+   XDG_CONFIG_HOME). Explicit CLI options override defaults. Use the same defaults
+   in the TUI. Imports only transfer when explicitly requested.
+
+2. [x] CLI previews
+   Previews are hidden by default in CLI tables, JSON and the TUI.
+   --show-previews includes them; importing previews remains blocked.
+
+3. [x] CLI table
+   Borderless terminal table; redirected output is unwrapped TSV with a header
+   and one line per book, without a summary footer. JSON output is retained.
+
+4. [x] Build with mise
+   Added build/check/test/fmt/lint/run/package and container:build tasks.
+   CI uses the same tasks. Documented native Linux, Podman Linux and native
+   macOS setup; Linux workflow verified, macOS execution remains pending.
+
+5. [x] TUI application architecture — investigation
+   Recommend Tears + Ratatui, with explicit model/messages/update/view and effects.
+   Compared tui-realm, ratatui-elm and a custom Ratatui loop. See
+   TUI-ARCHITECTURE.md for sources, tradeoffs and migration acceptance checks.
+
+   [x] Architecture implementation
+   Migrated to Tears 0.8.0 and Ratatui 0.30.2. Model/update/view/effects are
+   separated. Blocking workers report progress and completion; duplicate jobs
+   and stale results are rejected. Quit waits for active work. Linux tests and
+   PTY copy/error/resize/restoration checks pass. macOS execution remains pending
+   in CI; no Mac runtime verification is claimed.
+
+6. [ ] Sync books from Kobo
+   For every non-preview book available on the Kobo but absent from the reader,
+   import, optimize and transfer it. Start with a dry run, reliable book identity,
+   verified skipping and recovery from interrupted transfers. Share the inventory
+   logic with the TUI.
+
+7. [ ] TUI features
+   Show which books are already on the reader, using the same inventory as sync.
+
+8. [ ] TUI UI
+   Explore good examples of TUI applications for inspiration and improve layout,
+   navigation and status presentation after the architecture decision.
+
+9. [ ] ByteBooks integration
+   Investigate starting activation from the CLI without needing Calibre to obtain
+   an activation export. Establish supported authentication and activation flows
+   before implementing; keep the current activation ZIP import as a fallback.
+
+## macOS verification update
+
+The user compiled and smoke-tested the version currently on GitHub on a Mac.
+At the time of this report GitHub contained the initial Kobo CLI commit
+(26180b0), so this confirms that baseline builds and starts on macOS. Kobo USB
+could not be tested on the corporate Mac. The newer native ADEPT, Tears TUI and
+packaging changes still need macOS verification after the checkpoint push.

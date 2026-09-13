@@ -11,8 +11,9 @@ through `rusqlite`'s bundled feature.
 Flamberge provides book processing only. xteink supplies the device workflow,
 database snapshots, book selection, output validation, and filesystem handling.
 
-Other dependencies retain their respective licenses. Before publishing binaries,
-generate the complete dependency license notices for the resolved Cargo graph.
+Other dependencies retain their respective licenses. `scripts/package.py`
+collects dependency license files and a package inventory into the binary
+archive, and bundles all locked sources into its accompanying source archive.
 
 
 ## Flamberge license
@@ -40,3 +41,26 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Native ADEPT backend
+
+The source revisions are recorded in each vendor directory's `UPSTREAM` file.
+
+| Component | License | Source and notice |
+| --- | --- | --- |
+| libgourou 0.8.10 | LGPL-3.0-or-later | [Source](native/vendor/libgourou), [license](native/vendor/libgourou/LICENSE) |
+| libgourou reference client | BSD-3-Clause | [Notice in source](native/vendor/libgourou/utils/drmprocessorclientimpl.cpp) |
+| uPDFParser | LGPL-3.0-or-later | [Source](native/vendor/updfparser), [license](native/vendor/updfparser/LICENSE) |
+| pugixml 1.15 | MIT | [License](native/vendor/pugixml/LICENSE.md) |
+| libzip 1.11.4 | BSD-3-Clause | [License](native/vendor/libzip/LICENSE) |
+
+OpenSSL, curl, and zlib are statically compiled from the sources selected by
+`Cargo.lock` through their Cargo sys crates. Their licenses and those of all
+transitive dependencies also apply. See [native/README.md](native/README.md) for
+local upstream changes and the source/relinking requirements for binary releases.
+
+## Terminal interface
+
+Crossload uses Tears 0.8.0 (Apache-2.0), Ratatui (MIT), and Tokio (MIT).
+Cargo.lock records all resolved dependencies; packaging collects their license
+notices and includes their sources in the offline source archive.

@@ -1,0 +1,194 @@
+--- a/src/device.cpp
++++ b/src/device.cpp
+@@ -92,7 +92,7 @@
+     int found = 0;
+     if (getifaddrs(&iflist) == 0) {
+         for (ifaddrs* cur = iflist; cur; cur = cur->ifa_next) {
+-            if ((cur->ifa_addr->sa_family == AF_LINK) &&
++            if (cur->ifa_addr && (cur->ifa_addr->sa_family == AF_LINK) &&
+                 (strcmp(cur->ifa_name, if_name) == 0) &&
+                 cur->ifa_addr) {
+                 sockaddr_dl* sdl = (sockaddr_dl*)cur->ifa_addr;
+--- a/src/libgourou.cpp
++++ b/src/libgourou.cpp
+@@ -462,8 +462,7 @@
+         // Create adept:licenseServices if it doesn't exists
+         if (!xpathRes)
+         {
+-            xpathRes = activationDoc.select_node("/activationInfo");
+-            root = xpathRes.node();
++            root = activationDoc.document_element();
+             root = root.append_child("adept:licenseServices");
+             root.append_attribute("xmlns:adept") = ADOBE_ADEPT_NS;
+         }
+@@ -484,8 +483,7 @@
+         // Create adept:operatorURLList if it doesn't exists
+         if (!xpathRes)
+         {
+-            xpathRes = activationDoc.select_node("/activationInfo");
+-            root = xpathRes.node();
++            root = activationDoc.document_element();
+             root = root.append_child("adept:operatorURLList");
+             root.append_attribute("xmlns:adept") = ADOBE_ADEPT_NS;
+ 
+@@ -544,12 +542,14 @@
+         pugi::xml_node hmacNode = xpathRes.node();
+         pugi::xml_node hmacParentNode = hmacNode.parent();
+ 
++        const std::string hmacName = hmacNode.name();
++        const std::string hmacValue = hmacNode.child_value();
+         hmacParentNode.remove_child(hmacNode);
+ 
+         signNode(rootNode);
+ 
+         // Add removed HMAC
+-        appendTextElem(hmacParentNode, hmacNode.name(), hmacNode.first_child().value());
++        appendTextElem(hmacParentNode, hmacName.c_str(), hmacValue);
+ 
+         pugi::xpath_node node = acsmDoc.select_node("//operatorURL");
+         if (!node)
+@@ -1244,6 +1244,8 @@
+ 
+                 client->zipReadFile(zipHandler, encryptedFile, zipData, false);
+ 
++                if (zipData.length() < 32 || zipData.length() % 16 != 0)
++                    throw std::runtime_error("Invalid encrypted EPUB entry length");
+                 unsigned char* _data = zipData.data();
+                 ByteArray clearData(zipData.length()-16+1, true); /* Reserve 1 byte for 'Z' */
+                 unsigned char* _clearData = clearData.data();
+@@ -1269,7 +1271,7 @@
+                 {
+                     if (e.getErrorCode() == CLIENT_ZIP_ERROR)
+                     {
+-                        GOUROU_LOG(ERROR, e.what() << std::endl << "Skip file " << encryptedFile);
++                        throw; // Never publish an incompletely decrypted book.
+                     }
+                     else
+                         throw e;
+--- a/src/user.cpp
++++ b/src/user.cpp
+@@ -99,7 +99,10 @@
+     {
+         GOUROU_LOG(INFO, "Update Activation file : " << std::endl << data);
+ 
+-        writeFile(activationFile, (unsigned char*)data, strlen(data));
++        const std::string temporary = activationFile + ".tmp";
++        writeFile(temporary, (unsigned char*)data, strlen(data));
++        if (rename(temporary.c_str(), activationFile.c_str()) != 0)
++            throw std::runtime_error("Could not update activation file");
+ 
+         parseActivationFile(false);
+     }
+--- a/utils/drmprocessorclientimpl.cpp
++++ b/utils/drmprocessorclientimpl.cpp
+@@ -144,7 +144,9 @@
+ }
+ 
+ /* HTTP interface */
+-#define HTTP_REQ_MAX_RETRY  5
++#define HTTP_REQ_MAX_RETRY  1
++extern "C" const char* xteink_ca_file();
++extern "C" const char* xteink_ca_dir();
+ #define DISPLAY_THRESHOLD   10*1024 // Threshold to display download progression
+ static unsigned downloadedBytes;
+ static int lastPercent = -1;
+@@ -173,6 +175,7 @@
+ {
+     gourou::ByteArray* replyData = (gourou::ByteArray*) userp;
+ 
++    if (size*nmemb > 8*1024*1024 - replyData->length()) return 0;
+     replyData->append((unsigned char*)data, size*nmemb);
+ 
+     return size*nmemb;
+@@ -182,7 +185,9 @@
+ {
+     int fd = *(int*) userp;
+ 
+-    size_t res = write(fd, data, size*nmemb);
++    if (size*nmemb > 128*1024*1024 - downloadedBytes) return 0;
++    ssize_t res = write(fd, data, size*nmemb);
++    if (res < 0) return 0;
+ 
+     downloadedBytes += res;
+ 
+@@ -243,10 +248,21 @@
+     }
+ 
+     CURL *curl = curl_easy_init();
++    if (!curl) throw std::runtime_error("Could not initialize HTTP request");
+     CURLcode res;
+     curl_easy_setopt(curl, CURLOPT_URL, URL.c_str());
+     curl_easy_setopt(curl, CURLOPT_USERAGENT, "book2png");
+-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
++    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
++    curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http,https");
++    curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, URL.compare(0, 8, "https://") == 0 ? "https" : "http,https");
++    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
++    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
++    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
++    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 100L);
++    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
++    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
++    if (xteink_ca_file()) curl_easy_setopt(curl, CURLOPT_CAINFO, xteink_ca_file());
++    if (xteink_ca_dir()) curl_easy_setopt(curl, CURLOPT_CAPATH, xteink_ca_dir());
+ 
+ 
+     struct curl_slist *list = NULL;
+@@ -309,7 +325,7 @@
+             if (prevDownloadedBytes != downloadedBytes)
+             {
+                 GOUROU_LOG(WARN, "\nConnection broken, but data received, try again");    
+-                i--;
++                break; // Never replay a possibly accepted fulfillment POST.
+             }
+             else
+                 GOUROU_LOG(WARN, "\nConnection broken and no data received, attempt " << (i+1) << "/" << HTTP_REQ_MAX_RETRY);
+@@ -781,11 +797,16 @@
+     if (!(sb.valid & (ZIP_STAT_INDEX|ZIP_STAT_SIZE)))
+         EXCEPTION(gourou::CLIENT_ZIP_ERROR, "Required fields missing");
+ 
+-    result.resize(sb.size);
++    const auto length = decompress ? sb.size : sb.comp_size;
++    if (length > 128*1024*1024) throw std::runtime_error("ZIP entry exceeds 128 MiB");
++    result.resize(length);
+ 
+     zip_file_t *f = zip_fopen_index((zip_t *)handler, sb.index, (decompress)?0:ZIP_FL_COMPRESSED);
+-    zip_fread(f, result.data(), sb.size);
++    if (!f) throw std::runtime_error("Could not read ZIP entry");
++    auto count = zip_fread(f, result.data(), length);
+     zip_fclose(f);
++    if (count < 0 || static_cast<zip_uint64_t>(count) != length)
++        throw std::runtime_error("Truncated ZIP entry");
+ }
+ 
+ void DRMProcessorClientImpl::zipWriteFile(void* handler, const std::string& path, gourou::ByteArray& content)
+@@ -822,13 +843,16 @@
+ 
+ void DRMProcessorClientImpl::zipClose(void* handler)
+ {
+-    zip_close((zip_t*)handler);
++    if (zip_close((zip_t*)handler) != 0) {
++        zip_discard((zip_t*)handler);
++        throw std::runtime_error("Could not commit ZIP archive");
++    }
+ }
+ 
+ void DRMProcessorClientImpl::inflate(gourou::ByteArray& data, gourou::ByteArray& result,
+                                      int wbits)
+ {
+-    unsigned int dataSize = data.size()*2;
++    unsigned int dataSize = 64*1024;
+     unsigned char* buffer = new unsigned char[dataSize];
+ 
+     z_stream infstream;
+@@ -854,6 +878,10 @@
+         if (ret == Z_BUF_ERROR && infstream.avail_out == (uInt)dataSize)
+             break;
+ 
++        if (result.length() + dataSize - infstream.avail_out > 256*1024*1024) {
++            inflateEnd(&infstream); delete[] buffer;
++            throw std::runtime_error("Inflated entry exceeds 256 MiB");
++        }
+         result.append(buffer, dataSize-infstream.avail_out);
+     
+         if ((ret == Z_OK && infstream.avail_out != 0) || ret == Z_STREAM_END)

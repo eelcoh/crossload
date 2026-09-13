@@ -1,0 +1,49 @@
+name: Package binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake perl pkg-config python3
+      - name: Check macOS build tools
+        if: runner.os == 'macOS'
+        run: |
+          cmake --version
+          perl --version
+          c++ --version
+          python3 --version
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - uses: jdx/mise-action@v4
+        with:
+          version: 2026.9.1
+      - name: Check code
+        run: mise run check
+        env:
+          CROSSLOAD_BUILD_BACKEND: native
+      - name: TUI terminal smoke test
+        run: python3 scripts/test-tui.py
+      - name: Build binary and corresponding source archives
+        run: mise run package
+      - name: Keep packages and SHA-256 checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: crossload-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0

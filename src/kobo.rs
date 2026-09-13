@@ -139,7 +139,7 @@ impl Library {
             .books()?
             .into_iter()
             .find(|b| b.id == id)
-            .context("Book ID is not downloaded on this Kobo; use `xteink kobo list`")?;
+            .context("Book ID is not downloaded on this Kobo; use `crossload kobo list`")?;
         ensure!(
             !book.preview,
             "This Kobo entry is a preview, not the full book. Download the full edition on your Kobo, then reconnect and retry"
