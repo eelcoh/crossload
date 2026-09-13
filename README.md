@@ -183,6 +183,31 @@ the device and works with temporary database copies, including any WAL data. It
 rejects output directories inside the Kobo. Stop other software syncing the device
 before importing; a change detected during the database copy is reported as an error.
 
+## Sync Kobo books
+
+Plan which full books are missing from the reader:
+
+```sh
+crossload kobo sync --device /run/media/$USER/KOBOeReader --output ~/Books --to crosspoint.local
+```
+
+Repeat with `--apply` to import, optimize and transfer the missing books into
+`Author/Title.epub`. Saved device, output, reader and remote folder defaults work
+here too. For a mounted card, replace `--to crosspoint.local` with
+`--copy-to /path/to/card`. Use `--json` for a machine-readable report.
+
+The default dry run writes only temporary working files. Inventory reads every
+EPUB within the selected destination folder, so Wi-Fi planning can take time.
+Matching uses full contents, recognizing renamed or repacked EPUBs and the
+current optimized copy; titles or ISBNs alone do not count as a match. Previews
+and duplicate content are skipped. Nothing is deleted or overwritten.
+
+Rerun after interruption: verified reader copies are skipped, and identical
+local imports are reused. Conflicting books are reported individually with a
+nonzero exit status. For a matching incomplete Wi-Fi file, add `--repair`:
+the apply run preserves the partial file under a backup name before sending a
+fresh copy. An unreadable inventory aborts sync before any transfers.
+
 ## Send to CrossPoint over Wi-Fi
 
 The transfer target is **Xteink X4 with CrossPoint 1.6.0**. EPUB reading has been

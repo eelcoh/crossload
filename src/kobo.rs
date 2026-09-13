@@ -135,6 +135,21 @@ impl Library {
     }
 
     pub fn import(&self, id: &str, output: &Path, serial: Option<&str>) -> Result<PathBuf> {
+        self.import_inner(id, output, serial, false)
+    }
+
+    /// Sync recovery reuses only an identical, regular local import.
+    pub fn import_reusing(&self, id: &str, output: &Path, serial: Option<&str>) -> Result<PathBuf> {
+        self.import_inner(id, output, serial, true)
+    }
+
+    fn import_inner(
+        &self,
+        id: &str,
+        output: &Path,
+        serial: Option<&str>,
+        reuse: bool,
+    ) -> Result<PathBuf> {
         let book = self
             .books()?
             .into_iter()
@@ -192,6 +207,17 @@ impl Library {
             .context("Imported book failed EPUB validation; no output was written")?;
         let output = output_directory(output, &self.root)?;
         let target = output.join(output_name(&book));
+        if reuse {
+            match fs::symlink_metadata(&target) {
+                Ok(meta) => {
+                    ensure!(meta.is_file() && meta.len() == data.len() as u64 && fs::read(&target)? == data,
+                        "Existing local import differs or is not a regular file; nothing was overwritten: {}", target.display());
+                    return Ok(target);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
         let mut temporary = NamedTempFile::new_in(&output)?;
         temporary.write_all(&data)?;
         temporary.as_file().sync_all()?;

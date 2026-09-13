@@ -101,6 +101,8 @@ fn server(steps: Vec<Step>) -> (String, Mock) {
                     assert!(Instant::now() < deadline, "Missing WebSocket upload");
                     thread::sleep(Duration::from_millis(5));
                 };
+                // macOS inherits the listener's nonblocking flag on accept.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
@@ -155,6 +157,7 @@ fn server(steps: Vec<Step>) -> (String, Mock) {
                     Err(e) => panic!("{e}"),
                 }
             };
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
@@ -588,5 +591,42 @@ fn author_folder_transfer_stages_verifies_and_publishes_inside_folder() {
         .send(&dir.path().join(NAME))
         .unwrap();
     assert_eq!(sent.path, format!("/Mick Herron/{NAME}"));
+    mock.join().unwrap();
+}
+
+#[test]
+fn inventory_recurses_and_fingerprints_renamed_books_without_writes() {
+    use crossload::inventory::{self, Destination, Inventory};
+    let (_dir, bytes) = book();
+    let (address, mock) = server(vec![
+        status(),
+        get("/api/files?path=%2F", br#"[{"name":"Author","size":0,"isDirectory":true},{"name":"XTCache","size":0,"isDirectory":true}]"#),
+        get("/api/files?path=%2FAuthor", listing("renamed.epub", bytes.len())),
+        get("/download?path=%2FAuthor%2Frenamed.epub", &bytes),
+    ]);
+    let destination = Destination::Reader(Reader::new(&address, "/").unwrap());
+    let snapshot = Inventory::scan(&destination, |_| {}).unwrap();
+    assert_eq!(snapshot.entries.len(), 2);
+    assert_eq!(
+        snapshot
+            .matching(&[&inventory::identity(&bytes)])
+            .unwrap()
+            .file
+            .path,
+        "/Author/renamed.epub"
+    );
+    mock.join().unwrap();
+}
+
+#[test]
+fn incomplete_inventory_download_is_an_error() {
+    use crossload::inventory::{Destination, Inventory};
+    let (address, mock) = server(vec![
+        status(),
+        get("/api/files?path=%2F", listing("book.epub", 100)),
+        get("/download?path=%2Fbook.epub", b"partial"),
+    ]);
+    let destination = Destination::Reader(Reader::new(&address, "/").unwrap());
+    assert!(Inventory::scan(&destination, |_| {}).is_err());
     mock.join().unwrap();
 }

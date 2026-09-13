@@ -177,6 +177,33 @@ impl Transfer {
 
 #[derive(Subcommand)]
 enum KoboCommand {
+    /// Plan additive sync; --apply imports and transfers missing books.
+    Sync {
+        #[command(flatten)]
+        device: Device,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// CrossPoint address (defaults to the saved reader).
+        #[arg(long, conflicts_with = "copy_to")]
+        to: Option<String>,
+        /// Use a mounted card instead of Wi-Fi.
+        #[arg(long, conflicts_with = "to")]
+        copy_to: Option<PathBuf>,
+        #[arg(long, conflicts_with = "copy_to")]
+        folder: Option<String>,
+        #[arg(long)]
+        serial: Option<String>,
+        /// Execute the plan. The default is a read-only dry run.
+        #[arg(long)]
+        apply: bool,
+        #[arg(long, conflicts_with = "apply")]
+        dry_run: bool,
+        /// Preserve and repair verified incomplete Wi-Fi uploads.
+        #[arg(long)]
+        repair: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// List Kobo store books, previews, and sideloaded EPUBs with their IDs.
     List {
         /// Include previews (hidden by default).
@@ -333,6 +360,86 @@ fn run() -> Result<()> {
             }
         }
         Command::Kobo { command } => match command {
+            KoboCommand::Sync {
+                device,
+                output,
+                to,
+                copy_to,
+                folder,
+                serial,
+                apply,
+                dry_run: _,
+                repair,
+                json,
+            } => {
+                let library = Library::open(&required(
+                    device.device,
+                    defaults.device.clone(),
+                    "--device",
+                )?)?;
+                let output = required(output, defaults.output.clone(), "--output")?;
+                let destination = if let Some(path) = copy_to {
+                    crossload::sync::card(&path)?
+                } else {
+                    let address = required(
+                        to,
+                        defaults.reader.clone(),
+                        "--to/--reader (or select --copy-to)",
+                    )?;
+                    crossload::inventory::Destination::Reader(crossload::crosspoint::Reader::new(
+                        &address,
+                        &folder
+                            .or(defaults.folder.clone())
+                            .unwrap_or_else(|| "/".into()),
+                    )?)
+                };
+                let report = crossload::sync::run(
+                    &library,
+                    &destination,
+                    &crossload::sync::Options {
+                        output,
+                        serial,
+                        apply,
+                        optimize: !cli.no_optimize,
+                        organized: !cli.flat,
+                        repair,
+                    },
+                    |progress| eprintln!("{}", printable(progress)),
+                )?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!("STATUS\tTITLE\tID\tDESTINATION\tDETAIL");
+                    for row in &report.books {
+                        let status = serde_json::to_value(&row.status)?;
+                        println!(
+                            "{}\t{}\t{}\t{}\t{}",
+                            status.as_str().unwrap_or("unknown"),
+                            printable(&row.title),
+                            printable(&row.id),
+                            printable(row.path.as_deref().unwrap_or("")),
+                            printable(&row.detail)
+                        );
+                    }
+                }
+                eprintln!(
+                    "{}: {} books; {} previews skipped; {} failures.{}",
+                    if apply { "Sync" } else { "Dry run" },
+                    report.books.len(),
+                    report.previews_skipped,
+                    report.failures(),
+                    if apply {
+                        ""
+                    } else {
+                        " Use --apply to transfer missing books."
+                    }
+                );
+                anyhow::ensure!(report.failures() == 0, "Sync has failures; successful copies are retained. Resolve the reported issues and rerun.");
+                if apply && matches!(destination, crossload::inventory::Destination::Card(_)) {
+                    eprintln!("Safely eject the card before disconnecting it.");
+                }
+            }
+
             KoboCommand::List {
                 device,
                 json,

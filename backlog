@@ -4,7 +4,7 @@
 
 - [x] GitHub access
   Changed origin from HTTPS to SSH, verified authentication and pushed main.
-  Current Crossload features are included in the next checkpoint push.
+  Crossload checkpoint pushed as 6521562.
 
 - [x] Rename to Crossload
   Renamed the package, CLI, TUI and release artifacts. `xteink` remains a
@@ -45,11 +45,15 @@
    PTY copy/error/resize/restoration checks pass. macOS execution remains pending
    in CI; no Mac runtime verification is claimed.
 
-6. [ ] Sync books from Kobo
+6. [x] Sync books from Kobo
    For every non-preview book available on the Kobo but absent from the reader,
    import, optimize and transfer it. Start with a dry run, reliable book identity,
    verified skipping and recovery from interrupted transfers. Share the inventory
    logic with the TUI.
+   Implemented `kobo sync`: dry run by default, `--apply` to Wi-Fi or a mounted
+   card. Compares full contents, including repacked and optimized copies;
+   preserves conflicts and reuses verified local imports on retry. Wi-Fi
+   `--repair` preserves matching incomplete uploads before replacement.
 
 7. [ ] TUI features
    Show which books are already on the reader, using the same inventory as sync.

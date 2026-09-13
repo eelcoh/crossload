@@ -130,6 +130,61 @@ impl Reader {
         Ok(())
     }
 
+    /// Read a bounded file for inventory/verification. No writes or retries.
+    pub fn read_file(&self, path: &str, expected_size: u64) -> Result<Vec<u8>> {
+        ensure!(
+            expected_size <= epub::MAX_BOOK_BYTES,
+            "Reader file exceeds 128 MiB: {path}"
+        );
+        let bytes = self.request("/download", Some(path), None, expected_size as usize)?;
+        ensure!(
+            bytes.len() as u64 == expected_size,
+            "Reader file changed or download is incomplete: {path}"
+        );
+        Ok(bytes)
+    }
+
+    pub fn folder(&self) -> &str {
+        &self.folder
+    }
+
+    /// Snapshot ordinary directory entries within the selected base folder.
+    pub fn files(&self) -> Result<Vec<crate::inventory::FileEntry>> {
+        self.status()?;
+        self.check_folder()?;
+        let mut pending = vec![(self.folder.clone(), 0)];
+        let mut files = Vec::new();
+        while let Some((folder, depth)) = pending.pop() {
+            ensure!(depth <= 32, "Reader directory tree is too deep");
+            for entry in self.entries(&folder)? {
+                if entry.name.starts_with('.')
+                    || matches!(
+                        entry.name.to_lowercase().as_str(),
+                        "xtcache" | "system volume information"
+                    )
+                {
+                    continue;
+                }
+                valid_component(&entry.name)?;
+                let path = format!("{}/{}", folder.trim_end_matches('/'), entry.name);
+                if entry.directory {
+                    pending.push((path.clone(), depth + 1));
+                }
+                files.push(crate::inventory::FileEntry {
+                    path,
+                    size: entry.size,
+                    directory: entry.directory,
+                });
+                ensure!(
+                    files.len() <= 20000,
+                    "Reader inventory exceeds 20000 entries"
+                );
+            }
+        }
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    }
+
     /// Create an author directory below the explicitly selected base folder.
     pub fn for_author(&self, author: &str) -> Result<Self> {
         valid_component(author)?;

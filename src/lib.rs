@@ -9,3 +9,6 @@ pub mod prepare;
 pub mod tui;
 
 pub mod config;
+
+pub mod inventory;
+pub mod sync;
