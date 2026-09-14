@@ -644,6 +644,37 @@ ACSM files appear as local import requests. Choose Local first to fulfill them,
 then refresh to copy the resulting EPUB. Existing activation setup still applies.
 An interactive terminal is required. Repairs remain in `crossload send --repair`.
 
+## The catalog without a terminal
+
+`crossload books` prints the same unified catalog the TUI shows, using the same
+discovery and the same identity cache. Location states go to standard error, so
+redirected output stays data: a header and one tab-separated line per book.
+`--json` prints the catalog as structured JSON instead.
+
+```sh
+crossload books
+crossload books --json | jq '.[] | select(.copies | length == 1) | .title'
+```
+
+`crossload sync --from PLACE --to PLACE` copies every book that one location has
+and another lacks, where PLACE is `local`, `kobo` or `xteink`. It is a read-only
+dry run by default; `--apply` performs the copies.
+
+```sh
+crossload sync --from kobo --to xteink            # show what is missing
+crossload sync --from kobo --to xteink --apply    # copy it
+```
+
+Both locations must be available, or nothing is planned. Originals are preferred
+over device copies exactly as in the TUI, so the FROM column may name a location
+other than `--from` when a better source exists. Books already at the
+destination are never recopied, existing files are never overwritten, and every
+copy is verified; a book that fails is reported on its own line while the rest
+continue, and the command then exits non-zero.
+
+`crossload kobo sync` remains separate: it is the Kobo-to-reader path with
+Wi-Fi repair of interrupted uploads and per-book exclusions.
+
 ## Rename compatibility
 
 Crossload was previously called xteink. Both `crossload` and the compatibility
@@ -665,6 +696,8 @@ crossload config show
 Then use shorter commands:
 
 ```sh
+crossload books
+crossload sync --from kobo --to xteink
 crossload kobo list
 crossload kobo import BOOK_ID                 # local import only
 crossload kobo import BOOK_ID --send-to       # explicitly transfer to saved reader

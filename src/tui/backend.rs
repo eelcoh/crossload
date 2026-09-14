@@ -21,6 +21,7 @@ pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -
     let path = match entry.source {
         Source::Book(book, target) => {
             return crate::books::transfer(&library_options(&options), &book, target, &progress)
+                .map(|message| format!("{message} Press r to refresh."))
         }
         Source::Local(path) if entry.kind == "ACSM" => {
             progress("Fulfilling ACSM and importing EPUB…");

@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Place {
     Local,
     Kobo,
@@ -22,7 +22,7 @@ impl Place {
         }
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Copy {
     pub place: Place,
     pub path: String,
@@ -30,9 +30,11 @@ pub struct Copy {
     pub sha: String,
     pub resources: Option<String>,
     pub optimized: bool,
+    /// How this copy is recognized again; an implementation detail, not output.
+    #[serde(skip)]
     variants: Vec<(String, Option<String>)>,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Book {
     pub title: String,
     pub author: String,
@@ -650,7 +652,7 @@ pub fn transfer(
         },
     };
     Ok(format!(
-        "Copied to {output} (verified).{} Press r to refresh.",
+        "Copied to {output} (verified).{}",
         if source.optimized || source.place == Place::Xteink {
             " Source is a device copy; original quality cannot be restored."
         } else {

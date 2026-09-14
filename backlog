@@ -152,12 +152,20 @@
     is not Sync, so a pool would need one library per thread and a copy of the
     device database each, and parallel downloads risk overwhelming the reader.
 
-15. [ ] Catalog on the command line
+15. [x] Catalog on the command line — implemented
     The unified Local/Kobo/Xteink catalog is reachable only from the TUI.
     Add `crossload books [--json]` for the same catalog as a table or JSON, and
     generalize `kobo sync` into `crossload sync --from PLACE --to PLACE`, reusing
     the preferred-original rules in `Book::preferred`. This also makes discovery
     testable without a pseudo-terminal.
+    Implemented `crossload books [--json]` and `crossload sync --from PLACE
+    --to PLACE`, sharing one LibraryArgs group with the same defaults the TUI
+    uses. Location states go to stderr so redirected output stays data. Sync is
+    a dry run unless --apply, refuses unavailable locations, prefers originals,
+    reports each failure on its own line and exits non-zero if any copy failed.
+    `kobo sync` is unchanged and still owns Wi-Fi repair and exclusions;
+    consolidating the two remains open. Per-book exclusions are not in the new
+    command: selection belongs in item 16.
 
 16. [ ] Bulk actions and filters in the TUI
     Copying is one book at a time, while the real task is "copy everything that

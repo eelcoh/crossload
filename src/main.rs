@@ -51,6 +51,32 @@ enum Command {
         #[command(flatten)]
         transfer: Transfer,
     },
+    /// List the unified Local, Kobo and Xteink catalog.
+    Books {
+        #[command(flatten)]
+        library: LibraryArgs,
+        /// Print structured JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Plan copies of every book missing from one location; --apply performs them.
+    Sync {
+        /// Location to copy from: local, kobo or xteink.
+        #[arg(long, value_enum)]
+        from: Location,
+        /// Location to copy to: local, kobo or xteink.
+        #[arg(long, value_enum)]
+        to: Location,
+        #[command(flatten)]
+        library: LibraryArgs,
+        /// Execute the plan. The default is a read-only dry run.
+        #[arg(long)]
+        apply: bool,
+        #[arg(long, conflicts_with = "apply")]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Save an optimized device copy locally without transferring it.
     Optimize {
         book: PathBuf,
@@ -175,6 +201,76 @@ impl Transfer {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Location {
+    Local,
+    Kobo,
+    Xteink,
+}
+impl Location {
+    fn place(self) -> crossload::books::Place {
+        match self {
+            Self::Local => crossload::books::Place::Local,
+            Self::Kobo => crossload::books::Place::Kobo,
+            Self::Xteink => crossload::books::Place::Xteink,
+        }
+    }
+}
+/// The locations a catalog command reads, shared by books and sync.
+#[derive(Args)]
+struct LibraryArgs {
+    /// Include Kobo previews.
+    #[arg(long)]
+    show_previews: bool,
+    #[arg(long)]
+    device: Option<PathBuf>,
+    /// Local directory to scan (defaults to the saved browse directory).
+    #[arg(long)]
+    browse: Option<PathBuf>,
+    /// Local directory for imported books.
+    #[arg(long)]
+    output: Option<PathBuf>,
+    #[arg(long)]
+    serial: Option<String>,
+    #[command(flatten)]
+    transfer: Transfer,
+}
+impl LibraryArgs {
+    fn options(
+        self,
+        defaults: &config::Defaults,
+        optimize: bool,
+        organized: bool,
+    ) -> Result<crossload::books::Options> {
+        let transfer = self.transfer.resolve(defaults)?;
+        let explicit_reader = transfer.send_to.is_some();
+        Ok(crossload::books::Options {
+            show_previews: self.show_previews,
+            local: self
+                .browse
+                .or(defaults.browse.clone())
+                .unwrap_or_else(|| PathBuf::from(".")),
+            output: required(self.output, defaults.output.clone(), "--output")?,
+            kobo: self.device.or(defaults.device.clone()),
+            reader: transfer.send_to.or(defaults.reader.clone()),
+            card: transfer.copy_to.or_else(|| {
+                if explicit_reader {
+                    None
+                } else {
+                    defaults.copy_to.clone()
+                }
+            }),
+            folder: transfer
+                .folder
+                .or(defaults.folder.clone())
+                .unwrap_or_else(|| "/".to_owned()),
+            serial: self.serial,
+            optimize,
+            organized,
+            cache: None,
+        })
+    }
+}
 #[derive(Subcommand)]
 enum KoboCommand {
     /// Plan additive sync; --apply imports and transfers missing books.
@@ -305,6 +401,76 @@ fn run() -> Result<()> {
                 optimize: !cli.no_optimize,
                 organized: !cli.flat,
             })?;
+        }
+        Command::Books { library, json } => {
+            let options = library.options(&defaults, !cli.no_optimize, !cli.flat)?;
+            let snapshot = crossload::books::scan(&options, |_| {});
+            report_locations(&snapshot);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&snapshot.books)?);
+            } else {
+                print_catalog(&snapshot);
+            }
+        }
+        Command::Sync {
+            from,
+            to,
+            library,
+            apply,
+            dry_run: _,
+            json,
+        } => {
+            anyhow::ensure!(from != to, "--from and --to must differ");
+            let options = library.options(&defaults, !cli.no_optimize, !cli.flat)?;
+            let (from, to) = (from.place(), to.place());
+            let snapshot = crossload::books::scan(&options, |_| {});
+            report_locations(&snapshot);
+            for place in [from, to] {
+                anyhow::ensure!(
+                    snapshot.ready(place),
+                    "{} is unavailable, so nothing can be planned for it",
+                    place.label()
+                );
+            }
+            // Unreadable copies never hashed, so they cannot be a source.
+            let planned: Vec<_> = snapshot
+                .books
+                .iter()
+                .filter(|book| book.has(from) && !book.has(to))
+                .filter(|book| book.preferred().is_some_and(|c| !c.sha.is_empty()))
+                .collect();
+            let mut done = Vec::new();
+            for book in &planned {
+                let source = book.preferred().map(|c| c.place).unwrap_or(from);
+                let outcome = if apply {
+                    crossload::books::transfer(&options, book, to, &|_| {})
+                        .map_err(|e| format!("{e:#}"))
+                } else {
+                    Ok(String::new())
+                };
+                done.push((book, source, outcome));
+            }
+            if json {
+                let rows: Vec<_> = done
+                    .iter()
+                    .map(|(book, source, outcome)| {
+                        serde_json::json!({
+                            "title": book.title,
+                            "author": book.author,
+                            "from": source.label(),
+                            "to": to.label(),
+                            "applied": apply,
+                            "result": outcome.as_ref().ok(),
+                            "error": outcome.as_ref().err(),
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                print_plan(&done, to, apply);
+            }
+            let failures = done.iter().filter(|(_, _, r)| r.is_err()).count();
+            anyhow::ensure!(failures == 0, "{failures} of {} copies failed", done.len());
         }
         Command::Optimize { book, output } => {
             let output = required(output, defaults.output.clone(), "--output")?;
@@ -652,6 +818,142 @@ fn print_books(books: &[Book]) {
     println!("Keys: — = none recorded in the Kobo database.");
 }
 
+/// Locations report themselves on stderr, so a redirected catalog stays data.
+fn report_locations(snapshot: &crossload::books::Snapshot) {
+    for (place, status) in &snapshot.status {
+        eprintln!("{}: {}", place.label(), printable(status));
+    }
+    if !snapshot.acsm.is_empty() {
+        eprintln!(
+            "{} local ACSM file(s) await fulfillment; use `crossload import`.",
+            snapshot.acsm.len()
+        );
+    }
+}
+fn places(book: &crossload::books::Book) -> String {
+    [
+        crossload::books::Place::Local,
+        crossload::books::Place::Kobo,
+        crossload::books::Place::Xteink,
+    ]
+    .iter()
+    .filter(|place| book.has(**place))
+    .map(|place| place.label())
+    .collect::<Vec<_>>()
+    .join(",")
+}
+fn source_label(book: &crossload::books::Book) -> String {
+    book.preferred()
+        .map(|copy| {
+            format!(
+                "{} ({})",
+                copy.place.label(),
+                if copy.sha.is_empty() {
+                    "unreadable"
+                } else if copy.optimized {
+                    "device copy"
+                } else {
+                    "original"
+                }
+            )
+        })
+        .unwrap_or_else(|| "none".into())
+}
+fn print_catalog(snapshot: &crossload::books::Snapshot) {
+    let header = ["TITLE", "AUTHOR", "WHERE", "SOURCE", "BYTES"];
+    let mut table = Table::new();
+    table
+        .load_style(NOTHING)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(header);
+    let interactive = std::io::stdout().is_terminal();
+    if !interactive {
+        println!("{}", header.join("\t"));
+    }
+    for book in &snapshot.books {
+        let row = [
+            printable(&book.title),
+            printable(&book.author),
+            places(book),
+            source_label(book),
+            book.preferred()
+                .map(|c| c.size)
+                .unwrap_or_default()
+                .to_string(),
+        ];
+        if interactive {
+            table.add_row(row);
+        } else {
+            println!("{}", row.join("\t"));
+        }
+    }
+    if !interactive {
+        return;
+    }
+    for index in [2, 3, 4] {
+        if let Some(column) = table.column_mut(index) {
+            column.set_constraint(ColumnConstraint::ContentWidth);
+        }
+    }
+    println!("{table}");
+    println!("\n{} books", snapshot.books.len());
+}
+type Planned<'a> = (
+    &'a &'a crossload::books::Book,
+    crossload::books::Place,
+    Result<String, String>,
+);
+fn print_plan(planned: &[Planned<'_>], to: crossload::books::Place, apply: bool) {
+    if planned.is_empty() {
+        println!("Nothing to copy: every book is already at {}.", to.label());
+        return;
+    }
+    let header = ["TITLE", "AUTHOR", "FROM", "RESULT"];
+    let mut table = Table::new();
+    table
+        .load_style(NOTHING)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(header);
+    let interactive = std::io::stdout().is_terminal();
+    if !interactive {
+        println!("{}", header.join("\t"));
+    }
+    for (book, source, outcome) in planned {
+        let row = [
+            printable(&book.title),
+            printable(&book.author),
+            source.label().to_owned(),
+            match outcome {
+                Ok(_) if !apply => "planned".to_owned(),
+                Ok(message) => printable(message),
+                Err(e) => format!("failed: {}", printable(e)),
+            },
+        ];
+        if interactive {
+            table.add_row(row);
+        } else {
+            println!("{}", row.join("\t"));
+        }
+    }
+    if interactive {
+        println!("{table}");
+    }
+    let failures = planned.iter().filter(|(_, _, r)| r.is_err()).count();
+    println!(
+        "\n{} book(s) {} to {}{}",
+        planned.len(),
+        if apply { "copied" } else { "would be copied" },
+        to.label(),
+        if failures > 0 {
+            format!("; {failures} failed")
+        } else {
+            String::new()
+        }
+    );
+    if !apply {
+        println!("This was a dry run. Add --apply to copy them.");
+    }
+}
 fn printable(value: &str) -> String {
     value
         .chars()
