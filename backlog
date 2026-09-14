@@ -213,19 +213,34 @@
     the book is still imported and the request stays put, reported rather than
     raised as an error.
 
-19. [ ] macOS verification and published releases
-    Native ADEPT, the Tears TUI and packaging have never run on a Mac; CI is
-    configured but unverified. No binaries are published yet — a tag-triggered
-    release workflow reusing `scripts/package.py` would make `dist/` installable
-    by someone other than the author.
+19. [~] macOS verification and published releases
+    macOS verification is done: see the section below. Packaging on a `v*` tag
+    already exists and produces Linux and both macOS archives as Actions
+    artifacts, but it has never been run and does not publish a GitHub Release,
+    so there is still nothing a stranger can install. Remaining: run the tag
+    workflow once, confirm a Mac archive actually executes, and decide whether
+    to publish Releases given that Mac packages are unsigned and not notarized.
 
 ## macOS verification update
 
-The user compiled and smoke-tested the version currently on GitHub on a Mac.
-At the time of this report GitHub contained the initial Kobo CLI commit
-(26180b0), so this confirms that baseline builds and starts on macOS. Kobo USB
-could not be tested on the corporate Mac. The newer native ADEPT, Tears TUI and
-packaging changes still need macOS verification after the checkpoint push.
+Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest
+on every push, and has done so throughout: build, the full test suite and the
+pseudo-terminal smoke test. The current head is green on both, and the user has
+run this version on a Mac by hand. The native ADEPT, Tears TUI, catalog and
+caching work is therefore covered on macOS as far as automation can cover it.
+
+What a Mac still has not done: attach a Kobo, transfer to a reader, or run a
+packaged archive. The tag workflow packages both macOS architectures but has
+never been run.
+
+One macOS failure is on record and was never reproduced: commit fe4d5bc (item
+13) failed the pseudo-terminal test at quit, where Ctrl+C is sent and the
+process must exit within ten seconds. Linux passed the same commit and the four
+pushes since have passed on macOS, including that exact sequence. Quit while
+work is still running is a pending quit that waits for its worker, so a slow
+runner and a refresh in flight is a plausible cause; ten seconds is not a
+generous timeout. If it recurs, raise the timeout and print the final screen
+and status line rather than only the traceback.
 
 ## TUI refinements
 

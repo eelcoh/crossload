@@ -7,8 +7,10 @@ existing activation export. Python and Calibre are not required at runtime.
 
 ## Install
 
-Crossload targets Linux and macOS. Linux has been tested on a real Kobo; macOS
-builds and tests are configured in CI but have not yet been verified here.
+Crossload targets Linux and macOS. Linux has been tested on a real Kobo. macOS
+builds, passes the full test suite and runs its terminal smoke test on every
+push to `main` through CI, and the current version has been run on a Mac by
+hand. Kobo hardware and reader transfers have only been exercised on Linux.
 There are no published binary releases yet. Local Linux distribution archives
 are generated under `dist/`; install from one of these or build from this checkout.
 
@@ -156,7 +158,8 @@ existing output files are never overwritten. PDF ACSM files are not supported.
 
 The user has completed a real ACSM import on Linux and confirmed the resulting
 EPUB reads on CrossPoint. Automated tests use generated credentials and a local
-test server. Native macOS execution remains unverified.
+test server, and run on macOS in CI; no real ACSM fulfillment has been performed
+on a Mac.
 
 ### Kobo books
 
@@ -411,8 +414,8 @@ CROSSLOAD_BUILD_BACKEND=native mise run check
 mise run run -- tui --output ~/Books --browse ~/Books
 ```
 
-The binary matches the architecture of the native Rust toolchain. macOS execution
-still needs verification on a Mac; the Linux container workflow is locally tested.
+The binary matches the architecture of the native Rust toolchain. Both native
+builds are exercised by CI, and the Linux container workflow is locally tested.
 
 ### Everyday tasks
 
@@ -490,7 +493,8 @@ they cannot be verified from this Linux workspace alone.
 - Automated tests use synthetic books and databases. Linux listing, preview
   detection, and an encrypted import have also been checked on a real Kobo.
   One imported book has also been confirmed readable on an X4 running CrossPoint
-  1.6.0. macOS CI is configured but has not run here.
+  1.6.0. macOS CI runs the same suite on every push; no Kobo has been attached
+  to a Mac.
 
 See [NATIVE-OPTIONS.md](NATIVE-OPTIONS.md) for backend research and the roadmap,
 and [THIRD-PARTY.md](THIRD-PARTY.md) for the pinned upstream implementation.
@@ -518,11 +522,12 @@ classification uses Kobo's `Accessibility = 6`, also recognized by
 
 1. Kobo listing and import, including previews and sideloaded EPUBs — implemented.
 2. Activation-export import and native ACSM-to-EPUB workflow — implemented and
-   tested with a real book on Linux; macOS execution pending.
+   tested with a real book on Linux; on macOS only its automated tests have run.
 3. CrossPoint Wi-Fi transfer — implemented, verified on an X4 with CrossPoint
    1.6.0, and confirmed readable.
 4. Mounted-card copy and distribution packaging — implemented; local Linux
-   archives built, macOS package execution pending in CI.
+   archives built. The tag workflow packages both macOS architectures but has
+   not been run, so no Mac package has been produced or executed.
 5. Author/title device folders and X4 image optimization — implemented and
    confirmed working on the X4 with the nine-book anthology.
 6. TUI browsing, import and transfer — implemented.
