@@ -593,6 +593,9 @@ an offline history of books on disconnected devices. Press **r** after connectin
 or disconnecting a device, or after copying. Refresh keeps the current list and
 selection visible until the new scan completes, then applies additions/removals.
 Copy actions wait during that refresh; an initial scan still shows partial results.
+Books appear as they are read rather than only when a location finishes, so the
+first of them is on screen almost immediately, and the location line counts them
+as they arrive. Local books are read on several threads at once.
 
 Discovery remembers what it learned in an identity cache under
 `~/.cache/crossload/index.json` (`XDG_CACHE_HOME` is respected;

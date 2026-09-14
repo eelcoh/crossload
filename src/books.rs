@@ -213,6 +213,12 @@ pub fn merge(books: &mut Vec<Book>, book: Book) {
         }
     }
     books.push(combined);
+}
+fn books(count: usize) -> String {
+    format!("{count} book{}", if count == 1 { "" } else { "s" })
+}
+/// Snapshots are ordered when they are emitted, not on every insertion.
+pub fn sort(books: &mut [Book]) {
     books.sort_by(|a, b| {
         a.title
             .to_lowercase()
@@ -220,17 +226,20 @@ pub fn merge(books: &mut Vec<Book>, book: Book) {
             .then(a.author.cmp(&b.author))
     });
 }
-struct Found {
-    books: Vec<Book>,
-    acsm: Vec<PathBuf>,
-    warnings: usize,
+/// What a location reports while it works, rather than only when it finishes.
+enum Update {
+    Book(Place, Box<Book>, bool),
+    Acsm(PathBuf),
+    Unreadable(Place),
+    Finished(Place, Result<(), String>),
 }
-fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Found> {
-    let mut found = Found {
-        books: vec![],
-        acsm: vec![],
-        warnings: 0,
-    };
+type Reports = std::sync::mpsc::Sender<Update>;
+fn book_update(place: Place, book: Book) -> Update {
+    // An entry whose copies never hashed is a warning, not a usable book.
+    let unreadable = !book.copies.is_empty() && book.copies.iter().all(|c| c.sha.is_empty());
+    Update::Book(place, Box::new(book), unreadable)
+}
+fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports) -> Result<()> {
     match place {
         Place::Local => {
             let mut roots = vec![options.local.clone()];
@@ -241,8 +250,11 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                 roots.iter().any(|p| p.is_dir()),
                 "Local folders unavailable"
             );
+            // Walking a tree is cheap; reading and hashing books is not. The
+            // walk finishes first, then the books are read in parallel.
             let mut seen = std::collections::HashSet::new();
             let mut visited = 0;
+            let mut books = Vec::new();
             for root in roots {
                 let mut pending = vec![(root, 0)];
                 while let Some((dir, depth)) = pending.pop() {
@@ -250,7 +262,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                     let items = match fs::read_dir(&dir) {
                         Ok(items) => items,
                         Err(_) => {
-                            found.warnings += 1;
+                            let _ = tx.send(Update::Unreadable(place));
                             continue;
                         }
                     };
@@ -283,44 +295,61 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                             .unwrap_or("")
                             .to_ascii_lowercase();
                         if matches!(ext.as_str(), "acsm" | "ascm") {
-                            found.acsm.push(path);
+                            let _ = tx.send(Update::Acsm(path));
                             continue;
                         }
-                        if ext != "epub" {
-                            continue;
-                        }
-                        let source = path.to_string_lossy().into_owned();
-                        let key = cache::file_fingerprint(&path).map(|fingerprint| {
-                            cache::source_key(
-                                place.label(),
-                                &source,
-                                &fingerprint,
-                                options.optimize,
-                                options.organized,
-                            )
-                        });
-                        if let Some(book) = stored(index, key.as_ref(), place, &source) {
-                            found.books.push(book);
-                            continue;
-                        }
-                        match candidate(&path, place, source, options, index, key) {
-                            Ok(book) => found.books.push(book),
-                            Err(e) => {
-                                found.warnings += 1;
-                                found.books.push(unreadable(
-                                    place,
-                                    path.to_string_lossy().into_owned(),
-                                    path.file_name()
-                                        .unwrap_or_default()
-                                        .to_string_lossy()
-                                        .into_owned(),
-                                    format!("{e:#}"),
-                                ));
-                            }
+                        if ext == "epub" {
+                            books.push(path);
                         }
                     }
                 }
             }
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let workers = std::thread::available_parallelism()
+                .map(|value| value.get())
+                .unwrap_or(1)
+                .min(8)
+                .min(books.len().max(1));
+            let books = &books;
+            let next = &next;
+            std::thread::scope(|scope| {
+                for _ in 0..workers {
+                    let tx = tx.clone();
+                    scope.spawn(move || {
+                        while let Some(path) =
+                            books.get(next.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+                        {
+                            let source = path.to_string_lossy().into_owned();
+                            let key = cache::file_fingerprint(path).map(|fingerprint| {
+                                cache::source_key(
+                                    place.label(),
+                                    &source,
+                                    &fingerprint,
+                                    options.optimize,
+                                    options.organized,
+                                )
+                            });
+                            let book = stored(index, key.as_ref(), place, &source)
+                                .map(Ok)
+                                .unwrap_or_else(|| {
+                                    candidate(path, place, source.clone(), options, index, key)
+                                })
+                                .unwrap_or_else(|e| {
+                                    unreadable(
+                                        place,
+                                        source,
+                                        path.file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .into_owned(),
+                                        format!("{e:#}"),
+                                    )
+                                });
+                            let _ = tx.send(book_update(place, book));
+                        }
+                    });
+                }
+            });
         }
         Place::Kobo => {
             let root = options.kobo.as_ref().context("Not configured")?;
@@ -331,11 +360,16 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                 .filter(|b| options.show_previews || !b.preview)
             {
                 if book.preview {
-                    found.books.push(unreadable(
+                    // A preview is a known state, not a failed read.
+                    let _ = tx.send(Update::Book(
                         place,
-                        book.id,
-                        format!("[Preview] {}", book.title),
-                        "Download the full book on Kobo first".into(),
+                        Box::new(unreadable(
+                            place,
+                            book.id,
+                            format!("[Preview] {}", book.title),
+                            "Download the full book on Kobo first".into(),
+                        )),
+                        false,
                     ));
                     continue;
                 }
@@ -362,22 +396,19 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                         )
                     });
                 if let Some(found_book) = stored(index, key.as_ref(), place, &book.id) {
-                    found.books.push(found_book);
+                    let _ = tx.send(book_update(place, found_book));
                     continue;
                 }
                 let temp = tempfile::tempdir()?;
                 let result = library
                     .import(&book.id, temp.path(), options.serial.as_deref())
                     .and_then(|p| candidate(&p, place, book.id.clone(), options, index, key));
-                match result {
-                    Ok(book) => found.books.push(book),
-                    Err(e) => {
-                        found.warnings += 1;
-                        found
-                            .books
-                            .push(unreadable(place, book.id, book.title, format!("{e:#}")));
-                    }
-                }
+                let _ = tx.send(book_update(
+                    place,
+                    result.unwrap_or_else(|e| {
+                        unreadable(place, book.id, book.title, format!("{e:#}"))
+                    }),
+                ));
             }
         }
         Place::Xteink => {
@@ -410,7 +441,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                     options.organized,
                 ));
                 if let Some(book) = stored(index, key.as_ref(), place, &file.path) {
-                    found.books.push(book);
+                    let _ = tx.send(book_update(place, book));
                     continue;
                 }
                 let result = (|| -> Result<Book> {
@@ -420,11 +451,10 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                     fs::write(&path, data)?;
                     candidate(&path, place, file.path.clone(), options, index, key)
                 })();
-                match result {
-                    Ok(book) => found.books.push(book),
-                    Err(e) => {
-                        found.warnings += 1;
-                        found.books.push(unreadable(
+                let _ = tx.send(book_update(
+                    place,
+                    result.unwrap_or_else(|e| {
+                        unreadable(
                             place,
                             file.path.clone(),
                             file.path
@@ -433,17 +463,19 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                                 .unwrap_or("Unreadable EPUB")
                                 .to_owned(),
                             format!("{e:#}"),
-                        ));
-                    }
-                }
+                        )
+                    }),
+                ));
             }
         }
     }
-    Ok(found)
+    Ok(())
 }
 /// Independent locations complete separately; an unavailable device never erases
 /// books found elsewhere. No discovery step writes to a library or device.
 pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
+    /// How often a partial catalog is published while locations are working.
+    const INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
     let mut snapshot = Snapshot {
         status: vec![
             (Place::Local, "Checking".into()),
@@ -452,6 +484,11 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
         ],
         ..Snapshot::default()
     };
+    let mut counts = [
+        (Place::Local, 0, 0),
+        (Place::Kobo, 0, 0),
+        (Place::Xteink, 0, 0),
+    ];
     let index = cache::Index::open(options.cache.clone());
     std::thread::scope(|scope| {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -460,35 +497,67 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
             let index = &index;
             scope.spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    discover(options, place, index)
+                    discover(options, place, index, &tx)
                 }))
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("Location worker stopped")));
-                let _ = tx.send((place, result));
+                let _ = tx.send(Update::Finished(
+                    place,
+                    result.map_err(|e| format!("{e:#}")),
+                ));
             });
         }
         drop(tx);
-        for (place, result) in rx {
-            let status = match result {
-                Ok(found) => {
-                    let count = found.books.len();
-                    for book in found.books {
-                        merge(&mut snapshot.books, book);
-                    }
-                    snapshot.acsm.extend(found.acsm);
-                    format!("Ready ({count} books, {} unreadable)", found.warnings)
+        let mut last = std::time::Instant::now();
+        let mut shown = 0;
+        for update in rx {
+            let mut finished = false;
+            let mut status = None;
+            match update {
+                Update::Book(place, book, unreadable) => {
+                    let count = counts.iter_mut().find(|(p, _, _)| *p == place).unwrap();
+                    count.1 += 1;
+                    count.2 += usize::from(unreadable);
+                    merge(&mut snapshot.books, *book);
+                    status = Some((place, format!("Checking ({})", books(count.1))));
                 }
-                Err(e) => format!("Unavailable: {e:#}"),
-            };
-            snapshot
-                .status
-                .iter_mut()
-                .find(|(p, _)| *p == place)
-                .unwrap()
-                .1 = status;
-            progress(snapshot.clone());
+                Update::Acsm(path) => snapshot.acsm.push(path),
+                Update::Unreadable(place) => {
+                    counts.iter_mut().find(|(p, _, _)| *p == place).unwrap().2 += 1;
+                }
+                Update::Finished(place, result) => {
+                    finished = true;
+                    let (_, count, warnings) =
+                        *counts.iter().find(|(p, _, _)| *p == place).unwrap();
+                    status = Some((
+                        place,
+                        result.map_or_else(
+                            |e| format!("Unavailable: {e}"),
+                            |()| format!("Ready ({}, {warnings} unreadable)", books(count)),
+                        ),
+                    ));
+                }
+            }
+            if let Some((place, text)) = status {
+                snapshot
+                    .status
+                    .iter_mut()
+                    .find(|(p, _)| *p == place)
+                    .unwrap()
+                    .1 = text;
+            }
+            // A location's own result is always published. Between those, the
+            // first books appear at once and the rest at a readable rate.
+            let first = shown == 0 && !snapshot.books.is_empty();
+            if finished || first || last.elapsed() >= INTERVAL {
+                sort(&mut snapshot.books);
+                shown = snapshot.books.len();
+                last = std::time::Instant::now();
+                progress(snapshot.clone());
+            }
         }
     });
     index.save();
+    sort(&mut snapshot.books);
     snapshot
 }
 fn destination(options: &Options) -> Result<inventory::Destination> {

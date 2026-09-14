@@ -60,7 +60,8 @@ fn disconnected_kobo_does_not_hide_local_or_reader_books_and_matches_are_conserv
     .unwrap();
     let mut updates = 0;
     let snapshot = books::scan(&o, |_| updates += 1);
-    assert_eq!(updates, 3);
+    // Every location publishes its own result, partial catalogs arrive before.
+    assert!(updates >= 3);
     assert!(!snapshot.ready(Place::Kobo));
     assert!(snapshot.ready(Place::Local));
     assert!(snapshot.ready(Place::Xteink));
@@ -277,4 +278,36 @@ fn an_unchanged_kobo_book_is_not_imported_again() {
     );
     fs::remove_file(&sideloaded).unwrap();
     assert!(books::scan(&o, |_| {}).books.is_empty());
+}
+
+#[test]
+fn books_are_published_before_their_location_finishes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    for i in 0..3 {
+        fs::write(
+            o.local.join(format!("book{i}.epub")),
+            epub(&format!("text {i}"), CompressionMethod::Stored),
+        )
+        .unwrap();
+    }
+    let mut seen = Vec::new();
+    let snapshot = books::scan(&o, |s| {
+        let local = s.status.iter().find(|(p, _)| *p == Place::Local).unwrap();
+        seen.push((s.books.len(), local.1.clone()));
+    });
+    assert_eq!(snapshot.books.len(), 3);
+    let (count, status) = seen
+        .iter()
+        .find(|(count, _)| (1..3).contains(count))
+        .expect("a partial catalog before Local finished");
+    assert!(status.starts_with("Checking"), "{status}");
+    assert_eq!(
+        *status,
+        format!(
+            "Checking ({count} book{})",
+            if *count == 1 { "" } else { "s" }
+        )
+    );
+    assert!(seen.last().unwrap().1.starts_with("Ready (3 books"));
 }

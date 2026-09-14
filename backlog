@@ -133,7 +133,7 @@
     detected, which is recorded in the README and in a test. Measured on ten
     3 MB books on a card: 0.73 s cold, 0.01 s warm.
 
-14. [ ] Stream discovery results and parallelize within a location
+14. [x] Stream discovery results and parallelize within a location — implemented
     `books::scan` emits a snapshot only when a whole location finishes, so a
     large local scan shows nothing for minutes and then everything at once.
     Emit every N books or every 250 ms; the model already merges partial
@@ -141,6 +141,16 @@
     emission, which gets expensive as emissions get more frequent. Within a
     location books are processed one at a time; the work is CPU-bound and
     independent, so a pool across books should scale with the core count.
+    Implemented: locations report each book as they find it, `scan` merges
+    incrementally and publishes a location's own result immediately, the first
+    books at once and the rest at most every 200 ms. `merge` no longer sorts on
+    every insertion, which was quadratic once books arrived one at a time;
+    snapshots are ordered when they are emitted. Local books are read by a pool
+    of up to eight threads. On four cores, ten 3 MB books: cold scan 4.6 s to
+    2.2 s, and the first book is visible after 0.7 s rather than at the end.
+    Kobo and reader books are still read one at a time: `rusqlite::Connection`
+    is not Sync, so a pool would need one library per thread and a copy of the
+    device database each, and parallel downloads risk overwhelming the reader.
 
 15. [ ] Catalog on the command line
     The unified Local/Kobo/Xteink catalog is reachable only from the TUI.
