@@ -42,8 +42,8 @@ Perl:
 ```sh
 # Debian/Ubuntu: sudo apt install build-essential cmake perl pkg-config
 # macOS:         xcode-select --install && brew install cmake
-git clone https://github.com/eelcoh/xteink.git
-cd xteink
+git clone https://github.com/eelcoh/crossload.git
+cd crossload
 cargo install --path . --locked
 crossload --version
 ```

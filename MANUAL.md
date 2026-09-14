@@ -700,7 +700,17 @@ Crossload was previously called xteink. Both `crossload` and the compatibility
 command `xteink` are built from the same code. Existing activation and recovery
 state stays in the documented `xteink` data directory, so no activation import
 is needed. Existing optimized EPUB markers and incomplete-transfer names remain
-compatible. The repository URL and checkout directory are unchanged.
+compatible. The repository moved from `eelcoh/xteink` to `eelcoh/crossload` on
+2026-09-14; GitHub redirects the old URL, but existing clones should be pointed
+at the new one:
+
+```sh
+git remote set-url origin git@github.com:eelcoh/crossload.git
+```
+
+A local checkout directory still named `xteink` keeps working; only the remote
+matters. The local build image is still `localhost/xteink-build` unless
+`CROSSLOAD_BUILD_IMAGE` says otherwise.
 
 ## Saved defaults
 
