@@ -37,6 +37,8 @@ pub(super) struct Model {
     pub tick: usize,
     pub catalog: Snapshot,
     pub action: Option<Entry>,
+    retaining: bool,
+    pending_catalog: Option<Snapshot>,
     next_id: u64,
 }
 impl Model {
@@ -54,6 +56,8 @@ impl Model {
             tick: 0,
             catalog: Snapshot::default(),
             action: None,
+            retaining: false,
+            pending_catalog: None,
             next_id: 0,
         }
     }
@@ -92,9 +96,8 @@ impl Model {
                     return vec![];
                 }
                 self.action = None;
-                self.entries.clear();
-                self.catalog = Snapshot::default();
-                self.selected = 0;
+                self.retaining = !self.entries.is_empty();
+                self.pending_catalog = None;
                 let id = self.id();
                 self.loading = Some(id);
                 self.status = "Discovering Local, Kobo and Xteink independently…".into();
@@ -104,6 +107,10 @@ impl Model {
                 }];
             }
             Message::Catalog(id, snapshot) if self.loading == Some(id) => {
+                if self.retaining {
+                    self.pending_catalog = Some(snapshot);
+                    return vec![];
+                }
                 let selected = self.selected_entry();
                 self.entries = snapshot
                     .books
@@ -146,6 +153,17 @@ impl Model {
                     .unwrap_or(0);
             }
             Message::CatalogFinished(id, result) if self.loading == Some(id) => {
+                self.retaining = false;
+                if result.is_ok() {
+                    if let Some(snapshot) = self.pending_catalog.take() {
+                        self.update(Message::Catalog(id, snapshot));
+                    }
+                } else {
+                    self.pending_catalog = None;
+                    for (_, status) in &mut self.catalog.status {
+                        *status = "Unavailable: refresh failed; showing previous inventory".into();
+                    }
+                }
                 self.loading = None;
                 if self.busy.is_none() {
                     self.status=result.map(|_|"Library ready. Enter chooses a copy destination; r refreshes locations.".into()).unwrap_or_else(|e|format!("Discovery error: {e}"));
@@ -180,6 +198,10 @@ impl Model {
                         _ => None,
                     };
                     if let Some(target) = target {
+                        if self.retaining {
+                            self.status = "Refreshing locations; wait before copying from the previous inventory.".into();
+                            return vec![];
+                        }
                         if self.busy.is_some() {
                             return vec![];
                         }
@@ -238,6 +260,18 @@ impl Model {
                 }
                 if self.search {
                     match key.code {
+                        KeyCode::Down => {
+                            self.selected =
+                                (self.selected + 1).min(self.filtered().len().saturating_sub(1))
+                        }
+                        KeyCode::Up => self.selected = self.selected.saturating_sub(1),
+                        KeyCode::Home => self.selected = 0,
+                        KeyCode::End => self.selected = self.filtered().len().saturating_sub(1),
+                        KeyCode::PageDown => {
+                            self.selected =
+                                (self.selected + 10).min(self.filtered().len().saturating_sub(1))
+                        }
+                        KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
                         KeyCode::Esc | KeyCode::Enter => self.search = false,
                         KeyCode::Backspace => {
                             self.query.pop();

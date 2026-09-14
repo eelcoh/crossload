@@ -165,7 +165,7 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         format!(
             "{}: {}",
             if model.busy.is_some() || model.loading.is_some() {
-                ["Working .", "Working ..", "Working ..."][model.tick % 3]
+                ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][model.tick % 10]
             } else {
                 "Status"
             },

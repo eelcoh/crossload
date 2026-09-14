@@ -1,8 +1,9 @@
-# Direct ByteBooks activation
+# Direct ByteBooks activation — archived investigation
 
-Investigation: 2026-09-14. Recommendation: extend the bundled libgourou ADEPT
-activation flow. Keep account creation/migration in the browser and retain
-`adobe setup` activation ZIP import. Direct activation is not implemented yet.
+Decision: direct activation is no longer planned. Use the Calibre ACSM Input
+activation-export workflow documented in [README.md](README.md#adobebytebooks-acsm-files).
+The September 14, 2026 investigation below is retained for reference; its proposed
+commands and implementation sequence are not active roadmap items.
 
 ## What is established
 

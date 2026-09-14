@@ -86,21 +86,49 @@ not yet a fully static executable.
 
 ### Adobe/ByteBooks ACSM files
 
-First import an existing **Calibre ACSM Input/libgourou activation export**. Supply
-its ZIP or a directory containing `device.xml`, `activation.xml`, and `devicesalt`:
+Calibre's **ACSM Input** plugin supplies the activation once; Crossload can then
+import ACSM files without Calibre running. Direct ByteBooks login in Crossload
+is not planned.
+
+1. On the Mac where your books already work, open Calibre's **Preferences →
+   Plugins**. Select **ACSM Input** (older versions may say **DeACSM**) and choose
+   **Customize plugin**. If missing, install its ZIP from the
+   [official plugin releases](https://github.com/Leseratte10/acsm-calibre-plugin/releases)
+   using **Load plugin from file**, then restart Calibre.
+2. If the plugin is already authorized, keep that authorization. Otherwise use
+   **Import activation from ADE** to reuse the computer's existing Digital
+   Editions activation, or follow the plugin's account-linking instructions.
+3. Choose **Export account activation data** and save the ZIP as `activation.zip`.
+   This is the activation backup, not **Export account encryption key** (a DER
+   key). See the [plugin's setup guide](https://github.com/Leseratte10/acsm-calibre-plugin#setup).
+4. Copy that ZIP privately to the computer running Crossload. The same Mac export
+   works on Linux; no Kobo USB connection is needed for this setup.
+5. Import it once and check it:
 
 ```sh
 crossload adobe setup --from ~/Downloads/activation.zip
 crossload adobe status
+```
+
+Then download an ACSM from your store or library and run:
+
+```sh
 crossload import ~/Downloads/book.acsm --output ~/Books
 ```
 
-Setup copies and checks the activation locally; it does not contact a server or
-create another device activation. Use your ACSM Input plugin's activation export
-on the Mac and transfer that export privately to Linux if needed. The desktop
-Adobe/ByteBooks application's `activation.dat` alone is **not supported**; it is
-not interchangeable with this three-file format. New account activation and
-password login are not implemented. Never commit or share activation exports.
+You can also select the ACSM in the TUI, press Enter, and choose **1 Local**.
+Refresh afterward to find and copy the resulting EPUB.
+
+`activation.zip` is created by the plugin's export action; it is not a file that
+must already exist in your Calibre book library. It contains `device.xml`,
+`activation.xml`, and `devicesalt`. Crossload accepts either that ZIP or a
+folder containing those three files. The desktop application's `activation.dat`
+alone and a DER encryption key are not supported substitutes.
+
+Setup validates and copies the activation locally without registering another
+device. Keep the export private and backed up; it contains account keys.
+If an activation is already installed, use `adobe status` rather than trying to
+replace it. For a different activation, use a separate state directory as below.
 
 Private state lives in `~/.local/share/xteink` on Linux (or
 `$XDG_DATA_HOME/xteink`) and `~/Library/Application Support/xteink` on macOS.
@@ -562,7 +590,9 @@ Saved device settings are used for discovery even without transfer flags.
 Each location loads independently; disconnected devices appear as unavailable
 while books from other locations remain usable. This is a fresh inventory, not
 an offline history of books on disconnected devices. Press **r** after connecting
-or disconnecting a device, or after copying.
+or disconnecting a device, or after copying. Refresh keeps the current list and
+selection visible until the new scan completes, then applies additions/removals.
+Copy actions wait during that refresh; an initial scan still shows partial results.
 
 Matching copies share a row with **Local / Kobo / Xteink** locations. Matching
 uses contents and optimized variants, never title alone. Distinct editions stay
@@ -580,7 +610,8 @@ as a transfer source until verified. Previews remain hidden unless requested.
   author folders; eject the Kobo normally so it can index them. Xteink copies
   retain optimization and author/title organization. Existing files are never
   overwritten, and every copy is verified.
-- **/** searches; Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
+- **/** searches; arrows and page-navigation keys still move through matches.
+  Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
   Page Up/Page Down navigate. **q** quits, waiting for active work.
 
 ACSM files appear as local import requests. Choose Local first to fulfill them,
@@ -659,8 +690,8 @@ below when height permits. Background discovery reports location availability;
 search and selection remain responsive while locations load.
 [TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and migration results.
 
-Direct ByteBooks account activation is planned; activation ZIP import remains
-the supported setup method. [BYTEBOOKS-ACTIVATION.md](BYTEBOOKS-ACTIVATION.md)
+Direct ByteBooks account activation has been dropped from the roadmap; the
+Calibre activation-export workflow above is the supported setup method. [BYTEBOOKS-ACTIVATION.md](BYTEBOOKS-ACTIVATION.md)
 records the protocol investigation and implementation requirements.
 Run `mise run test:tui` for the synthetic terminal smoke check (host Python 3 is
 required). It covers search, verified copying, resizing, failure display and

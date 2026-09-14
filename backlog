@@ -86,9 +86,9 @@
     Kobo / Xteink copy actions. Original copies are preferred, unavailable devices
     do not block other locations, and Kobo receives ordinary sideloaded EPUBs.
 
-10. [ ] Direct ByteBooks activation — implementation
-    Add HTTPS-only activation, interactive secret input, recoverable private
-    staging and synthetic protocol tests; then verify a real account locally.
+10. [-] Direct ByteBooks activation — dropped
+    Use Calibre ACSM Input activation export instead. README documents setup,
+    the correct ZIP export, Mac-to-Linux reuse and the subsequent import flow.
 
 ## macOS verification update
 
@@ -97,3 +97,9 @@ At the time of this report GitHub contained the initial Kobo CLI commit
 (26180b0), so this confirms that baseline builds and starts on macOS. Kobo USB
 could not be tested on the corporate Mac. The newer native ADEPT, Tears TUI and
 packaging changes still need macOS verification after the checkpoint push.
+
+## TUI refinements
+
+- [x] Arrow/page navigation while searching.
+- [x] Preserve the visible list and selection until refresh completes.
+- [x] Use a looping single-character spinner for background work.

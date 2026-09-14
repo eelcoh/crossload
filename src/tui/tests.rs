@@ -164,3 +164,57 @@ fn view_and_navigation_handle_sizes_and_empty_search() {
     model.update(key(KeyCode::End));
     assert_eq!(model.selected, 0);
 }
+
+#[test]
+fn search_navigation_and_refresh_preserve_visible_selection() {
+    let mut model = Model::new(options());
+    model.update(Message::Refresh);
+    let id = model.loading.unwrap();
+    let mut snapshot = crate::books::Snapshot {
+        acsm: vec!["/a.acsm".into(), "/b.acsm".into(), "/c.acsm".into()],
+        ..Default::default()
+    };
+    model.update(Message::Catalog(id, snapshot.clone()));
+    model.update(Message::CatalogFinished(id, Ok(())));
+    model.update(key(KeyCode::Char('/')));
+    model.update(key(KeyCode::Char('a')));
+    model.update(key(KeyCode::Down));
+    assert_eq!(model.selected, 1);
+    assert!(model.search);
+    assert_eq!(model.query, "a");
+    model.update(key(KeyCode::Up));
+    assert_eq!(model.selected, 0);
+    model.update(key(KeyCode::End));
+    assert_eq!(model.selected, 2);
+    model.update(key(KeyCode::PageUp));
+    assert_eq!(model.selected, 0);
+    model.update(key(KeyCode::Down));
+    model.update(key(KeyCode::Esc));
+    model.update(Message::Refresh);
+    let refresh = model.loading.unwrap();
+    assert_eq!(model.entries.len(), 3);
+    assert_eq!(model.selected, 1);
+    model.update(key(KeyCode::Enter));
+    assert!(model.update(key(KeyCode::Char('1'))).is_empty());
+    assert!(model.busy.is_none());
+    model.update(key(KeyCode::Esc));
+    model.update(Message::Catalog(refresh, crate::books::Snapshot::default()));
+    assert_eq!(model.entries.len(), 3);
+    snapshot.acsm.remove(0);
+    model.update(Message::Catalog(refresh, snapshot));
+    assert_eq!(model.selected, 1);
+    model.update(Message::CatalogFinished(refresh, Ok(())));
+    assert_eq!(model.entries.len(), 2);
+    assert_eq!(model.selected, 0);
+    assert_eq!(model.query, "a");
+    assert_eq!(model.entries[0].source, Source::Local("/b.acsm".into()));
+    model.update(Message::Refresh);
+    let refresh = model.loading.unwrap();
+    model.update(Message::CatalogFinished(refresh, Err("offline".into())));
+    assert_eq!(model.entries.len(), 2);
+    model.update(Message::Refresh);
+    let refresh = model.loading.unwrap();
+    model.update(Message::Catalog(refresh, crate::books::Snapshot::default()));
+    model.update(Message::CatalogFinished(refresh, Ok(())));
+    assert!(model.entries.is_empty());
+}
