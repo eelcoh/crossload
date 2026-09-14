@@ -556,26 +556,36 @@ crossload tui --device /run/media/eelco/KOBOeReader \
   --browse ~/Books --output ~/Books --send-to crosspoint.local
 ```
 
-For local EPUB/ACSM files only, omit `--device`. On macOS use the Kobo path under
-`/Volumes`. Use `--copy-to <mounted-card-directory>` instead of `--send-to` for
-SD-card transfers. Without either destination, books are imported locally.
-The TUI uses the same activation configured by `adobe setup`; `--state-dir`,
-`--serial`, `--folder`, `--flat` and `--no-optimize` also work here.
+The TUI is a unified library. It scans `--browse` and `--output` recursively,
+plus the configured Kobo and Xteink (Wi-Fi or `--copy-to` mounted card).
+Saved device settings are used for discovery even without transfer flags.
+Each location loads independently; disconnected devices appear as unavailable
+while books from other locations remain usable. This is a fresh inventory, not
+an offline history of books on disconnected devices. Press **r** after connecting
+or disconnecting a device, or after copying.
 
-- **Up/Down** or **j/k** selects a row; **Enter** opens a folder or starts the book.
-- **Tab** switches between Kobo and local files; **Backspace** opens the parent.
-- **/** searches the displayed list; Enter/Escape leaves search mode. Clear the
-  search with Backspace while editing, or refresh with **r**.
-- **o** opens the local output directory, useful for retrying a transfer after
-  an import succeeds. **r** reloads the list; **q** or Escape exits.
+Matching copies share a row with **Local / Kobo / Xteink** locations. Matching
+uses contents and optimized variants, never title alone. Distinct editions stay
+separate. Unreadable EPUBs remain visible with an explanation and cannot be used
+as a transfer source until verified. Previews remain hidden unless requested.
 
-Local browsing shows directories and `.epub`, `.acsm` and `.ascm` files, excluding
-hidden files and symlinks. Kobo previews cannot be imported. Work runs one book
-at a time with stage progress. Browsing and search remain responsive while a
-book is processed; quitting waits for active work to finish. Transfers
-retain the same optimization, folder layout, verification and no-overwrite
-checks as the CLI. Repairs remain available through `crossload send --repair`.
-An interactive terminal is required; redirected input/output gets a clear error.
+- **Enter** opens copy actions; **1** chooses Local, **2** Kobo, **3** Xteink.
+  **Escape** cancels. Opening the menu does not transfer anything.
+- Copies already found at the destination are reported instead of duplicated.
+- Original Local/Kobo copies are preferred over optimized/device copies.
+  A reader-only copy can be recovered, but its original image quality cannot
+  be restored. Device-copy actions wait for discovery to finish so an original
+  can be selected when available.
+- Local copies go to `--output`. Kobo copies are ordinary sideloaded EPUBs in
+  author folders; eject the Kobo normally so it can index them. Xteink copies
+  retain optimization and author/title organization. Existing files are never
+  overwritten, and every copy is verified.
+- **/** searches; Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
+  Page Up/Page Down navigate. **q** quits, waiting for active work.
+
+ACSM files appear as local import requests. Choose Local first to fulfill them,
+then refresh to copy the resulting EPUB. Existing activation setup still applies.
+An interactive terminal is required. Repairs remain in `crossload send --repair`.
 
 ## Rename compatibility
 
@@ -608,7 +618,8 @@ crossload tui --send-to
 
 An explicit value, such as `--device /Volumes/KOBOeReader` or
 `--to 192.168.178.114`, overrides the saved default for that invocation.
-A saved reader never enables transfers on its own during imports or in the TUI.
+A saved reader never starts a transfer on its own. In the TUI it enables discovery;
+Enter and a destination choice are required to copy.
 `--send-to` without a value requests the saved reader; `--copy-to` without a value
 requests the saved mounted-card directory. `send` and `copy` use their respective
 saved destination when `--to` is omitted. These destinations remain mutually
@@ -643,18 +654,9 @@ crossload kobo list > books.tsv
 ```
 
 The TUI uses Tears 0.8.0 and Ratatui 0.30.2 with Elm-style messages and effects.
-The book table shows title, reader status, author and type. Narrow terminals show
-title and status; the selected-book details appear below when height permits.
-Use Home/End for the first/last result and Page Up/Page Down to move ten results.
-The footer shows the selected position and the current Enter action.
-With `--send-to` or `--copy-to`, a background inventory check shows `Present`,
-`Missing`, or `Unknown` for Kobo books and local EPUBs. It uses sync's full-content
-checks, including the optimized copy. Wi-Fi checks download destination EPUBs
-and may take time; searching and selection remain available. Transfers wait for
-the current check. ACSM files and previews are not checked or fulfilled by inventory.
-`Missing` means no matching contents, so a different book at the same filename
-can still block transfer. Failed checks stay `Unknown`; press `r` to retry or
-refresh after a transfer. Reader status is a snapshot, not a live connection.
+The book table shows title, locations and author, with selected-copy details
+below when height permits. Background discovery reports location availability;
+search and selection remain responsive while locations load.
 [TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and migration results.
 
 Direct ByteBooks account activation is planned; activation ZIP import remains

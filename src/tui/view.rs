@@ -1,76 +1,63 @@
-use super::model::Model;
+use super::{model::Model, Source};
+use crate::books::Place;
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Modifier, Style},
     widgets::{Cell, Paragraph, Row, Table, Wrap},
     Frame,
 };
-fn clean(text: &str) -> String {
-    text.chars()
+fn clean(s: &str) -> String {
+    s.chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect()
 }
 pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     let area = frame.area();
-    if area.width < 20 || area.height < 8 {
+    if area.width < 25 || area.height < 10 {
         frame.render_widget(
-            Paragraph::new("Crossload: enlarge the terminal (q to quit)."),
+            Paragraph::new("Crossload: enlarge terminal (q quits)."),
             area,
         );
         return;
     }
     let areas = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(3),
         Constraint::Length(1),
+        Constraint::Min(2),
+        Constraint::Length(if area.height >= 18 { 4 } else { 0 }),
         Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(if area.height >= 16 { 3 } else { 0 }),
-        Constraint::Length(2),
-        Constraint::Length(if area.height >= 16 { 3 } else { 1 }),
+        Constraint::Length(3),
     ])
     .split(area);
-    let source = if model.local {
-        model.options.browse.display().to_string()
-    } else {
-        model
-            .options
-            .device
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default()
-    };
     frame.render_widget(
-        Paragraph::new(clean(&format!(
-            "CROSSLOAD | {} | {source}",
-            if model.local { "Local" } else { "Kobo" }
-        ))),
+        Paragraph::new("CROSSLOAD | Books").style(Style::default().add_modifier(Modifier::BOLD)),
         areas[0],
     );
-    let destination = model
-        .options
-        .send_to
-        .clone()
-        .or_else(|| {
-            model
-                .options
-                .copy_to
-                .as_ref()
-                .map(|p| p.display().to_string())
+    let statuses = [Place::Local, Place::Kobo, Place::Xteink]
+        .iter()
+        .map(|place| {
+            format!(
+                "{}: {}",
+                place.label(),
+                model
+                    .catalog
+                    .status
+                    .iter()
+                    .find(|(p, _)| p == place)
+                    .map(|(_, s)| clean(s))
+                    .unwrap_or_else(|| "Checking".into())
+            )
         })
-        .unwrap_or_else(|| "local import only".into());
+        .collect::<Vec<_>>()
+        .join("\n");
+    frame.render_widget(Paragraph::new(statuses), areas[1]);
     frame.render_widget(
-        Paragraph::new(clean(&format!(
-            "Output: {} | Destination: {destination}",
-            model.options.output.display()
-        ))),
-        areas[1],
-    );
-    frame.render_widget(
-        Paragraph::new(clean(&format!(
-            "{}Filter: {}",
+        Paragraph::new(format!(
+            "{}Search: {}",
             if model.search { "/ " } else { "" },
-            model.query
-        ))),
+            clean(&model.query)
+        )),
         areas[2],
     );
     let entries = model.filtered();
@@ -82,27 +69,19 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         .enumerate()
         .skip(offset)
         .take(areas[3].height.saturating_sub(1) as usize)
-        .map(|(i, entry)| {
-            let presence = if entry.preview
-                || matches!(entry.source, super::Source::Directory(_))
-                || entry.kind == "ACSM"
-                || (model.options.send_to.is_none() && model.options.copy_to.is_none())
-            {
-                "—"
-            } else if model.checking.is_some() {
-                "Checking"
-            } else {
-                model
-                    .presence
+        .map(|(i, e)| {
+            let locations = match &e.source {
+                Source::Book(book, _) => [Place::Local, Place::Kobo, Place::Xteink]
                     .iter()
-                    .find(|(s, _)| s == &entry.source)
-                    .map(|(_, status)| status.as_str())
-                    .unwrap_or("Unknown")
+                    .filter(|p| book.has(**p))
+                    .map(|p| p.label())
+                    .collect::<Vec<_>>()
+                    .join(" / "),
+                Source::Local(_) => "Local ACSM".into(),
             };
-            let mut cells = vec![Cell::from(clean(&entry.title)), Cell::from(presence)];
-            if area.width >= 70 {
-                cells.push(Cell::from(clean(&entry.author)));
-                cells.push(Cell::from(entry.kind));
+            let mut cells = vec![Cell::from(clean(&e.title)), Cell::from(locations)];
+            if area.width >= 80 {
+                cells.push(Cell::from(clean(&e.author)));
             }
             Row::new(cells).style(if i == model.selected {
                 Style::default().add_modifier(Modifier::REVERSED)
@@ -110,31 +89,29 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
                 Style::default()
             })
         });
-    let (headers, widths) = if area.width >= 70 {
+    let (headers, widths) = if area.width >= 80 {
         (
-            vec!["TITLE", "READER", "AUTHOR", "TYPE"],
+            vec!["TITLE", "LOCATIONS", "AUTHOR"],
             vec![
-                Constraint::Percentage(50),
-                Constraint::Length(8),
-                Constraint::Percentage(30),
-                Constraint::Length(7),
+                Constraint::Percentage(45),
+                Constraint::Length(23),
+                Constraint::Min(10),
             ],
         )
     } else {
         (
-            vec!["TITLE", "READER"],
-            vec![Constraint::Min(8), Constraint::Length(8)],
+            vec!["TITLE", "LOCATIONS"],
+            vec![Constraint::Min(8), Constraint::Length(23)],
         )
     };
     if entries.is_empty() {
         frame.render_widget(
             Paragraph::new(if model.loading.is_some() {
-                "Loading books…"
-            } else if model.query.is_empty() {
-                "No books in this location. Tab switches source; o opens output."
+                "Discovering books; available locations appear as they finish…"
             } else {
-                "No matching books. Press / to edit the search."
-            }),
+                "No books found. Check location status above or edit the search."
+            })
+            .wrap(Wrap { trim: false }),
             areas[3],
         );
     } else {
@@ -145,40 +122,55 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
             areas[3],
         );
     }
-    if let Some(entry) = entries.get(model.selected) {
-        let source = match &entry.source {
-            super::Source::Kobo(id) => id.clone(),
-            super::Source::Local(p) | super::Source::Directory(p) => p.display().to_string(),
+    if let Some(entry) = model
+        .action
+        .as_ref()
+        .or_else(|| entries.get(model.selected).copied())
+    {
+        let details = match &entry.source {
+            Source::Book(book, _) => book
+                .preferred()
+                .map(|c| {
+                    format!(
+                        "Preferred source: {}{}\n{}",
+                        c.place.label(),
+                        if c.optimized || c.place == Place::Xteink {
+                            " (device copy; reduced quality possible)"
+                        } else {
+                            " (original)"
+                        },
+                        clean(&c.path)
+                    )
+                })
+                .unwrap_or_default(),
+            Source::Local(p) => format!("ACSM: {}", clean(&p.display().to_string())),
         };
         frame.render_widget(
-            Paragraph::new(clean(&format!(
-                "{} — {}\n{}: {source}",
-                entry.title, entry.author, entry.kind
-            )))
+            Paragraph::new(format!(
+                "{} — {}\n{details}",
+                clean(&entry.title),
+                clean(&entry.author)
+            ))
             .wrap(Wrap { trim: false }),
             areas[4],
         );
     }
-    let action = if entries
-        .get(model.selected)
-        .is_some_and(|e| matches!(e.source, super::Source::Directory(_)))
-    {
-        "open folder"
-    } else if model.options.send_to.is_some() || model.options.copy_to.is_some() {
-        "import/transfer"
+    frame.render_widget(Paragraph::new(format!("{}/{} | Enter: copy actions | /: search | r: refresh | ↑↓ PgUp/PgDn Home/End | q: quit",if entries.is_empty(){0}else{model.selected+1},entries.len())),areas[5]);
+    let status = if model.action.is_some() {
+        format!(
+            "Copy to: 1 Local | 2 Kobo | 3 Xteink | Esc cancel\n{}",
+            clean(&model.status)
+        )
     } else {
-        "import"
+        format!(
+            "{}: {}",
+            if model.busy.is_some() || model.loading.is_some() {
+                ["Working .", "Working ..", "Working ..."][model.tick % 3]
+            } else {
+                "Status"
+            },
+            clean(&model.status)
+        )
     };
-    frame.render_widget(Paragraph::new(format!("{}/{} | Enter: {action} | /: search | Tab: source | r: refresh\n↑↓/j k: select | PgUp/PgDn: 10 rows | Home/End | o: output | Backspace: parent | q: quit", if entries.is_empty() { 0 } else { model.selected + 1 }, entries.len())), areas[5]);
-    let prefix = if model.pending_quit {
-        "Finishing before quit"
-    } else if model.busy.is_some() || model.loading.is_some() || model.checking.is_some() {
-        ["Working .", "Working ..", "Working ..."][model.tick % 3]
-    } else {
-        "Status"
-    };
-    frame.render_widget(
-        Paragraph::new(clean(&format!("{prefix}: {}", model.status))).wrap(Wrap { trim: false }),
-        areas[6],
-    );
+    frame.render_widget(Paragraph::new(status).wrap(Wrap { trim: false }), areas[6]);
 }

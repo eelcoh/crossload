@@ -410,7 +410,7 @@ fn optional_stamp(path: &Path) -> Result<Option<(u64, std::time::SystemTime)>> {
     }
 }
 
-fn output_directory(output: &Path, device: &Path) -> Result<PathBuf> {
+pub(crate) fn output_directory(output: &Path, device: &Path) -> Result<PathBuf> {
     // Resolve the existing ancestor before creating directories, including any
     // symlinks. Reject parent traversal to keep this check unambiguous.
     ensure!(

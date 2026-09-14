@@ -73,6 +73,19 @@
    See BYTEBOOKS-ACTIVATION.md. Native sign-in/activation functions are present;
    public service discovery was verified. Direct login remains unverified.
 
+11. [x] Books First
+    The app now does not work very logically if the Kobo is not connected, or the
+    xteink is not. Instead, we should look at all the books that are found in either
+    kobo, xteink _or local_, and show which ones are where. Then when entering, it
+    can be decided to sync from any to any (although we should take into account
+    that the books that are on the xteink went through an optimisation, so if the
+    book is on xteink _and_ on kobo or local, we should take the non-xteink instance
+    as the one to sync from either local to kobo or from kobo to local).
+
+    Implemented unified discovery, content-based grouping and explicit Local /
+    Kobo / Xteink copy actions. Original copies are preferred, unavailable devices
+    do not block other locations, and Kobo receives ordinary sideloaded EPUBs.
+
 10. [ ] Direct ByteBooks activation — implementation
     Add HTTPS-only activation, interactive secret input, recoverable private
     staging and synthetic protocol tests; then verify a real account locally.

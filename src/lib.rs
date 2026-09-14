@@ -10,5 +10,6 @@ pub mod tui;
 
 pub mod config;
 
+pub mod books;
 pub mod inventory;
 pub mod sync;

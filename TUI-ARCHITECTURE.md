@@ -133,3 +133,18 @@ The Linux release executable grew from 12,513,552 to 13,098,288 bytes (about
 4.7%). Its dynamic dependencies remain the system C/C++ runtime libraries;
 no separately installed TUI runtime is required. Tears, Ratatui and Tokio have
 minimum Rust versions below the pinned 1.98.1 toolchain.
+
+## Books First update
+
+The TUI now displays a unified catalog rather than separate source browsers.
+`src/books.rs` scans Local, Kobo and Xteink independently and emits partial
+snapshots. The model preserves search/selection as locations finish; unavailable
+locations do not clear successful discoveries. Content identities and optimized
+variants group copies, with originals preferred for transfers. Catalog contents
+are not persisted as an offline history.
+
+Enter opens destination actions; a separate key starts a single verified copy.
+Kobo destinations receive ordinary sideloaded EPUBs. ACSM fulfillment remains an
+explicit local action. Discovery uses temporary files only. Worker failures are
+reported to the UI; refreshes cannot stack, and quit waits for active discovery
+and copying. Location subthreads are covered by the terminal panic guard.

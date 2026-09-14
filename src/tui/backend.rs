@@ -1,81 +1,25 @@
 use super::{Entry, Options, Source};
-use crate::{adobe, copy, crosspoint, kobo, prepare};
+use crate::{adobe, copy, crosspoint, prepare};
 use anyhow::{Context, Result};
 use std::fs;
-pub(super) fn load(options: &Options, local: bool) -> Result<Vec<Entry>> {
-    if !local {
-        return kobo::Library::open(
-            options
-                .device
-                .as_ref()
-                .context("No Kobo selected; use --device")?,
-        )?
-        .books()?
-        .into_iter()
-        .filter(|b| options.show_previews || !b.preview)
-        .map(|b| {
-            Ok(Entry {
-                title: b.title,
-                author: b.author,
-                kind: if b.preview { "Preview" } else { "Kobo" },
-                source: Source::Kobo(b.id),
-                preview: b.preview,
-            })
-        })
-        .collect();
+pub(super) fn library_options(options: &Options) -> crate::books::Options {
+    crate::books::Options {
+        show_previews: options.show_previews,
+        local: options.browse.clone(),
+        output: options.output.clone(),
+        kobo: options.device.clone(),
+        reader: options.send_to.clone(),
+        card: options.copy_to.clone(),
+        folder: options.folder.clone(),
+        serial: options.serial.clone(),
+        optimize: options.optimize,
+        organized: options.organized,
     }
-    let mut entries = Vec::new();
-    for entry in fs::read_dir(&options.browse).context("Cannot browse directory")? {
-        let entry = entry?;
-        let kind = entry.file_type()?;
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') || kind.is_symlink() {
-            continue;
-        }
-        if kind.is_dir() {
-            entries.push(Entry {
-                title: name,
-                author: String::new(),
-                kind: "Folder",
-                source: Source::Directory(path),
-                preview: false,
-            });
-        } else if kind.is_file() {
-            let extension = path
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            if !matches!(extension.as_str(), "epub" | "acsm" | "ascm") {
-                continue;
-            }
-            entries.push(Entry {
-                title: name,
-                author: String::new(),
-                kind: if extension == "epub" { "EPUB" } else { "ACSM" },
-                source: Source::Local(path),
-                preview: false,
-            });
-        }
-    }
-    entries.sort_by_key(|e| {
-        (
-            !matches!(e.source, Source::Directory(_)),
-            e.title.to_lowercase(),
-        )
-    });
-    Ok(entries)
 }
 pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -> Result<String> {
     let path = match entry.source {
-        Source::Kobo(id) => {
-            progress("Importing Kobo book…");
-            kobo::Library::open(options.device.as_ref().context("No Kobo device")?)?.import(
-                &id,
-                &options.output,
-                options.serial.as_deref(),
-            )?
+        Source::Book(book, target) => {
+            return crate::books::transfer(&library_options(&options), &book, target, &progress)
         }
         Source::Local(path) if entry.kind == "ACSM" => {
             progress("Fulfilling ACSM and importing EPUB…");
@@ -95,7 +39,6 @@ pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -
                 path
             }
         }
-        Source::Directory(_) => anyhow::bail!("Select a book"),
     };
     let local = format!("Local EPUB: {}", path.display());
     if options.send_to.is_none() && options.copy_to.is_none() {
@@ -150,60 +93,4 @@ pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -
     transfer().with_context(|| {
         format!("{local} remains intact; retry from Local or use crossload send/copy")
     })
-}
-
-/// Read-only snapshot and the same exact/resource identities used by sync.
-pub(super) fn presence(options: &Options, entries: Vec<Entry>) -> Result<Vec<(Source, String)>> {
-    use crate::inventory::{self, Destination, Inventory};
-    let destination = if let Some(address) = &options.send_to {
-        Destination::Reader(crosspoint::Reader::new(address, &options.folder)?)
-    } else {
-        crate::sync::card(
-            options
-                .copy_to
-                .as_ref()
-                .context("No destination selected")?,
-        )?
-    };
-    let inventory = Inventory::scan(&destination, |_| {})?;
-    let library = if entries.iter().any(|e| matches!(e.source, Source::Kobo(_))) {
-        options
-            .device
-            .as_ref()
-            .map(|p| kobo::Library::open(p))
-            .transpose()?
-    } else {
-        None
-    };
-    let mut results = Vec::new();
-    for entry in entries {
-        if entry.preview || matches!(entry.source, Source::Directory(_)) || entry.kind == "ACSM" {
-            continue;
-        }
-        let check = (|| -> Result<bool> {
-            let staging = tempfile::tempdir()?;
-            let path = match &entry.source {
-                Source::Kobo(id) => library.as_ref().context("No Kobo")?.import(
-                    id,
-                    staging.path(),
-                    options.serial.as_deref(),
-                )?,
-                Source::Local(path) => path.clone(),
-                Source::Directory(_) => unreachable!(),
-            };
-            let prepared = prepare::prepare(&path, options.optimize, options.organized)?;
-            let original = inventory::identity(&fs::read(&path)?);
-            let optimized = inventory::identity(&fs::read(&prepared.path)?);
-            Ok(inventory.matching(&[&original, &optimized]).is_some())
-        })();
-        results.push((
-            entry.source,
-            match check {
-                Ok(true) => "Present".into(),
-                Ok(false) => "Missing".into(),
-                Err(_) => "Unknown".into(),
-            },
-        ));
-    }
-    Ok(results)
 }

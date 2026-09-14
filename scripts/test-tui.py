@@ -88,19 +88,22 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
             '--output', str(root / 'imports'), '--copy-to', str(card)]
     t = Terminal(args)
     try:
-        t.expect(b'Reader checked.')
+        t.expect(b'Library ready.')
         t.send(b'/Test\r\r')
+        t.expect(b'Copy to:')
+        assert not (card / 'Test Author/Test Book.epub').exists()
+        t.send(b'3')
         t.expect(b'verified')
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
         assert source.read_bytes() == original
         t.send(b'r')
-        t.expect(b'Present')
+        t.expect(b'Local / Xteink')
         t.resize(3, 12)
         t.send(b'r')
         time.sleep(.2)
         t.resize(28, 120)
         t.send(b'r')
-        t.expect(b'Reader checked.')
+        t.expect(b'Library ready.')
         t.quit()
     finally:
         t.close()
@@ -108,8 +111,8 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
     source.write_bytes(b'not an EPUB')
     t = Terminal(args)
     try:
-        t.expect(b'Reader checked.')
-        t.send(b'\r')
+        t.expect(b'Library ready.')
+        t.send(b'/Test.epub\r\r3')
         t.expect(b'Error:')
         t.quit()
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original

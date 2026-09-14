@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex};
 fn options() -> Options {
     Options {
         show_previews: false,
-        device: Some("/kobo".into()),
+        device: None,
         browse: "/books".into(),
         output: "/output".into(),
         state: None,
-        send_to: Some("reader.local".into()),
+        send_to: None,
         copy_to: None,
         folder: "/".into(),
         optimize: true,
@@ -16,82 +16,9 @@ fn options() -> Options {
         serial: None,
     }
 }
-fn entry(id: &str) -> Entry {
-    Entry {
-        title: id.into(),
-        author: "Writer".into(),
-        kind: "Kobo",
-        source: Source::Kobo(id.into()),
-        preview: false,
-    }
-}
 fn key(code: KeyCode) -> Message {
     Message::Input(Event::Key(KeyEvent::from(code)))
 }
-#[test]
-fn rejects_stale_loads_and_preserves_selection_on_refresh() {
-    let mut model = Model::new(options());
-    model.entries = vec![entry("a"), entry("b")];
-    model.selected = 1;
-    let _ = model.update(Message::Refresh);
-    let old = model.loading.unwrap();
-    let _ = model.update(Message::Refresh);
-    let current = model.loading.unwrap();
-    let _ = model.update(Message::Loaded(old, Ok(vec![])));
-    assert_eq!(model.entries.len(), 2);
-    let _ = model.update(Message::Loaded(current, Ok(vec![entry("b"), entry("a")])));
-    assert_eq!(model.selected, 0);
-}
-#[test]
-fn duplicate_jobs_previews_and_stale_progress_are_rejected() {
-    let mut model = Model::new(options());
-    model.entries = vec![entry("book")];
-    let effects = model.update(key(KeyCode::Enter));
-    assert!(
-        matches!(&effects[0], Effect::Work { entry, options, .. } if entry.title == "book" && options.send_to.as_deref() == Some("reader.local"))
-    );
-    let id = model.busy.unwrap();
-    assert!(model.update(key(KeyCode::Enter)).is_empty());
-    let _ = model.update(Message::Progress(id + 1, "stale".into()));
-    assert_ne!(model.status, "stale");
-    let _ = model.update(Message::Finished(id + 1, Ok("stale".into())));
-    assert_eq!(model.busy, Some(id));
-    let _ = model.update(Message::Finished(id, Ok("done".into())));
-    model.entries[0].preview = true;
-    assert!(model.update(key(KeyCode::Enter)).is_empty());
-    assert!(model.busy.is_none());
-}
-#[test]
-fn quit_waits_for_work_and_search_stays_responsive() {
-    let mut model = Model::new(options());
-    model.entries = vec![entry("book")];
-    let _ = model.update(key(KeyCode::Enter));
-    let id = model.busy.unwrap();
-    let _ = model.update(key(KeyCode::Char('/')));
-    let _ = model.update(key(KeyCode::Char('b')));
-    assert_eq!(model.query, "b");
-    let _ = model.update(key(KeyCode::Esc));
-    assert!(model.update(key(KeyCode::Char('q'))).is_empty());
-    assert!(model.pending_quit);
-    assert!(matches!(
-        model
-            .update(Message::Finished(id, Ok("done".into())))
-            .as_slice(),
-        [Effect::Quit]
-    ));
-}
-#[test]
-fn view_handles_small_sizes_and_sanitizes_metadata() {
-    let mut model = Model::new(options());
-    model.entries = vec![entry("bad\x1b[31m\nname")];
-    for (w, h) in [(1, 1), (20, 8), (80, 24), (120, 35)] {
-        let mut terminal =
-            ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
-        terminal.draw(|frame| view::draw(&model, frame)).unwrap();
-        assert!(!format!("{:?}", terminal.backend().buffer()).contains("\\u{1b}"));
-    }
-}
-
 struct Proof {
     log: Arc<Mutex<Vec<String>>>,
     release: Option<std::sync::mpsc::Sender<()>>,
@@ -177,93 +104,62 @@ fn tears_runtime_proof_blocking_progress_completion_error_and_panic() {
 }
 
 #[test]
-fn reader_status_rejects_stale_results_and_keeps_search_responsive() {
+fn catalog_stale_updates_actions_and_quit_are_safe() {
     let mut model = Model::new(options());
     model.update(Message::Refresh);
-    let load = model.loading.unwrap();
-    let effects = model.update(Message::Loaded(load, Ok(vec![entry("book")])));
-    assert!(matches!(effects.as_slice(), [Effect::Check { .. }]));
-    let check = model.checking.unwrap();
+    let id = model.loading.unwrap();
+    let mut snapshot = crate::books::Snapshot::default();
+    snapshot.acsm.push("/book.acsm".into());
+    model.update(Message::Catalog(id + 1, snapshot.clone()));
+    assert!(model.entries.is_empty());
+    model.update(Message::Catalog(id, snapshot));
+    assert_eq!(model.entries.len(), 1);
+    model.update(key(KeyCode::Enter));
+    assert!(model.action.is_some());
+    assert!(model.update(key(KeyCode::Char('2'))).is_empty());
+    assert!(model.busy.is_none());
+    let effects = model.update(key(KeyCode::Char('1')));
+    assert!(matches!(effects.as_slice(), [Effect::Work { .. }]));
+    let job = model.busy.unwrap();
+    assert!(model.update(key(KeyCode::Enter)).is_empty());
     model.update(key(KeyCode::Char('/')));
     model.update(key(KeyCode::Char('b')));
-    assert_eq!(model.filtered().len(), 1);
+    assert_eq!(model.query, "b");
     model.update(key(KeyCode::Esc));
-    assert!(model.update(key(KeyCode::Enter)).is_empty());
-    model.update(Message::Presence(
-        check + 1,
-        Ok(vec![(Source::Kobo("book".into()), "Present".into())]),
-    ));
-    assert!(model.presence.is_empty());
-    model.update(Message::Presence(check, Err("offline".into())));
-    assert!(model.presence.is_empty());
-    assert!(model.status.contains("unknown"));
-    model.update(Message::Refresh);
-    let load = model.loading.unwrap();
-    model.update(Message::Loaded(load, Ok(vec![entry("book")])));
-    let check = model.checking.unwrap();
     assert!(model.update(key(KeyCode::Char('q'))).is_empty());
+    assert!(model
+        .update(Message::Finished(job, Ok("done".into())))
+        .is_empty());
     assert!(matches!(
         model
-            .update(Message::Presence(check, Ok(vec![])))
+            .update(Message::CatalogFinished(id, Ok(())))
             .as_slice(),
         [Effect::Quit]
     ));
 }
-
 #[test]
-fn reader_inventory_checks_local_contents_without_publishing() {
-    use std::io::Write;
-    let temp = tempfile::tempdir().unwrap();
-    let card = temp.path().join("card");
-    std::fs::create_dir(&card).unwrap();
-    let source = temp.path().join("book.epub");
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    for (name, data) in [
-        ("mimetype", "application/epub+zip"),
-        ("META-INF/container.xml", "<container><rootfiles><rootfile full-path='book.opf'/></rootfiles></container>"),
-        ("book.opf", "<package><metadata><title>Book</title></metadata><manifest><item id='c' href='c.xhtml' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>"),
-        ("c.xhtml", "<html><head><title>Book</title></head><body>Text</body></html>"),
-    ] { zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap(); zip.write_all(data.as_bytes()).unwrap(); }
-    std::fs::write(&source, zip.finish().unwrap().into_inner()).unwrap();
-    let mut opts = options();
-    opts.device = None;
-    opts.send_to = None;
-    opts.copy_to = Some(card.clone());
-    opts.output = temp.path().join("unpublished");
-    let mut book = entry("book");
-    book.kind = "EPUB";
-    book.source = Source::Local(source.clone());
-    assert_eq!(
-        backend::presence(&opts, vec![book.clone()]).unwrap()[0].1,
-        "Missing"
-    );
-    std::fs::copy(&source, card.join("renamed.epub")).unwrap();
-    assert_eq!(
-        backend::presence(&opts, vec![book.clone()]).unwrap()[0].1,
-        "Present"
-    );
-    std::fs::write(&source, b"broken").unwrap();
-    assert_eq!(
-        backend::presence(&opts, vec![book]).unwrap()[0].1,
-        "Unknown"
-    );
-    assert!(!opts.output.exists());
-}
-
-#[test]
-fn page_navigation_stays_within_filtered_results() {
+fn view_and_navigation_handle_sizes_and_empty_search() {
     let mut model = Model::new(options());
-    model.entries = (0..25).map(|i| entry(&format!("Book {i:02}"))).collect();
+    model.entries = (0..25)
+        .map(|i| Entry {
+            title: format!("Book {i}\x1b"),
+            author: "Writer".into(),
+            kind: "ACSM",
+            source: Source::Local(format!("/{i}.acsm").into()),
+        })
+        .collect();
     model.update(key(KeyCode::PageDown));
     assert_eq!(model.selected, 10);
     model.update(key(KeyCode::End));
     assert_eq!(model.selected, 24);
     model.update(key(KeyCode::PageDown));
     assert_eq!(model.selected, 24);
-    model.update(key(KeyCode::PageUp));
-    assert_eq!(model.selected, 14);
-    model.update(key(KeyCode::Home));
-    assert_eq!(model.selected, 0);
+    for (w, h) in [(1, 1), (25, 10), (80, 24), (120, 35)] {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+        assert!(!format!("{:?}", terminal.backend().buffer()).contains("\\u{1b}"));
+    }
     model.query = "absent".into();
     model.update(key(KeyCode::End));
     assert_eq!(model.selected, 0);

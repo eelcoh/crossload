@@ -280,19 +280,28 @@ fn run() -> Result<()> {
             transfer,
         } => {
             let transfer = transfer.resolve(&defaults)?;
+            let explicit_reader = transfer.send_to.is_some();
             crossload::tui::run(crossload::tui::Options {
                 show_previews,
                 device: device.or(defaults.device.clone()),
                 browse: browse
                     .or(defaults.browse.clone())
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .canonicalize()?,
+                    .unwrap_or_else(|| PathBuf::from(".")),
                 output: required(output, defaults.output.clone(), "--output")?,
                 serial,
                 state: cli.state_dir.clone(),
-                send_to: transfer.send_to,
-                copy_to: transfer.copy_to,
-                folder: transfer.folder.unwrap_or_else(|| "/".to_owned()),
+                send_to: transfer.send_to.or(defaults.reader.clone()),
+                copy_to: transfer.copy_to.or_else(|| {
+                    if explicit_reader {
+                        None
+                    } else {
+                        defaults.copy_to.clone()
+                    }
+                }),
+                folder: transfer
+                    .folder
+                    .or(defaults.folder.clone())
+                    .unwrap_or_else(|| "/".to_owned()),
                 optimize: !cli.no_optimize,
                 organized: !cli.flat,
             })?;

@@ -27,9 +27,8 @@ pub struct Options {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Source {
-    Directory(PathBuf),
     Local(PathBuf),
-    Kobo(String),
+    Book(Box<crate::books::Book>, crate::books::Place),
 }
 #[derive(Clone, Debug)]
 struct Entry {
@@ -37,7 +36,6 @@ struct Entry {
     author: String,
     kind: &'static str,
     source: Source,
-    preview: bool,
 }
 
 struct App {
@@ -65,10 +63,7 @@ impl Application for App {
                 Err(e) => Message::InputError(e.to_string()),
             }),
         ];
-        if self.model.busy.is_some()
-            || self.model.loading.is_some()
-            || self.model.checking.is_some()
-        {
+        if self.model.busy.is_some() || self.model.loading.is_some() {
             subs.push(Subscription::new(Timer::new(150)).map(|_| Message::Tick));
         }
         subs
@@ -77,32 +72,36 @@ impl Application for App {
 fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
-        Effect::Check {
-            id,
-            options,
-            entries,
-        } => Command::future(async move {
-            let result = blocking(move || backend::presence(&options, entries)).await;
-            Message::Presence(
-                id,
-                result
-                    .map_err(|e| format!("Inventory worker stopped: {e}"))
-                    .and_then(|r| r.map_err(|e| format!("{e:#}"))),
-            )
-        }),
-        Effect::Load { id, options, local } => Command::future(async move {
-            let result = blocking(move || backend::load(&options, local)).await;
-            Message::Loaded(
-                id,
-                result
-                    .map_err(|e| format!("Directory worker stopped: {e}"))
-                    .and_then(|r| r.map_err(|e| format!("{e:#}"))),
-            )
-        }),
+        Effect::Load { id, options, .. } => Command::stream(library_stream(id, *options)),
         Effect::Work { id, options, entry } => Command::stream(work_stream(id, move |progress| {
             backend::perform(*options, entry, progress)
         })),
     }))
+}
+fn library_stream(id: u64, options: Options) -> impl futures::Stream<Item = Message> + Send {
+    use futures::StreamExt;
+    futures::stream::once(async move {
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        tokio::spawn(async move {
+            let updates = tx.clone();
+            let result = blocking(move || {
+                crate::books::scan(&backend::library_options(&options), |snapshot| {
+                    let _ = updates.blocking_send(Message::Catalog(id, snapshot));
+                })
+            })
+            .await;
+            let _ = tx
+                .send(Message::CatalogFinished(
+                    id,
+                    result.map(|_| ()).map_err(|e| e.to_string()),
+                ))
+                .await;
+        });
+        futures::stream::unfold(rx, |mut rx| async {
+            rx.recv().await.map(|message| (message, rx))
+        })
+    })
+    .flatten()
 }
 /// Start blocking work only when the command is polled. Its messages arrive in
 /// order, and a worker panic becomes a completion error rather than a stuck job.
@@ -161,10 +160,11 @@ impl Screen {
     fn enter() -> Result<Self> {
         let previous_hook: PanicHook = std::panic::take_hook().into();
         let hook = previous_hook.clone();
+        let terminal_thread = std::thread::current().id();
         std::panic::set_hook(Box::new(move |info| {
             // Blocking worker panics become completion messages. Restoring the
             // terminal here would tear down a still-running UI.
-            if BACKGROUND.get() {
+            if BACKGROUND.get() || std::thread::current().id() != terminal_thread {
                 return;
             }
             ratatui::restore();
@@ -196,15 +196,6 @@ pub fn run(options: Options) -> Result<()> {
         io::stdin().is_terminal() && io::stdout().is_terminal(),
         "The TUI needs an interactive terminal; use the CLI commands for redirected input/output"
     );
-    if let Some(path) = &options.copy_to {
-        ensure!(
-            path.is_dir(),
-            "--copy-to requires an existing mounted directory"
-        );
-    }
-    if let Some(address) = &options.send_to {
-        crate::crosspoint::Reader::new(address, &options.folder)?;
-    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
