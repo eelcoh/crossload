@@ -1,109 +1,394 @@
-use super::{model::Model, Source};
-use crate::books::Place;
+use super::{
+    model::{Destination, Model},
+    Entry, Source,
+};
+use crate::books::{Book, Place};
 use ratatui::{
-    layout::{Constraint, Layout},
-    style::{Modifier, Style},
-    widgets::{Cell, Paragraph, Row, Table, Wrap},
+    layout::{Constraint, Layout, Margin, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{
+        Block, Cell, Clear, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, Wrap,
+    },
     Frame,
 };
+const PLACES: [Place; 3] = [Place::Local, Place::Kobo, Place::Xteink];
+/// Original copy, device/optimized copy, absent, unreadable.
+const PRESENT: &str = "●";
+const DEVICE: &str = "◐";
+const ABSENT: &str = "·";
+const BROKEN: &str = "✗";
 fn clean(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect()
 }
+/// Colour carries no information on its own: every state also has a glyph or
+/// word, so NO_COLOR and monochrome terminals lose nothing.
+fn colored() -> bool {
+    static ALLOW: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ALLOW.get_or_init(|| std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty()))
+}
+fn accent() -> Style {
+    fg(Color::Cyan).add_modifier(Modifier::BOLD)
+}
+fn fg(color: Color) -> Style {
+    if colored() {
+        Style::default().fg(color)
+    } else {
+        Style::default()
+    }
+}
+/// Terminal themes map grey (and DIM) unpredictably, often to near-invisible
+/// against their own background, so secondary text keeps the default
+/// foreground. Hierarchy comes from weight, position and the state colours.
+fn plain() -> Style {
+    Style::default()
+}
+fn bold() -> Style {
+    Style::default().add_modifier(Modifier::BOLD)
+}
+fn size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+fn shorten(text: &str, limit: usize) -> String {
+    let text = clean(text);
+    if text.chars().count() <= limit {
+        return text;
+    }
+    text.chars()
+        .take(limit.saturating_sub(1))
+        .collect::<String>()
+        + "…"
+}
+/// A location pill: state glyph, name and the shortest useful detail.
+fn pill(model: &Model, place: Place) -> Vec<Span<'static>> {
+    let status = model
+        .catalog
+        .status
+        .iter()
+        .find(|(p, _)| *p == place)
+        .map(|(_, s)| s.as_str())
+        .unwrap_or("Checking");
+    let name = place.label();
+    if status.starts_with("Ready") {
+        let count = model.catalog.books.iter().filter(|b| b.has(place)).count();
+        let unreadable = model
+            .catalog
+            .books
+            .iter()
+            .filter(|b| {
+                b.copies
+                    .iter()
+                    .any(|c| c.place == place && c.sha.is_empty())
+            })
+            .count();
+        let mut spans = vec![
+            Span::styled(format!("{PRESENT} "), fg(Color::Green)),
+            Span::styled(name, bold()),
+            Span::styled(format!(" {count}"), plain()),
+        ];
+        if unreadable > 0 {
+            spans.push(Span::styled(format!(" ⚠{unreadable}"), fg(Color::Yellow)));
+        }
+        return spans;
+    }
+    if status.starts_with("Checking") {
+        return vec![
+            Span::styled("◌ ", fg(Color::Cyan)),
+            Span::styled(name, bold()),
+            Span::styled(" checking", plain()),
+        ];
+    }
+    let reason = status.strip_prefix("Unavailable: ").unwrap_or(status);
+    if reason == "Not configured" {
+        return vec![
+            Span::styled(format!("{ABSENT} "), plain()),
+            Span::styled(name, plain()),
+            Span::styled(" not configured", plain()),
+        ];
+    }
+    vec![
+        Span::styled("⚠ ", fg(Color::Yellow)),
+        Span::styled(name, bold()),
+        Span::styled(format!(" {}", shorten(reason, 28)), fg(Color::Yellow)),
+    ]
+}
+/// Title and location pills on one row where they fit, wrapped when they do not.
+fn header(model: &Model, width: u16) -> Vec<Line<'static>> {
+    let title = vec![
+        Span::styled("Crossload", bold()),
+        Span::styled(" · Books", plain()),
+    ];
+    let pills: Vec<Vec<Span<'static>>> = PLACES.iter().map(|p| pill(model, *p)).collect();
+    let gap = "   ";
+    let joined: Vec<Span<'static>> = pills
+        .iter()
+        .enumerate()
+        .flat_map(|(i, p)| {
+            let mut spans = if i == 0 { vec![] } else { vec![Span::raw(gap)] };
+            spans.extend(p.iter().cloned());
+            spans
+        })
+        .collect();
+    let used = Line::from(title.clone()).width() + Line::from(joined.clone()).width();
+    if used + gap.len() <= width as usize {
+        let mut spans = title;
+        spans.push(Span::raw(" ".repeat(width as usize - used)));
+        spans.extend(joined);
+        return vec![Line::from(spans)];
+    }
+    let mut lines = vec![Line::from(title)];
+    let mut current: Vec<Span<'static>> = vec![];
+    for spans in pills {
+        let mut candidate = current.clone();
+        if !candidate.is_empty() {
+            candidate.push(Span::raw(gap));
+        }
+        candidate.extend(spans.iter().cloned());
+        if !current.is_empty() && Line::from(candidate.clone()).width() > width as usize {
+            lines.push(Line::from(std::mem::take(&mut current)));
+            current = spans;
+        } else {
+            current = candidate;
+        }
+    }
+    if !current.is_empty() {
+        lines.push(Line::from(current));
+    }
+    lines
+}
+/// The list offset that keeps `selected` visible, moving as little as possible
+/// and holding a two-row margin away from the edges where the viewport allows.
+pub(super) fn offset(current: usize, selected: usize, len: usize, visible: usize) -> usize {
+    if visible == 0 || len <= visible {
+        return 0;
+    }
+    let max = len - visible;
+    let margin = ((visible - 1) / 2).min(2);
+    let mut offset = current.min(max);
+    if selected < offset + margin {
+        offset = selected.saturating_sub(margin);
+    }
+    if selected + margin >= offset + visible {
+        offset = (selected + margin + 1).saturating_sub(visible);
+    }
+    offset.min(max)
+}
+/// One cell per location, so presence reads as a fixed column, not a sentence.
+fn presence(book: &Book, selected: bool) -> Line<'static> {
+    let mut spans = vec![];
+    for (i, place) in PLACES.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw(" "));
+        }
+        let paint = |style: Style| if selected { plain() } else { style };
+        spans.push(match book.copies.iter().find(|c| c.place == *place) {
+            Some(copy) if copy.sha.is_empty() => Span::styled(BROKEN, paint(fg(Color::Red))),
+            Some(copy) if copy.optimized => Span::styled(DEVICE, paint(fg(Color::Yellow))),
+            Some(_) => Span::styled(PRESENT, paint(fg(Color::Green))),
+            None => Span::raw(ABSENT),
+        });
+    }
+    Line::from(spans)
+}
+fn unreadable(book: &Book) -> bool {
+    !book.copies.is_empty() && book.copies.iter().all(|c| c.sha.is_empty())
+}
+fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'static>>)> {
+    let entry = model
+        .action
+        .as_ref()
+        .or_else(|| entries.get(model.selected).copied())?;
+    let label = |text: &str| Span::styled(format!("{text:<8}"), bold());
+    let lines = match &entry.source {
+        Source::Book(book, _) => {
+            let copy = book.preferred();
+            vec![
+                Line::from(vec![
+                    label("Source"),
+                    match copy {
+                        Some(c) if c.optimized || c.place == Place::Xteink => Span::styled(
+                            format!("{} · device copy — reduced quality", c.place.label()),
+                            fg(Color::Yellow),
+                        ),
+                        Some(c) => Span::styled(
+                            format!("{} · original", c.place.label()),
+                            fg(Color::Green),
+                        ),
+                        None => Span::styled("No usable copy", fg(Color::Red)),
+                    },
+                    Span::styled(
+                        copy.map(|c| format!(" · {}", size(c.size)))
+                            .unwrap_or_default(),
+                        plain(),
+                    ),
+                ]),
+                Line::from(vec![
+                    label("Path"),
+                    Span::raw(copy.map(|c| clean(&c.path)).unwrap_or_default()),
+                ]),
+            ]
+        }
+        Source::Local(path) => vec![
+            Line::from(vec![
+                label("Source"),
+                Span::styled("ACSM import request", fg(Color::Yellow)),
+                Span::styled(" · choose Local to fulfil it", plain()),
+            ]),
+            Line::from(vec![
+                label("Path"),
+                Span::raw(clean(&path.display().to_string())),
+            ]),
+        ],
+    };
+    let title = if entry.author.is_empty() {
+        format!(" {} ", clean(&entry.title))
+    } else {
+        format!(" {} · {} ", clean(&entry.title), clean(&entry.author))
+    };
+    Some((title, lines))
+}
+fn frame_block(title: String) -> Block<'static> {
+    Block::bordered()
+        .padding(Padding::horizontal(1))
+        .title(Line::from(Span::styled(title, bold())))
+}
 pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     let area = frame.area();
     if area.width < 25 || area.height < 10 {
         frame.render_widget(
-            Paragraph::new("Crossload: enlarge terminal (q quits)."),
+            Paragraph::new("Crossload: enlarge terminal (q quits).").wrap(Wrap { trim: false }),
             area,
         );
         return;
     }
+    let header = header(model, area.width);
     let areas = Layout::vertical([
+        Constraint::Length(header.len() as u16),
         Constraint::Length(1),
-        Constraint::Length(3),
-        Constraint::Length(1),
-        Constraint::Min(2),
+        Constraint::Min(5),
         Constraint::Length(if area.height >= 18 { 4 } else { 0 }),
         Constraint::Length(1),
-        Constraint::Length(3),
+        Constraint::Length(if area.height >= 24 { 3 } else { 2 }),
     ])
     .split(area);
-    frame.render_widget(
-        Paragraph::new("CROSSLOAD | Books").style(Style::default().add_modifier(Modifier::BOLD)),
-        areas[0],
-    );
-    let statuses = [Place::Local, Place::Kobo, Place::Xteink]
-        .iter()
-        .map(|place| {
-            format!(
-                "{}: {}",
-                place.label(),
-                model
-                    .catalog
-                    .status
-                    .iter()
-                    .find(|(p, _)| p == place)
-                    .map(|(_, s)| clean(s))
-                    .unwrap_or_else(|| "Checking".into())
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    frame.render_widget(Paragraph::new(statuses), areas[1]);
-    frame.render_widget(
-        Paragraph::new(format!(
-            "{}Search: {}",
-            if model.search { "/ " } else { "" },
-            clean(&model.query)
-        )),
-        areas[2],
-    );
+    frame.render_widget(Paragraph::new(header), areas[0]);
     let entries = model.filtered();
-    let offset = model
-        .selected
-        .saturating_sub(areas[3].height.saturating_sub(2) as usize);
-    let rows = entries
-        .iter()
-        .enumerate()
-        .skip(offset)
-        .take(areas[3].height.saturating_sub(1) as usize)
-        .map(|(i, e)| {
-            let locations = match &e.source {
-                Source::Book(book, _) => [Place::Local, Place::Kobo, Place::Xteink]
-                    .iter()
-                    .filter(|p| book.has(**p))
-                    .map(|p| p.label())
-                    .collect::<Vec<_>>()
-                    .join(" / "),
-                Source::Local(_) => "Local ACSM".into(),
-            };
-            let mut cells = vec![Cell::from(clean(&e.title)), Cell::from(locations)];
-            if area.width >= 80 {
-                cells.push(Cell::from(clean(&e.author)));
-            }
-            Row::new(cells).style(if i == model.selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            })
-        });
-    let (headers, widths) = if area.width >= 80 {
-        (
-            vec!["TITLE", "LOCATIONS", "AUTHOR"],
-            vec![
-                Constraint::Percentage(45),
-                Constraint::Length(23),
-                Constraint::Min(10),
-            ],
-        )
+    frame.render_widget(
+        Paragraph::new(if model.search {
+            Line::from(vec![
+                Span::styled("/", accent()),
+                Span::raw(clean(&model.query)),
+                Span::styled("▏", accent()),
+            ])
+        } else if model.query.is_empty() {
+            Line::from(Span::styled("Press / to search", plain()))
+        } else {
+            Line::from(vec![
+                Span::styled("Filter ", plain()),
+                Span::raw(clean(&model.query)),
+                Span::styled(
+                    format!("  {} of {}", entries.len(), model.entries.len()),
+                    plain(),
+                ),
+            ])
+        }),
+        areas[1],
+    );
+    draw_list(model, frame, areas[2], &entries);
+    if let Some(entry) = &model.action {
+        draw_action(model, frame, areas[2], entry);
+    }
+    if areas[3].height > 0 {
+        if let Some((title, lines)) = details(model, &entries) {
+            let block = frame_block(title);
+            let inner = block.inner(areas[3]);
+            frame.render_widget(block, areas[3]);
+            frame.render_widget(Paragraph::new(lines), inner);
+        }
+    }
+    let keys: &[(&str, &str)] = if model.action.is_some() {
+        &[("1 2 3", "destination"), ("esc", "cancel")]
     } else {
-        (
-            vec!["TITLE", "LOCATIONS"],
-            vec![Constraint::Min(8), Constraint::Length(23)],
-        )
+        &[
+            ("enter", "copy"),
+            ("/", "search"),
+            ("r", "refresh"),
+            ("↑↓ home end pgup pgdn", "move"),
+            ("q", "quit"),
+        ]
     };
+    let mut hints = vec![Span::styled(
+        format!(
+            "{}/{}",
+            if entries.is_empty() {
+                0
+            } else {
+                model.selected + 1
+            },
+            entries.len()
+        ),
+        bold(),
+    )];
+    for (key, action) in keys {
+        let group = vec![
+            Span::raw("   "),
+            Span::styled(*key, accent()),
+            Span::raw(" "),
+            Span::styled(*action, plain()),
+        ];
+        let mut candidate = hints.clone();
+        candidate.extend(group);
+        // A hint that would run off the edge is dropped, not truncated.
+        if Line::from(candidate.clone()).width() > areas[4].width as usize {
+            continue;
+        }
+        hints = candidate;
+    }
+    frame.render_widget(Paragraph::new(Line::from(hints)), areas[4]);
+    frame.render_widget(
+        Paragraph::new(status_lines(model)).wrap(Wrap { trim: false }),
+        areas[5],
+    );
+}
+fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry]) {
+    let total = model.entries.len();
+    let block = frame_block(if entries.len() == total {
+        format!(" Library · {total} ")
+    } else {
+        format!(" Library · {} of {total} ", entries.len())
+    });
+    let block = if area.width >= 72 {
+        let mut legend = vec![
+            Span::styled(PRESENT, fg(Color::Green)),
+            Span::raw(" original  "),
+            Span::styled(DEVICE, fg(Color::Yellow)),
+            Span::raw(" device copy  "),
+            Span::raw(format!("{ABSENT} none ")),
+        ];
+        if area.width >= 100 {
+            legend.insert(4, Span::raw(" unreadable  "));
+            legend.insert(4, Span::styled(BROKEN, fg(Color::Red)));
+        }
+        block.title(Line::from(legend).right_aligned())
+    } else {
+        block
+    };
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
     if entries.is_empty() {
         frame.render_widget(
             Paragraph::new(if model.loading.is_some() {
@@ -112,65 +397,188 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
                 "No books found. Check location status above or edit the search."
             })
             .wrap(Wrap { trim: false }),
-            areas[3],
+            inner,
         );
-    } else {
-        frame.render_widget(
-            Table::new(rows, widths)
-                .column_spacing(2)
-                .header(Row::new(headers).style(Style::default().add_modifier(Modifier::BOLD))),
-            areas[3],
-        );
+        return;
     }
-    if let Some(entry) = model
-        .action
-        .as_ref()
-        .or_else(|| entries.get(model.selected).copied())
-    {
-        let details = match &entry.source {
-            Source::Book(book, _) => book
-                .preferred()
-                .map(|c| {
-                    format!(
-                        "Preferred source: {}{}\n{}",
-                        c.place.label(),
-                        if c.optimized || c.place == Place::Xteink {
-                            " (device copy; reduced quality possible)"
+    // Columns are earned by width: presence and title always, then the author,
+    // then the size of the copy a transfer would read from.
+    let mut headers = vec!["", "L K X", "TITLE"];
+    let mut widths = vec![
+        Constraint::Length(1),
+        Constraint::Length(5),
+        Constraint::Percentage(45),
+    ];
+    let author = inner.width >= 56;
+    let size_column = inner.width >= 92;
+    if author {
+        headers.push("AUTHOR");
+        widths.push(Constraint::Min(16));
+    }
+    if size_column {
+        headers.push("SIZE");
+        widths.push(Constraint::Length(9));
+    }
+    if !author {
+        widths[2] = Constraint::Min(8);
+    }
+    let columns = Layout::horizontal(widths.clone()).spacing(1).split(inner);
+    let visible = inner.height.saturating_sub(1) as usize;
+    let start = offset(model.scroll.get(), model.selected, entries.len(), visible);
+    model.scroll.set(start);
+    let rows = entries
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .map(|(i, e)| {
+            let selected = i == model.selected;
+            // The selected row inverts as a whole, so its own colours would
+            // read as patches: on that row the glyph shapes carry the state.
+            let paint = |style: Style| if selected { plain() } else { style };
+            let (marker, title, detail) = match &e.source {
+                Source::Book(book, _) => (
+                    presence(book, selected),
+                    Span::styled(
+                        shorten(&e.title, columns[2].width as usize),
+                        paint(if unreadable(book) {
+                            fg(Color::Red)
                         } else {
-                            " (original)"
-                        },
-                        clean(&c.path)
-                    )
-                })
-                .unwrap_or_default(),
-            Source::Local(p) => format!("ACSM: {}", clean(&p.display().to_string())),
-        };
-        frame.render_widget(
-            Paragraph::new(format!(
-                "{} — {}\n{details}",
-                clean(&entry.title),
-                clean(&entry.author)
-            ))
-            .wrap(Wrap { trim: false }),
-            areas[4],
+                            Style::default()
+                        }),
+                    ),
+                    book.preferred().map(|c| size(c.size)).unwrap_or_default(),
+                ),
+                Source::Local(_) => (
+                    Line::from(Span::styled("  ⇩  ", paint(fg(Color::Yellow)))),
+                    Span::styled(
+                        shorten(&e.title, columns[2].width as usize),
+                        paint(fg(Color::Yellow)),
+                    ),
+                    e.kind.to_string(),
+                ),
+            };
+            let mut cells = vec![
+                Cell::from(Line::from(Span::raw(" "))),
+                Cell::from(marker),
+                Cell::from(Line::from(title)),
+            ];
+            if author {
+                cells.push(Cell::from(Line::from(Span::styled(
+                    shorten(&e.author, columns[3].width as usize),
+                    plain(),
+                ))));
+            }
+            if size_column {
+                cells.push(Cell::from(
+                    Line::from(Span::styled(detail, plain())).right_aligned(),
+                ));
+            }
+            Row::new(cells).style(if selected {
+                Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD)
+            } else {
+                Style::default()
+            })
+        });
+    frame.render_widget(
+        Table::new(rows, widths)
+            .column_spacing(1)
+            .header(Row::new(headers).style(bold())),
+        inner,
+    );
+    if entries.len() > visible {
+        let mut state = ScrollbarState::new(entries.len())
+            .viewport_content_length(visible)
+            .position(start);
+        frame.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None),
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut state,
         );
     }
-    frame.render_widget(Paragraph::new(format!("{}/{} | Enter: copy actions | /: search | r: refresh | ↑↓ PgUp/PgDn Home/End | q: quit",if entries.is_empty(){0}else{model.selected+1},entries.len())),areas[5]);
-    let status = if model.action.is_some() {
-        format!(
-            "Copy to: 1 Local | 2 Kobo | 3 Xteink | Esc cancel\n{}",
-            clean(&model.status)
-        )
-    } else {
-        format!(
-            "{}: {}",
-            if model.busy.is_some() || model.loading.is_some() {
-                ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][model.tick % 10]
-            } else {
-                "Status"
-            },
-            clean(&model.status)
-        )
+}
+/// Copy destinations as a dialog over the list: availability is decided before
+/// the keypress, by the same rules the model enforces afterwards.
+fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) {
+    let mut lines = vec![Line::from(match &entry.source {
+        Source::Book(book, _) => match book.preferred() {
+            Some(copy) => Span::styled(
+                format!("from {} · {}", copy.place.label(), size(copy.size)),
+                plain(),
+            ),
+            None => Span::styled("no usable copy", fg(Color::Red)),
+        },
+        Source::Local(_) => Span::styled("from a local ACSM request", plain()),
+    })];
+    lines.push(Line::default());
+    for (key, place) in [
+        ("1", Place::Local),
+        ("2", Place::Kobo),
+        ("3", Place::Xteink),
+    ] {
+        let (label, style, hint) = match model.destination(entry, place) {
+            Destination::Ready(hint) => (
+                Span::styled(key, accent()),
+                bold(),
+                Span::styled(hint, fg(Color::Green)),
+            ),
+            Destination::Blocked(reason, _) => (
+                Span::styled(key, plain()),
+                plain(),
+                Span::styled(reason, plain()),
+            ),
+        };
+        lines.push(Line::from(vec![
+            label,
+            Span::raw("  "),
+            Span::styled(format!("{:<8}", place.label()), style),
+            hint,
+        ]));
+    }
+    lines.push(Line::default());
+    lines.push(Line::from(vec![
+        Span::styled("esc", accent()),
+        Span::styled(" cancel", plain()),
+    ]));
+    // Never wider or taller than the list it covers, so a small terminal clips
+    // the dialog's own content instead of drawing outside the frame.
+    let width = area.width.min(44);
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let popup = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
     };
-    frame.render_widget(Paragraph::new(status).wrap(Wrap { trim: false }), areas[6]);
+    let block =
+        frame_block(format!(" Copy to · {} ", shorten(&entry.title, 24))).border_style(accent());
+    let inner = block.inner(popup);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+fn status_lines(model: &Model) -> Vec<Line<'static>> {
+    let text = clean(&model.status);
+    let busy = model.busy.is_some() || model.loading.is_some();
+    let (mark, style) = if busy {
+        (
+            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][model.tick % 10].to_string(),
+            fg(Color::Cyan),
+        )
+    } else if text.starts_with("Error:") || text.contains("error") {
+        ("✗".into(), fg(Color::Red))
+    } else if text.contains("verified") {
+        ("✓".into(), fg(Color::Green))
+    } else {
+        ("·".into(), plain())
+    };
+    vec![Line::from(vec![
+        Span::styled(format!("{mark} "), style),
+        Span::styled(text, if busy { Style::default() } else { style }),
+    ])]
 }

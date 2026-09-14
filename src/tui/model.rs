@@ -24,6 +24,15 @@ pub(super) enum Effect {
     },
     Quit,
 }
+/// Whether a copy to one destination may start. The dialog renders these and
+/// the key handler enforces them, so a shown option and an accepted key agree.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Destination {
+    /// Short hint for an allowed copy.
+    Ready(&'static str),
+    /// Short dialog label and the full explanation for the status line.
+    Blocked(&'static str, String),
+}
 pub(super) struct Model {
     pub options: Options,
     pub entries: Vec<Entry>,
@@ -37,6 +46,9 @@ pub(super) struct Model {
     pub tick: usize,
     pub catalog: Snapshot,
     pub action: Option<Entry>,
+    /// Layout-only: the list offset the last frame settled on. Rendering may
+    /// adjust it to keep the selection visible; it holds no operation state.
+    pub scroll: std::cell::Cell<usize>,
     retaining: bool,
     pending_catalog: Option<Snapshot>,
     next_id: u64,
@@ -56,6 +68,7 @@ impl Model {
             tick: 0,
             catalog: Snapshot::default(),
             action: None,
+            scroll: std::cell::Cell::new(0),
             retaining: false,
             pending_catalog: None,
             next_id: 0,
@@ -71,6 +84,70 @@ impl Model {
                     .contains(&query)
             })
             .collect()
+    }
+    /// The catalog's version of a book, so a stale entry cannot hide a copy
+    /// that another location has since reported.
+    fn current<'a>(&'a self, book: &'a crate::books::Book) -> &'a crate::books::Book {
+        self.catalog
+            .books
+            .iter()
+            .find(|b| {
+                b.copies.iter().any(|c| {
+                    book.copies
+                        .iter()
+                        .any(|d| c.place == d.place && c.path == d.path)
+                })
+            })
+            .unwrap_or(book)
+    }
+    pub fn destination(&self, entry: &Entry, target: Place) -> Destination {
+        if self.busy.is_some() {
+            return Destination::Blocked("busy", "Wait for the current copy to finish.".into());
+        }
+        if self.retaining {
+            return Destination::Blocked(
+                "refreshing",
+                "Refreshing locations; wait before copying from the previous inventory.".into(),
+            );
+        }
+        if target != Place::Local && !self.catalog.ready(target) {
+            return Destination::Blocked(
+                "unavailable",
+                format!("{} is unavailable or still being checked.", target.label()),
+            );
+        }
+        match &entry.source {
+            Source::Local(_) if target != Place::Local => Destination::Blocked(
+                "local first",
+                "Import the ACSM locally first, then refresh to copy its EPUB.".into(),
+            ),
+            Source::Local(_) => Destination::Ready("fulfil ACSM"),
+            Source::Book(book, _) => {
+                let book = self.current(book);
+                if book.has(target) {
+                    return Destination::Blocked(
+                        "already here",
+                        format!("A copy is already in {}.", target.label()),
+                    );
+                }
+                if self.loading.is_some()
+                    && book
+                        .preferred()
+                        .is_some_and(|c| c.optimized || c.place == Place::Xteink)
+                {
+                    return Destination::Blocked(
+                        "wait for discovery",
+                        "Wait for discovery to finish so an available original can be preferred."
+                            .into(),
+                    );
+                }
+                Destination::Ready(if target == Place::Xteink {
+                    "copy, optimized"
+                } else {
+                    "copy"
+                })
+            }
+        }
     }
     fn selected_entry(&self) -> Option<Entry> {
         self.filtered().get(self.selected).map(|e| (*e).clone())
@@ -198,18 +275,8 @@ impl Model {
                         _ => None,
                     };
                     if let Some(target) = target {
-                        if self.retaining {
-                            self.status = "Refreshing locations; wait before copying from the previous inventory.".into();
-                            return vec![];
-                        }
-                        if self.busy.is_some() {
-                            return vec![];
-                        }
-                        if target != Place::Local && !self.catalog.ready(target) {
-                            self.status = format!(
-                                "{} is unavailable or still being checked.",
-                                target.label()
-                            );
+                        if let Destination::Blocked(_, reason) = self.destination(&entry, target) {
+                            self.status = reason;
                             return vec![];
                         }
                         if let Source::Book(book, t) = &mut entry.source {
@@ -222,25 +289,7 @@ impl Model {
                             }) {
                                 **book = current.clone();
                             }
-                            if self.loading.is_some()
-                                && book
-                                    .preferred()
-                                    .is_some_and(|c| c.optimized || c.place == Place::Xteink)
-                            {
-                                self.status = "Wait for discovery to finish so an available original can be preferred.".into();
-                                return vec![];
-                            }
-
-                            if book.has(target) {
-                                self.status = format!("A copy is already in {}.", target.label());
-                                return vec![];
-                            }
                             *t = target;
-                        } else if target != Place::Local {
-                            self.status =
-                                "Import the ACSM locally first, then refresh to copy its EPUB."
-                                    .into();
-                            return vec![];
                         }
                         let id = self.id();
                         self.busy = Some(id);

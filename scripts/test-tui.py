@@ -90,14 +90,15 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
     try:
         t.expect(b'Library ready.')
         t.send(b'/Test\r\r')
-        t.expect(b'Copy to:')
+        t.expect(b'Copy to')
         assert not (card / 'Test Author/Test Book.epub').exists()
         t.send(b'3')
         t.expect(b'verified')
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
         assert source.read_bytes() == original
         t.send(b'r')
-        t.expect(b'Local / Xteink')
+        # Presence matrix: original on Local, absent on Kobo, device copy on Xteink.
+        t.expect('● · ◐'.encode())
         t.resize(3, 12)
         t.send(b'r')
         time.sleep(.2)

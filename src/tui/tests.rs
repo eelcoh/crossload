@@ -1,5 +1,7 @@
 use super::*;
+use crate::books::Place;
 use crossterm::event::{Event, KeyCode, KeyEvent};
+use model::Destination;
 use std::sync::{Arc, Mutex};
 fn options() -> Options {
     Options {
@@ -154,12 +156,17 @@ fn view_and_navigation_handle_sizes_and_empty_search() {
     assert_eq!(model.selected, 24);
     model.update(key(KeyCode::PageDown));
     assert_eq!(model.selected, 24);
-    for (w, h) in [(1, 1), (25, 10), (80, 24), (120, 35)] {
-        let mut terminal =
-            ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
-        terminal.draw(|frame| view::draw(&model, frame)).unwrap();
-        assert!(!format!("{:?}", terminal.backend().buffer()).contains("\\u{1b}"));
+    // Every size renders with and without the copy dialog over the list.
+    for open in [false, true] {
+        model.action = open.then(|| model.entries[0].clone());
+        for (w, h) in [(1, 1), (25, 10), (26, 11), (52, 20), (80, 24), (120, 35)] {
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+            terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+            assert!(!format!("{:?}", terminal.backend().buffer()).contains("\\u{1b}"));
+        }
     }
+    model.action = None;
     model.query = "absent".into();
     model.update(key(KeyCode::End));
     assert_eq!(model.selected, 0);
@@ -217,4 +224,68 @@ fn search_navigation_and_refresh_preserve_visible_selection() {
     model.update(Message::Catalog(refresh, crate::books::Snapshot::default()));
     model.update(Message::CatalogFinished(refresh, Ok(())));
     assert!(model.entries.is_empty());
+}
+
+#[test]
+fn list_offset_keeps_the_selection_visible_with_a_margin() {
+    use view::offset;
+    // A list that fits never scrolls.
+    assert_eq!(offset(0, 0, 3, 10), 0);
+    // Moving inside the viewport leaves the offset alone.
+    assert_eq!(offset(0, 5, 100, 10), 0);
+    // Approaching an edge scrolls by the margin, not to the edge.
+    assert_eq!(offset(0, 8, 100, 10), 1);
+    assert_eq!(offset(20, 20, 100, 10), 18);
+    // The last page and the first are clamped, never overscrolled.
+    assert_eq!(offset(95, 99, 100, 10), 90);
+    assert_eq!(offset(50, 0, 100, 10), 0);
+    // A viewport that vanished on resize cannot panic or scroll.
+    assert_eq!(offset(7, 3, 100, 0), 0);
+}
+
+#[test]
+fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
+    let mut model = Model::new(options());
+    let entry = Entry {
+        title: "b.acsm".into(),
+        author: String::new(),
+        kind: "ACSM",
+        source: Source::Local("/b.acsm".into()),
+    };
+    // An unchecked device is blocked before the entry is considered.
+    assert!(matches!(
+        model.destination(&entry, Place::Kobo),
+        Destination::Blocked("unavailable", _)
+    ));
+    assert_eq!(
+        model.destination(&entry, Place::Local),
+        Destination::Ready("fulfil ACSM")
+    );
+    model.catalog.status = vec![(Place::Kobo, "Ready (0 books, 0 unreadable)".into())];
+    assert!(matches!(
+        model.destination(&entry, Place::Kobo),
+        Destination::Blocked("local first", _)
+    ));
+    // What the dialog dims, the key handler refuses, with the same explanation.
+    let reason = match model.destination(&entry, Place::Kobo) {
+        Destination::Blocked(_, reason) => reason,
+        Destination::Ready(_) => unreachable!(),
+    };
+    model.entries = vec![entry.clone()];
+    model.update(key(KeyCode::Enter));
+    assert!(model.action.is_some());
+    assert!(model.update(key(KeyCode::Char('2'))).is_empty());
+    assert!(model.busy.is_none());
+    assert_eq!(model.status, reason);
+    // Local remains offered, and starting work blocks every destination.
+    assert!(matches!(
+        model.update(key(KeyCode::Char('1'))).as_slice(),
+        [Effect::Work { .. }]
+    ));
+    for place in [Place::Local, Place::Kobo, Place::Xteink] {
+        assert!(matches!(
+            model.destination(&entry, place),
+            Destination::Blocked("busy", _)
+        ));
+    }
 }

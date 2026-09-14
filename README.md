@@ -594,13 +594,20 @@ or disconnecting a device, or after copying. Refresh keeps the current list and
 selection visible until the new scan completes, then applies additions/removals.
 Copy actions wait during that refresh; an initial scan still shows partial results.
 
-Matching copies share a row with **Local / Kobo / Xteink** locations. Matching
+Matching copies share a row, with an **L K X** column for Local, Kobo and
+Xteink: `●` an original copy, `◐` a device copy that went through optimization,
+`·` absent and `✗` a copy that could not be read. A `⇩` row is a local ACSM
+request. The location line above the library reports each place as ready with a
+count, checking, not configured, or unavailable with the reason. Matching
 uses contents and optimized variants, never title alone. Distinct editions stay
 separate. Unreadable EPUBs remain visible with an explanation and cannot be used
 as a transfer source until verified. Previews remain hidden unless requested.
+Colour is never the only signal, and setting `NO_COLOR` turns it off.
 
 - **Enter** opens copy actions; **1** chooses Local, **2** Kobo, **3** Xteink.
-  **Escape** cancels. Opening the menu does not transfer anything.
+  **Escape** cancels. Opening the menu does not transfer anything. The dialog
+  marks each destination before you choose it: an allowed copy, or why it is
+  not available (already there, device unavailable, or discovery still running).
 - Copies already found at the destination are reported instead of duplicated.
 - Original Local/Kobo copies are preferred over optimized/device copies.
   A reader-only copy can be recovered, but its original image quality cannot
