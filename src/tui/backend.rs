@@ -95,7 +95,14 @@ fn one(
                 .clone()
                 .map(Ok)
                 .unwrap_or_else(adobe::default_state_dir)?;
-            adobe::Store::open(&state)?.import(&path, &options.output)?
+            let book = adobe::Store::open(&state)?.import(&path, &options.output)?;
+            // The request is spent. Archiving it is a convenience, so a failure
+            // to move it must not call a completed fulfillment an error.
+            match adobe::Store::archive(&path) {
+                Ok(archived) => progress(&format!("Archived {}", archived.display())),
+                Err(e) => progress(&format!("Book imported; the ACSM stays put: {e:#}")),
+            }
+            book
         }
         Source::Local(path) => {
             if options.send_to.is_none() && options.copy_to.is_none() {

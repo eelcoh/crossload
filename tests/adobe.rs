@@ -329,3 +329,33 @@ fn fulfillment_download_retry_reuses_receipt_and_decrypts() {
     epub::validate(&fs::read(path).unwrap()).unwrap();
     server.join().unwrap();
 }
+
+#[test]
+fn a_fulfilled_acsm_is_archived_beside_itself_and_never_overwritten() {
+    let root = tempfile::tempdir().unwrap();
+    let requests = root.path().join("requests");
+    fs::create_dir_all(&requests).unwrap();
+    let first = requests.join("book.acsm");
+    fs::write(&first, ACSM).unwrap();
+    let archived = Store::archive(&first).unwrap();
+    assert_eq!(archived, requests.join("archive/book.acsm"));
+    assert!(!first.exists(), "the request is moved, not copied");
+    assert_eq!(fs::read(&archived).unwrap(), ACSM);
+    // A later request of the same name is kept as well, never replacing it.
+    fs::write(&first, b"a different request").unwrap();
+    let second = Store::archive(&first).unwrap();
+    assert_eq!(second, requests.join("archive/book-1.acsm"));
+    assert_eq!(fs::read(&archived).unwrap(), ACSM);
+    assert_eq!(fs::read(&second).unwrap(), b"a different request");
+    assert_eq!(fs::read_dir(requests.join("archive")).unwrap().count(), 2);
+}
+#[test]
+fn archiving_reports_failure_without_destroying_the_request() {
+    let root = tempfile::tempdir().unwrap();
+    let acsm = root.path().join("book.acsm");
+    fs::write(&acsm, ACSM).unwrap();
+    // An occupied archive name cannot be created as a directory entry.
+    fs::write(root.path().join("archive"), b"not a directory").unwrap();
+    assert!(Store::archive(&acsm).is_err());
+    assert_eq!(fs::read(&acsm).unwrap(), ACSM);
+}

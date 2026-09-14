@@ -652,7 +652,11 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   Page Up/Page Down navigate. **q** quits, waiting for active work.
 
 ACSM files appear as local import requests. Choose Local first to fulfill them,
-then refresh to copy the resulting EPUB. Existing activation setup still applies.
+then refresh to copy the resulting EPUB. A fulfilled request is moved into an
+`archive/` folder beside itself, so it stops appearing as pending; nothing is
+deleted, an archived name is never overwritten, and a request whose outcome is
+uncertain stays where it is. `crossload import` archives the same way. Existing
+activation setup still applies.
 An interactive terminal is required. Repairs remain in `crossload send --repair`.
 
 ## The catalog without a terminal

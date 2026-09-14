@@ -143,11 +143,13 @@ fn catalog_stale_updates_actions_and_quit_are_safe() {
 fn view_and_navigation_handle_sizes_and_empty_search() {
     let mut model = Model::new(options());
     model.entries = (0..25)
-        .map(|i| Entry {
-            title: format!("Book {i}\x1b"),
-            author: "Writer".into(),
-            kind: "ACSM",
-            source: Source::Local(format!("/{i}.acsm").into()),
+        .map(|i| {
+            Entry::new(
+                format!("Book {i}\x1b"),
+                "Writer".into(),
+                "ACSM",
+                Source::Local(format!("/{i}.acsm").into()),
+            )
         })
         .collect();
     model.update(key(KeyCode::PageDown));
@@ -250,12 +252,12 @@ fn list_offset_keeps_the_selection_visible_with_a_margin() {
 #[test]
 fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
     let mut model = Model::new(options());
-    let entry = Entry {
-        title: "b.acsm".into(),
-        author: String::new(),
-        kind: "ACSM",
-        source: Source::Local("/b.acsm".into()),
-    };
+    let entry = Entry::new(
+        "b.acsm".into(),
+        String::new(),
+        "ACSM",
+        Source::Local("/b.acsm".into()),
+    );
     // An unchecked device is blocked before the entry is considered.
     assert!(matches!(
         model.destination(&entry, Place::Kobo),
@@ -388,4 +390,16 @@ fn an_untouched_selection_stays_at_the_top_while_books_stream_in() {
         arriving(&["Dune", "Neuromancer", "Piranesi"]),
     ));
     assert_eq!(model.filtered()[model.selected].title, "pending.acsm");
+}
+
+#[test]
+fn titles_truncate_by_printed_width_not_character_count() {
+    use view::shorten;
+    assert_eq!(shorten("Dune", 10), "Dune");
+    assert_eq!(shorten("aaaaaaa", 4), "aaa…");
+    // A CJK glyph occupies two cells, so half as many fit in a column.
+    assert_eq!(shorten("世界の終わり", 6), "世界…");
+    assert_eq!(shorten("世界の終わり", 12), "世界の終わり");
+    // Control characters are still replaced before anything is measured.
+    assert_eq!(shorten("a\u{1b}b", 8), "a b");
 }

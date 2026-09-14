@@ -134,11 +134,7 @@ impl Model {
         self.entries
             .iter()
             .filter(|e| self.filter.keeps(e))
-            .filter(|e| {
-                format!("{} {}", e.title, e.author)
-                    .to_lowercase()
-                    .contains(&query)
-            })
+            .filter(|e| e.search.contains(&query))
             .collect()
     }
     /// A book is marked when it still holds a copy that was marked earlier, so
@@ -300,24 +296,25 @@ impl Model {
                 self.entries = snapshot
                     .books
                     .iter()
-                    .map(|b| Entry {
-                        title: b.title.clone(),
-                        author: b.author.clone(),
-                        kind: "EPUB",
-                        source: Source::Book(Box::new(b.clone())),
+                    .map(|b| {
+                        Entry::new(
+                            b.title.clone(),
+                            b.author.clone(),
+                            "EPUB",
+                            Source::Book(Box::new(b.clone())),
+                        )
                     })
                     .collect();
                 self.entries.extend(snapshot.acsm.iter().map(|p| {
-                    Entry {
-                        title: p
-                            .file_name()
+                    Entry::new(
+                        p.file_name()
                             .unwrap_or_default()
                             .to_string_lossy()
                             .into_owned(),
-                        author: String::new(),
-                        kind: "ACSM",
-                        source: Source::Local(p.clone()),
-                    }
+                        String::new(),
+                        "ACSM",
+                        Source::Local(p.clone()),
+                    )
                 }));
                 self.catalog = snapshot;
                 self.selected = selected

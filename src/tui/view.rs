@@ -63,15 +63,26 @@ fn size(bytes: u64) -> String {
         format!("{value:.1} {}", UNITS[unit])
     }
 }
-fn shorten(text: &str, limit: usize) -> String {
+/// Truncate to a printed width, not a character count: one CJK glyph occupies
+/// two cells, and a table column is measured in cells.
+pub(super) fn shorten(text: &str, limit: usize) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
     let text = clean(text);
-    if text.chars().count() <= limit {
+    if text.width() <= limit {
         return text;
     }
-    text.chars()
-        .take(limit.saturating_sub(1))
-        .collect::<String>()
-        + "…"
+    let mut result = String::new();
+    let mut width = 0;
+    for c in text.chars() {
+        let next = width + c.width().unwrap_or(0);
+        if next > limit.saturating_sub(1) {
+            break;
+        }
+        width = next;
+        result.push(c);
+    }
+    result.push('…');
+    result
 }
 /// A location pill: state glyph, name and the shortest useful detail.
 fn pill(model: &Model, place: Place) -> Vec<Span<'static>> {

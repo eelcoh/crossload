@@ -163,6 +163,49 @@ impl Store {
         native(0, &activation, Path::new(""), Path::new(""))
     }
 
+    /// Move a spent ACSM into an `archive/` folder beside it, so a fulfilled
+    /// request stops appearing as a pending one. Nothing is ever deleted or
+    /// overwritten: a name already taken gains a suffix. Call it only after a
+    /// fulfillment that produced a book; an uncertain outcome must stay visible.
+    pub fn archive(acsm: &Path) -> Result<PathBuf> {
+        let directory = acsm
+            .parent()
+            .context("ACSM has no containing directory")?
+            .join("archive");
+        fs::create_dir_all(&directory)?;
+        let name = acsm.file_name().context("ACSM has no file name")?;
+        let stem = Path::new(name)
+            .file_stem()
+            .unwrap_or(name)
+            .to_string_lossy()
+            .into_owned();
+        let extension = Path::new(name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+        for attempt in 0..1000 {
+            let target = directory.join(if attempt == 0 {
+                format!("{stem}{extension}")
+            } else {
+                format!("{stem}-{attempt}{extension}")
+            });
+            // Claim the name before moving onto it, so a second run cannot
+            // replace an ACSM that is already archived.
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&target)
+            {
+                Ok(_) => {
+                    fs::rename(acsm, &target)?;
+                    return Ok(target);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        anyhow::bail!("Too many archived copies of {stem}{extension}")
+    }
     pub fn import(&self, acsm: &Path, output: &Path) -> Result<PathBuf> {
         let data = read(acsm, MAX_XML)?;
         let xml =

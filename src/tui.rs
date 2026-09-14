@@ -36,6 +36,21 @@ struct Entry {
     author: String,
     kind: &'static str,
     source: Source,
+    /// Title and author folded once, so searching does not rebuild a string
+    /// per book on every keystroke and every frame.
+    search: String,
+}
+impl Entry {
+    fn new(title: String, author: String, kind: &'static str, source: Source) -> Self {
+        let search = format!("{title} {author}").to_lowercase();
+        Self {
+            title,
+            author,
+            kind,
+            source,
+            search,
+        }
+    }
 }
 
 struct App {

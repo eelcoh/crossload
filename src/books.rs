@@ -216,6 +216,50 @@ pub fn merge(books: &mut Vec<Book>, book: Book) {
     }
     books.push(combined);
 }
+/// Reading a book holds its bytes, its prepared copy and that copy's output at
+/// once, so several large books in flight can cost far more than the books
+/// themselves. Workers claim from a shared budget before reading and release it
+/// afterwards; a book larger than the whole budget waits for exclusive use of
+/// it rather than deadlocking.
+struct Budget {
+    free: std::sync::Mutex<u64>,
+    released: std::sync::Condvar,
+}
+struct Claim<'a> {
+    budget: &'a Budget,
+    amount: u64,
+}
+impl Budget {
+    /// Enough for several ordinary books at once, and a ceiling a single very
+    /// large one cannot exceed.
+    const TOTAL: u64 = 384 * 1024 * 1024;
+    fn new() -> Self {
+        Self {
+            free: std::sync::Mutex::new(Self::TOTAL),
+            released: std::sync::Condvar::new(),
+        }
+    }
+    fn claim(&self, size: u64) -> Claim<'_> {
+        let amount = size.saturating_mul(3).clamp(1, Self::TOTAL);
+        let mut free = self.free.lock().unwrap_or_else(|e| e.into_inner());
+        while *free < amount {
+            free = self.released.wait(free).unwrap_or_else(|e| e.into_inner());
+        }
+        *free -= amount;
+        Claim {
+            budget: self,
+            amount,
+        }
+    }
+}
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut free) = self.budget.free.lock() {
+            *free += self.amount;
+            self.budget.released.notify_all();
+        }
+    }
+}
 /// "1 book", "4 books": counts that read as English wherever they are shown.
 pub fn books(count: usize) -> String {
     format!("{count} book{}", if count == 1 { "" } else { "s" })
@@ -298,7 +342,13 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                             .unwrap_or("")
                             .to_ascii_lowercase();
                         if matches!(ext.as_str(), "acsm" | "ascm") {
-                            let _ = tx.send(Update::Acsm(path));
+                            // A fulfilled request is moved into archive/ beside
+                            // itself; it is spent, not pending.
+                            let archived = path.parent().and_then(|p| p.file_name())
+                                == Some(std::ffi::OsStr::new("archive"));
+                            if !archived {
+                                let _ = tx.send(Update::Acsm(path));
+                            }
                             continue;
                         }
                         if ext == "epub" {
@@ -307,6 +357,8 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     }
                 }
             }
+            let budget = Budget::new();
+            let budget = &budget;
             let next = std::sync::atomic::AtomicUsize::new(0);
             let workers = std::thread::available_parallelism()
                 .map(|value| value.get())
@@ -332,22 +384,26 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                                     options.organized,
                                 )
                             });
-                            let book = stored(index, key.as_ref(), place, &source)
-                                .map(Ok)
-                                .unwrap_or_else(|| {
+                            let book = match stored(index, key.as_ref(), place, &source) {
+                                // A cached identity costs nothing to hold.
+                                Some(book) => Ok(book),
+                                None => {
+                                    let _claim = budget
+                                        .claim(fs::metadata(path).map(|m| m.len()).unwrap_or(0));
                                     candidate(path, place, source.clone(), options, index, key)
-                                })
-                                .unwrap_or_else(|e| {
-                                    unreadable(
-                                        place,
-                                        source,
-                                        path.file_name()
-                                            .unwrap_or_default()
-                                            .to_string_lossy()
-                                            .into_owned(),
-                                        format!("{e:#}"),
-                                    )
-                                });
+                                }
+                            }
+                            .unwrap_or_else(|e| {
+                                unreadable(
+                                    place,
+                                    source,
+                                    path.file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy()
+                                        .into_owned(),
+                                    format!("{e:#}"),
+                                )
+                            });
                             let _ = tx.send(book_update(place, book));
                         }
                     });

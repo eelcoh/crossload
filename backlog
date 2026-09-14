@@ -184,7 +184,7 @@
     read and selection-preservation faithfully tracked it. A selection now
     follows the reader only once they have moved it.
 
-17. [ ] Small corrections
+17. [x] Small corrections — implemented
     `Model::filtered` formats and lowercases a String per entry per call, and is
     called several times per keystroke plus once per frame; precompute a search
     key and cache the filtered indices. `view::shorten` counts chars, so CJK and
@@ -192,13 +192,26 @@
     a dependency and is currently referenced nowhere in src. Each `candidate`
     holds a whole book in memory (up to 128 MiB) while `prepare` holds another
     copy plus its re-encoded output, across three location threads.
+    Implemented: an Entry folds its title and author once, so searching scans
+    precomputed keys; `view::shorten` measures printed width with
+    unicode-width, which is now used rather than merely declared; and local
+    workers claim from a shared 384 MiB budget before reading a book, sized at
+    three times the file, so the pool added in item 14 cannot multiply peak
+    memory by its thread count. A book larger than the budget takes it alone.
 
-18. [ ] Archive fulfilled ACSM files
+18. [x] Archive fulfilled ACSM files — implemented
     A fulfilled ACSM keeps appearing in the library as a pending request. After a
     verified fulfillment, move the file into an `archive/` folder beside it
     rather than deleting it, never overwriting an existing archived file. Do not
     archive when the fulfillment outcome is uncertain: that case must stay
     visible and must not be replayed automatically.
+    Implemented as `adobe::Store::archive`, called by the TUI and by
+    `crossload import` after a fulfillment that produced a book. The target name
+    is claimed with create_new before the move, so a second run cannot replace
+    an archived request; a taken name gains a suffix. Discovery ignores ACSM
+    files inside an `archive/` folder. Archiving is a courtesy: when it fails
+    the book is still imported and the request stays put, reported rather than
+    raised as an error.
 
 19. [ ] macOS verification and published releases
     Native ADEPT, the Tears TUI and packaging have never run on a Mac; CI is

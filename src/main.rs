@@ -498,6 +498,14 @@ fn run() -> Result<()> {
             let reader = transfer.reader()?;
             let path = state()?.import(&acsm, &output)?;
             println!("Imported {}", printable(&path.display().to_string()));
+            // The fulfillment is done; moving the spent request is a courtesy.
+            match crossload::adobe::Store::archive(&acsm) {
+                Ok(archived) => println!("Archived {}", printable(&archived.display().to_string())),
+                Err(e) => eprintln!(
+                    "Book imported; the ACSM stays put: {}",
+                    printable(&format!("{e:#}"))
+                ),
+            }
             if let Some(reader) = reader {
                 send(&reader, &path, !cli.no_optimize, !cli.flat)?;
             }

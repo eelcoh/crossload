@@ -311,3 +311,16 @@ fn books_are_published_before_their_location_finishes() {
     );
     assert!(seen.last().unwrap().1.starts_with("Ready (3 books"));
 }
+
+#[test]
+fn a_fulfilled_request_in_archive_is_no_longer_pending() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    fs::write(o.local.join("waiting.acsm"), b"<request/>").unwrap();
+    let archive = o.local.join("archive");
+    fs::create_dir_all(&archive).unwrap();
+    fs::write(archive.join("spent.acsm"), b"<request/>").unwrap();
+    let snapshot = books::scan(&o, |_| {});
+    assert_eq!(snapshot.acsm.len(), 1);
+    assert!(snapshot.acsm[0].ends_with("waiting.acsm"));
+}
