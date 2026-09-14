@@ -636,6 +636,17 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   author folders; eject the Kobo normally so it can index them. Xteink copies
   retain optimization and author/title organization. Existing files are never
   overwritten, and every copy is verified.
+- **Space** marks the highlighted book and **a** marks everything currently
+  shown, or clears the marks when all of them are already marked. With books
+  marked, **Enter** opens the dialog for the whole set: each destination reports
+  how many of them it would copy, and why the rest would not. Books that cannot
+  be copied are left behind with their reason rather than refusing the set.
+  Marks are cleared when a copy starts and by a refresh.
+- **Escape** during a copy stops it after the book in progress; books already
+  copied are complete and verified, and the summary says where it stopped.
+- **f** cycles filters: all books, missing from Kobo, missing from Xteink, only
+  on Xteink, and unreadable. The filter and search apply together, and the line
+  above the library shows which filter is active and how many books it matches.
 - **/** searches; arrows and page-navigation keys still move through matches.
   Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
   Page Up/Page Down navigate. **q** quits, waiting for active work.

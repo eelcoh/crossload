@@ -167,11 +167,22 @@
     consolidating the two remains open. Per-book exclusions are not in the new
     command: selection belongs in item 16.
 
-16. [ ] Bulk actions and filters in the TUI
+16. [x] Bulk actions and filters in the TUI — implemented
     Copying is one book at a time, while the real task is "copy everything that
     is not on the reader yet". On top of item 15's sync engine, add multi-select
     (space), a copy-all-missing action per destination, and filter presets for
     missing from Xteink, only on the reader, and unreadable.
+    Implemented: space marks, a marks or clears everything shown, Enter opens
+    the dialog for the marked set, and each destination reports how many of the
+    set it would copy and why the rest would not. A job now carries its books
+    and its target, so Source::Book no longer holds a destination. One failure
+    does not abandon the rest; the summary names up to two of them. Escape
+    during a copy stops it after the book in progress through a shared flag.
+    f cycles all/missing from Kobo/missing from Xteink/only on Xteink/unreadable.
+    Fixed while testing: an untouched selection followed the pending ACSM to the
+    bottom of the list, because the walk reports ACSM files before any book is
+    read and selection-preservation faithfully tracked it. A selection now
+    follows the reader only once they have moved it.
 
 17. [ ] Small corrections
     `Model::filtered` formats and lowercases a String per entry per call, and is

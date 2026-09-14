@@ -117,7 +117,7 @@ fn catalog_stale_updates_actions_and_quit_are_safe() {
     model.update(Message::Catalog(id, snapshot));
     assert_eq!(model.entries.len(), 1);
     model.update(key(KeyCode::Enter));
-    assert!(model.action.is_some());
+    assert!(!model.action.is_empty());
     assert!(model.update(key(KeyCode::Char('2'))).is_empty());
     assert!(model.busy.is_none());
     let effects = model.update(key(KeyCode::Char('1')));
@@ -158,7 +158,11 @@ fn view_and_navigation_handle_sizes_and_empty_search() {
     assert_eq!(model.selected, 24);
     // Every size renders with and without the copy dialog over the list.
     for open in [false, true] {
-        model.action = open.then(|| model.entries[0].clone());
+        model.action = if open {
+            vec![model.entries[0].clone()]
+        } else {
+            vec![]
+        };
         for (w, h) in [(1, 1), (25, 10), (26, 11), (52, 20), (80, 24), (120, 35)] {
             let mut terminal =
                 ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
@@ -166,7 +170,7 @@ fn view_and_navigation_handle_sizes_and_empty_search() {
             assert!(!format!("{:?}", terminal.backend().buffer()).contains("\\u{1b}"));
         }
     }
-    model.action = None;
+    model.action.clear();
     model.query = "absent".into();
     model.update(key(KeyCode::End));
     assert_eq!(model.selected, 0);
@@ -273,7 +277,7 @@ fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
     };
     model.entries = vec![entry.clone()];
     model.update(key(KeyCode::Enter));
-    assert!(model.action.is_some());
+    assert!(!model.action.is_empty());
     assert!(model.update(key(KeyCode::Char('2'))).is_empty());
     assert!(model.busy.is_none());
     assert_eq!(model.status, reason);
@@ -288,4 +292,100 @@ fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
             Destination::Blocked("busy", _)
         ));
     }
+}
+
+#[test]
+fn marking_filters_and_bulk_copies_act_on_the_set() {
+    let mut model = Model::new(options());
+    model.update(Message::Refresh);
+    let id = model.loading.unwrap();
+    model.update(Message::Catalog(
+        id,
+        crate::books::Snapshot {
+            acsm: vec!["/a.acsm".into(), "/b.acsm".into(), "/c.acsm".into()],
+            status: vec![(Place::Local, "Ready (0 books, 0 unreadable)".into())],
+            ..Default::default()
+        },
+    ));
+    model.update(Message::CatalogFinished(id, Ok(())));
+    assert_eq!(model.filtered().len(), 3);
+    // Marking follows the highlighted row and survives moving away from it.
+    model.update(key(KeyCode::Char(' ')));
+    model.update(key(KeyCode::Down));
+    model.update(key(KeyCode::Char(' ')));
+    assert_eq!(model.marked.len(), 2);
+    assert!(model.is_marked(&model.entries[0]));
+    // Enter acts on the marked set rather than the highlighted row alone.
+    model.update(key(KeyCode::Enter));
+    assert_eq!(model.action.len(), 2);
+    let effects = model.update(key(KeyCode::Char('1')));
+    assert!(
+        matches!(effects.as_slice(), [Effect::Work { entries, target, .. }]
+        if entries.len() == 2 && *target == Place::Local)
+    );
+    // Starting a copy consumes the marks, and Escape stops the job in progress.
+    assert!(model.marked.is_empty());
+    assert!(model.action.is_empty());
+    let job = model.busy.unwrap();
+    model.update(key(KeyCode::Esc));
+    assert!(model.status.starts_with("Stopping"));
+    assert!(model.busy.is_some());
+    model.update(Message::Finished(job, Ok("Copied 1 of 2".into())));
+    // A filter narrows the same list; an ACSM is only ever an import request.
+    model.update(key(KeyCode::Char('f')));
+    assert_eq!(model.filter.label(), "Missing from Kobo");
+    assert!(model.filtered().is_empty());
+    model.update(key(KeyCode::Char('a')));
+    assert!(model.marked.is_empty());
+    for _ in 0..4 {
+        model.update(key(KeyCode::Char('f')));
+    }
+    assert_eq!(model.filter.label(), "All books");
+    // Mark-all covers everything shown, and repeating it clears the set.
+    model.update(key(KeyCode::Char('a')));
+    assert_eq!(model.marked.len(), 3);
+    model.update(key(KeyCode::Char('a')));
+    assert!(model.marked.is_empty());
+}
+
+#[test]
+fn an_untouched_selection_stays_at_the_top_while_books_stream_in() {
+    let mut model = Model::new(options());
+    model.update(Message::Refresh);
+    let id = model.loading.unwrap();
+    // The walk reports a pending ACSM before any book has been read.
+    model.update(Message::Catalog(
+        id,
+        crate::books::Snapshot {
+            acsm: vec!["/pending.acsm".into()],
+            ..Default::default()
+        },
+    ));
+    assert_eq!(model.selected, 0);
+    let arriving = |titles: &[&str]| crate::books::Snapshot {
+        acsm: vec!["/pending.acsm".into()],
+        books: titles
+            .iter()
+            .map(|title| crate::books::Book {
+                title: (*title).into(),
+                author: "Author".into(),
+                copies: vec![],
+            })
+            .collect(),
+        ..Default::default()
+    };
+    // Books sort above the ACSM; an untouched selection must not follow it down.
+    model.update(Message::Catalog(id, arriving(&["Dune"])));
+    assert_eq!(model.selected, 0);
+    model.update(Message::Catalog(id, arriving(&["Dune", "Piranesi"])));
+    assert_eq!(model.selected, 0);
+    assert_eq!(model.filtered()[model.selected].title, "Dune");
+    // Once the reader moves, their choice is kept as the list grows.
+    model.update(key(KeyCode::End));
+    assert_eq!(model.filtered()[model.selected].title, "pending.acsm");
+    model.update(Message::Catalog(
+        id,
+        arriving(&["Dune", "Neuromancer", "Piranesi"]),
+    ));
+    assert_eq!(model.filtered()[model.selected].title, "pending.acsm");
 }

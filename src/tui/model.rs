@@ -1,5 +1,5 @@
 use super::{Entry, Options, Source};
-use crate::books::{Place, Snapshot};
+use crate::books::{books, Place, Snapshot};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 #[derive(Debug)]
 pub(super) enum Message {
@@ -20,9 +20,51 @@ pub(super) enum Effect {
     Work {
         id: u64,
         options: Box<Options>,
-        entry: Entry,
+        entries: Vec<Entry>,
+        target: Place,
+        /// Set to stop a multi-book copy after the book in progress.
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
     Quit,
+}
+/// The questions worth asking of a library, in the order they are cycled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Filter {
+    All,
+    Missing(Place),
+    Only(Place),
+    Unreadable,
+}
+impl Filter {
+    pub fn label(self) -> String {
+        match self {
+            Self::All => "All books".into(),
+            Self::Missing(place) => format!("Missing from {}", place.label()),
+            Self::Only(place) => format!("Only on {}", place.label()),
+            Self::Unreadable => "Unreadable".into(),
+        }
+    }
+    fn next(self) -> Self {
+        match self {
+            Self::All => Self::Missing(Place::Kobo),
+            Self::Missing(Place::Kobo) => Self::Missing(Place::Xteink),
+            Self::Missing(_) => Self::Only(Place::Xteink),
+            Self::Only(_) => Self::Unreadable,
+            Self::Unreadable => Self::All,
+        }
+    }
+    fn keeps(self, entry: &Entry) -> bool {
+        let Source::Book(book) = &entry.source else {
+            // An ACSM is a pending import, not a book that is somewhere.
+            return self == Self::All;
+        };
+        match self {
+            Self::All => true,
+            Self::Missing(place) => !book.has(place),
+            Self::Only(place) => book.copies.iter().all(|copy| copy.place == place),
+            Self::Unreadable => book.copies.iter().any(|copy| copy.sha.is_empty()),
+        }
+    }
 }
 /// Whether a copy to one destination may start. The dialog renders these and
 /// the key handler enforces them, so a shown option and an accepted key agree.
@@ -45,7 +87,16 @@ pub(super) struct Model {
     pub status: String,
     pub tick: usize,
     pub catalog: Snapshot,
-    pub action: Option<Entry>,
+    /// The books a copy dialog is open for: the highlighted one, or the marked
+    /// set. Empty means no dialog.
+    pub action: Vec<Entry>,
+    pub filter: Filter,
+    /// Whether the selection is the reader's own. Until it is, arriving books
+    /// must not drag it along: discovery reorders the list as it streams.
+    touched: bool,
+    /// One copy of each marked book, so a refresh can find it again.
+    pub marked: Vec<(Place, String)>,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// Layout-only: the list offset the last frame settled on. Rendering may
     /// adjust it to keep the selection visible; it holds no operation state.
     pub scroll: std::cell::Cell<usize>,
@@ -67,7 +118,11 @@ impl Model {
             status: "Discovering books…".into(),
             tick: 0,
             catalog: Snapshot::default(),
-            action: None,
+            action: vec![],
+            filter: Filter::All,
+            touched: false,
+            marked: vec![],
+            cancel: None,
             scroll: std::cell::Cell::new(0),
             retaining: false,
             pending_catalog: None,
@@ -78,12 +133,65 @@ impl Model {
         let query = self.query.to_lowercase();
         self.entries
             .iter()
+            .filter(|e| self.filter.keeps(e))
             .filter(|e| {
                 format!("{} {}", e.title, e.author)
                     .to_lowercase()
                     .contains(&query)
             })
             .collect()
+    }
+    /// A book is marked when it still holds a copy that was marked earlier, so
+    /// a refresh that adds or removes copies does not lose the set.
+    pub fn is_marked(&self, entry: &Entry) -> bool {
+        match &entry.source {
+            Source::Book(book) => book.copies.iter().any(|c| {
+                self.marked
+                    .iter()
+                    .any(|(p, path)| *p == c.place && *path == c.path)
+            }),
+            Source::Local(path) => self
+                .marked
+                .iter()
+                .any(|(p, marked)| *p == Place::Local && marked == &path.display().to_string()),
+        }
+    }
+    fn mark(&mut self, entry: &Entry) {
+        if self.is_marked(entry) {
+            let copies: Vec<_> = match &entry.source {
+                Source::Book(book) => book
+                    .copies
+                    .iter()
+                    .map(|c| (c.place, c.path.clone()))
+                    .collect(),
+                Source::Local(path) => vec![(Place::Local, path.display().to_string())],
+            };
+            self.marked
+                .retain(|marked| !copies.iter().any(|copy| copy == marked));
+            return;
+        }
+        match &entry.source {
+            Source::Book(book) => {
+                if let Some(copy) = book.preferred().or_else(|| book.copies.first()) {
+                    self.marked.push((copy.place, copy.path.clone()));
+                }
+            }
+            Source::Local(path) => self.marked.push((Place::Local, path.display().to_string())),
+        }
+    }
+    /// The marked books, or the highlighted one when nothing is marked.
+    fn chosen(&self) -> Vec<Entry> {
+        let marked: Vec<Entry> = self
+            .entries
+            .iter()
+            .filter(|entry| self.is_marked(entry))
+            .cloned()
+            .collect();
+        if marked.is_empty() {
+            self.selected_entry().into_iter().collect()
+        } else {
+            marked
+        }
     }
     /// The catalog's version of a book, so a stale entry cannot hide a copy
     /// that another location has since reported.
@@ -122,7 +230,7 @@ impl Model {
                 "Import the ACSM locally first, then refresh to copy its EPUB.".into(),
             ),
             Source::Local(_) => Destination::Ready("fulfil ACSM"),
-            Source::Book(book, _) => {
+            Source::Book(book) => {
                 let book = self.current(book);
                 if book.has(target) {
                     return Destination::Blocked(
@@ -172,7 +280,7 @@ impl Model {
                     self.status = "Wait for current work before refreshing.".into();
                     return vec![];
                 }
-                self.action = None;
+                self.action.clear();
                 self.retaining = !self.entries.is_empty();
                 self.pending_catalog = None;
                 let id = self.id();
@@ -188,7 +296,7 @@ impl Model {
                     self.pending_catalog = Some(snapshot);
                     return vec![];
                 }
-                let selected = self.selected_entry();
+                let selected = self.touched.then(|| self.selected_entry()).flatten();
                 self.entries = snapshot
                     .books
                     .iter()
@@ -196,7 +304,7 @@ impl Model {
                         title: b.title.clone(),
                         author: b.author.clone(),
                         kind: "EPUB",
-                        source: Source::Book(Box::new(b.clone()), Place::Local),
+                        source: Source::Book(Box::new(b.clone())),
                     })
                     .collect();
                 self.entries.extend(snapshot.acsm.iter().map(|p| {
@@ -217,13 +325,11 @@ impl Model {
                         self.filtered()
                             .iter()
                             .position(|e| match (&old.source, &e.source) {
-                                (Source::Book(a, _), Source::Book(b, _)) => {
-                                    a.copies.iter().any(|c| {
-                                        b.copies
-                                            .iter()
-                                            .any(|d| c.place == d.place && c.path == d.path)
-                                    })
-                                }
+                                (Source::Book(a), Source::Book(b)) => a.copies.iter().any(|c| {
+                                    b.copies
+                                        .iter()
+                                        .any(|d| c.place == d.place && c.path == d.path)
+                                }),
                                 (a, b) => a == b,
                             })
                     })
@@ -249,6 +355,7 @@ impl Model {
             Message::Progress(id, s) if self.busy == Some(id) => self.status = s,
             Message::Finished(id, result) if self.busy == Some(id) => {
                 self.busy = None;
+                self.cancel = None;
                 self.status = result.unwrap_or_else(|e| format!("Error: {e}"));
             }
             Message::Tick => self.tick = self.tick.wrapping_add(1),
@@ -263,51 +370,91 @@ impl Model {
                 if self.pending_quit {
                     return vec![];
                 }
-                if let Some(mut entry) = self.action.clone() {
+                if !self.action.is_empty() {
                     let target = match key.code {
                         KeyCode::Char('1') => Some(Place::Local),
                         KeyCode::Char('2') => Some(Place::Kobo),
                         KeyCode::Char('3') => Some(Place::Xteink),
                         KeyCode::Esc | KeyCode::Char('q') => {
-                            self.action = None;
+                            self.action.clear();
                             return vec![];
                         }
                         _ => None,
                     };
-                    if let Some(target) = target {
-                        if let Destination::Blocked(_, reason) = self.destination(&entry, target) {
-                            self.status = reason;
-                            return vec![];
-                        }
-                        if let Source::Book(book, t) = &mut entry.source {
-                            if let Some(current) = self.catalog.books.iter().find(|b| {
-                                b.copies.iter().any(|c| {
-                                    book.copies
-                                        .iter()
-                                        .any(|d| c.place == d.place && c.path == d.path)
-                                })
-                            }) {
-                                **book = current.clone();
+                    let Some(target) = target else {
+                        return vec![];
+                    };
+                    // Books that cannot be copied are left behind with their
+                    // reason; a set is never refused as a whole for one of them.
+                    let mut blocked = None;
+                    let entries: Vec<Entry> = self
+                        .action
+                        .clone()
+                        .into_iter()
+                        .filter(|entry| match self.destination(entry, target) {
+                            Destination::Ready(_) => true,
+                            Destination::Blocked(_, reason) => {
+                                blocked.get_or_insert(reason);
+                                false
                             }
-                            *t = target;
-                        }
-                        let id = self.id();
-                        self.busy = Some(id);
-                        self.action = None;
-                        let mut options = self.options.clone();
-                        if !matches!(entry.source, Source::Book(_, _)) {
-                            options.send_to = None;
-                            options.copy_to = None;
-                        }
-                        return vec![Effect::Work {
-                            id,
-                            options: Box::new(options),
-                            entry,
-                        }];
+                        })
+                        .map(|mut entry| {
+                            // Use the catalog's copies, not those captured when
+                            // the dialog opened.
+                            if let Source::Book(book) = &mut entry.source {
+                                **book = self.current(book).clone();
+                            }
+                            entry
+                        })
+                        .collect();
+                    if entries.is_empty() {
+                        self.status =
+                            blocked.unwrap_or_else(|| "Nothing left to copy there.".into());
+                        return vec![];
                     }
-                    return vec![];
+                    let skipped = self.action.len() - entries.len();
+                    self.action.clear();
+                    self.marked.clear();
+                    let id = self.id();
+                    self.busy = Some(id);
+                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    self.cancel = Some(cancel.clone());
+                    self.status = format!(
+                        "Copying {} to {}…{}",
+                        books(entries.len()),
+                        target.label(),
+                        if skipped > 0 {
+                            format!(" {skipped} skipped.")
+                        } else {
+                            String::new()
+                        }
+                    );
+                    let mut options = self.options.clone();
+                    if entries
+                        .iter()
+                        .all(|entry| !matches!(entry.source, Source::Book(_)))
+                    {
+                        options.send_to = None;
+                        options.copy_to = None;
+                    }
+                    return vec![Effect::Work {
+                        id,
+                        options: Box::new(options),
+                        entries,
+                        target,
+                        cancel,
+                    }];
                 }
                 if self.search {
+                    self.touched |= matches!(
+                        key.code,
+                        KeyCode::Down
+                            | KeyCode::Up
+                            | KeyCode::Home
+                            | KeyCode::End
+                            | KeyCode::PageDown
+                            | KeyCode::PageUp
+                    );
                     match key.code {
                         KeyCode::Down => {
                             self.selected =
@@ -325,16 +472,35 @@ impl Model {
                         KeyCode::Backspace => {
                             self.query.pop();
                             self.selected = 0;
+                            self.touched = false;
                         }
                         KeyCode::Char(c) => {
                             self.query.push(c);
                             self.selected = 0;
+                            self.touched = false;
                         }
                         _ => {}
                     };
                     return vec![];
                 }
+                self.touched |= matches!(
+                    key.code,
+                    KeyCode::Down
+                        | KeyCode::Up
+                        | KeyCode::Char('j')
+                        | KeyCode::Char('k')
+                        | KeyCode::Home
+                        | KeyCode::End
+                        | KeyCode::PageDown
+                        | KeyCode::PageUp
+                );
                 match key.code {
+                    KeyCode::Esc if self.busy.is_some() => {
+                        if let Some(cancel) = &self.cancel {
+                            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                            self.status = "Stopping after the book in progress…".into();
+                        }
+                    }
                     KeyCode::Char('q') | KeyCode::Esc => return self.quit(),
                     KeyCode::Down | KeyCode::Char('j') => {
                         self.selected =
@@ -352,8 +518,28 @@ impl Model {
                     KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
                     KeyCode::Char('/') => self.search = true,
                     KeyCode::Char('r') => return self.update(Message::Refresh),
+                    KeyCode::Char(' ') => {
+                        if let Some(entry) = self.selected_entry() {
+                            self.mark(&entry);
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        let shown: Vec<Entry> = self.filtered().into_iter().cloned().collect();
+                        let all = !shown.is_empty() && shown.iter().all(|e| self.is_marked(e));
+                        for entry in shown {
+                            if all == self.is_marked(&entry) {
+                                self.mark(&entry);
+                            }
+                        }
+                    }
+                    KeyCode::Char('f') => {
+                        self.filter = self.filter.next();
+                        self.selected = 0;
+                        self.touched = false;
+                        self.scroll.set(0);
+                    }
                     KeyCode::Enter if self.busy.is_none() => {
-                        self.action = self.selected_entry();
+                        self.action = self.chosen();
                     }
                     _ => {}
                 }

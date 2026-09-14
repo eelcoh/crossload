@@ -216,7 +216,8 @@ pub fn merge(books: &mut Vec<Book>, book: Book) {
     }
     books.push(combined);
 }
-fn books(count: usize) -> String {
+/// "1 book", "4 books": counts that read as English wherever they are shown.
+pub fn books(count: usize) -> String {
     format!("{count} book{}", if count == 1 { "" } else { "s" })
 }
 /// Snapshots are ordered when they are emitted, not on every insertion.

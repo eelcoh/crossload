@@ -28,7 +28,7 @@ pub struct Options {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Source {
     Local(PathBuf),
-    Book(Box<crate::books::Book>, crate::books::Place),
+    Book(Box<crate::books::Book>),
 }
 #[derive(Clone, Debug)]
 struct Entry {
@@ -73,8 +73,14 @@ fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
         Effect::Load { id, options, .. } => Command::stream(library_stream(id, *options)),
-        Effect::Work { id, options, entry } => Command::stream(work_stream(id, move |progress| {
-            backend::perform(*options, entry, progress)
+        Effect::Work {
+            id,
+            options,
+            entries,
+            target,
+            cancel,
+        } => Command::stream(work_stream(id, move |progress| {
+            backend::perform(*options, entries, target, &cancel, progress)
         })),
     }))
 }

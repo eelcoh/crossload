@@ -210,11 +210,11 @@ fn unreadable(book: &Book) -> bool {
 fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'static>>)> {
     let entry = model
         .action
-        .as_ref()
+        .first()
         .or_else(|| entries.get(model.selected).copied())?;
     let label = |text: &str| Span::styled(format!("{text:<8}"), bold());
     let lines = match &entry.source {
-        Source::Book(book, _) => {
+        Source::Book(book) => {
             let copy = book.preferred();
             vec![
                 Line::from(vec![
@@ -254,7 +254,9 @@ fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'stati
             ]),
         ],
     };
-    let title = if entry.author.is_empty() {
+    let title = if model.action.len() > 1 {
+        format!(" {} selected ", crate::books::books(model.action.len()))
+    } else if entry.author.is_empty() {
         format!(" {} ", clean(&entry.title))
     } else {
         format!(" {} · {} ", clean(&entry.title), clean(&entry.author))
@@ -294,23 +296,29 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
                 Span::raw(clean(&model.query)),
                 Span::styled("▏", accent()),
             ])
-        } else if model.query.is_empty() {
-            Line::from(Span::styled("Press / to search", plain()))
         } else {
-            Line::from(vec![
-                Span::styled("Filter ", plain()),
-                Span::raw(clean(&model.query)),
-                Span::styled(
-                    format!("  {} of {}", entries.len(), model.entries.len()),
-                    plain(),
-                ),
-            ])
+            let mut spans = vec![Span::styled(model.filter.label(), bold())];
+            if !model.query.is_empty() {
+                spans.push(Span::raw(format!(" · matching {}", clean(&model.query))));
+            }
+            spans.push(Span::raw(format!(
+                "  {} of {}",
+                entries.len(),
+                model.entries.len()
+            )));
+            if !model.marked.is_empty() {
+                spans.push(Span::styled(
+                    format!("  ✓ {} marked", model.marked.len()),
+                    fg(Color::Green),
+                ));
+            }
+            Line::from(spans)
         }),
         areas[1],
     );
     draw_list(model, frame, areas[2], &entries);
-    if let Some(entry) = &model.action {
-        draw_action(model, frame, areas[2], entry);
+    if !model.action.is_empty() {
+        draw_action(model, frame, areas[2]);
     }
     if areas[3].height > 0 {
         if let Some((title, lines)) = details(model, &entries) {
@@ -320,14 +328,18 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
             frame.render_widget(Paragraph::new(lines), inner);
         }
     }
-    let keys: &[(&str, &str)] = if model.action.is_some() {
+    let keys: &[(&str, &str)] = if !model.action.is_empty() {
         &[("1 2 3", "destination"), ("esc", "cancel")]
+    } else if model.busy.is_some() {
+        &[("esc", "stop after this book"), ("q", "quit when finished")]
     } else {
         &[
             ("enter", "copy"),
+            ("space", "mark"),
+            ("a", "mark all"),
+            ("f", "filter"),
             ("/", "search"),
             ("r", "refresh"),
-            ("↑↓ home end pgup pgdn", "move"),
             ("q", "quit"),
         ]
     };
@@ -437,7 +449,7 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
             // read as patches: on that row the glyph shapes carry the state.
             let paint = |style: Style| if selected { plain() } else { style };
             let (marker, title, detail) = match &e.source {
-                Source::Book(book, _) => (
+                Source::Book(book) => (
                     presence(book, selected),
                     Span::styled(
                         shorten(&e.title, columns[2].width as usize),
@@ -459,7 +471,11 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
                 ),
             };
             let mut cells = vec![
-                Cell::from(Line::from(Span::raw(" "))),
+                Cell::from(Line::from(if model.is_marked(e) {
+                    Span::styled("✓", paint(fg(Color::Green)))
+                } else {
+                    Span::raw(" ")
+                })),
                 Cell::from(marker),
                 Cell::from(Line::from(title)),
             ];
@@ -504,16 +520,22 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
 }
 /// Copy destinations as a dialog over the list: availability is decided before
 /// the keypress, by the same rules the model enforces afterwards.
-fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) {
-    let mut lines = vec![Line::from(match &entry.source {
-        Source::Book(book, _) => match book.preferred() {
+fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
+    let entries = &model.action;
+    let single = entries.len() == 1;
+    let mut lines = vec![Line::from(match entries.first().map(|e| &e.source) {
+        Some(Source::Book(book)) if single => match book.preferred() {
             Some(copy) => Span::styled(
                 format!("from {} · {}", copy.place.label(), size(copy.size)),
                 plain(),
             ),
             None => Span::styled("no usable copy", fg(Color::Red)),
         },
-        Source::Local(_) => Span::styled("from a local ACSM request", plain()),
+        Some(Source::Local(_)) if single => Span::styled("from a local ACSM request", plain()),
+        _ => Span::styled(
+            format!("{} marked", crate::books::books(entries.len())),
+            plain(),
+        ),
     })];
     lines.push(Line::default());
     for (key, place) in [
@@ -521,23 +543,52 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) 
         ("2", Place::Kobo),
         ("3", Place::Xteink),
     ] {
-        let (label, style, hint) = match model.destination(entry, place) {
-            Destination::Ready(hint) => (
+        // For a set, the dialog counts what would actually be copied and why
+        // the rest would not; the first reason stands for the remainder.
+        let mut ready = 0;
+        let mut hint = String::new();
+        let mut blocked = String::new();
+        for entry in entries {
+            match model.destination(entry, place) {
+                Destination::Ready(reason) => {
+                    ready += 1;
+                    if hint.is_empty() {
+                        hint = reason.to_owned();
+                    }
+                }
+                Destination::Blocked(reason, _) if blocked.is_empty() => {
+                    blocked = reason.to_owned();
+                }
+                Destination::Blocked(_, _) => {}
+            }
+        }
+        let text = if ready == 0 {
+            blocked
+        } else if single {
+            hint
+        } else if ready == entries.len() {
+            format!("copy all {ready}")
+        } else {
+            format!("copy {ready} of {}, rest {blocked}", entries.len())
+        };
+        let (label, style, detail) = if ready > 0 {
+            (
                 Span::styled(key, accent()),
                 bold(),
-                Span::styled(hint, fg(Color::Green)),
-            ),
-            Destination::Blocked(reason, _) => (
+                Span::styled(text, fg(Color::Green)),
+            )
+        } else {
+            (
                 Span::styled(key, plain()),
                 plain(),
-                Span::styled(reason, plain()),
-            ),
+                Span::styled(text, plain()),
+            )
         };
         lines.push(Line::from(vec![
             label,
             Span::raw("  "),
             Span::styled(format!("{:<8}", place.label()), style),
-            hint,
+            detail,
         ]));
     }
     lines.push(Line::default());
@@ -547,7 +598,7 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) 
     ]));
     // Never wider or taller than the list it covers, so a small terminal clips
     // the dialog's own content instead of drawing outside the frame.
-    let width = area.width.min(44);
+    let width = area.width.min(48);
     let height = (lines.len() as u16 + 2).min(area.height);
     let popup = Rect {
         x: area.x + area.width.saturating_sub(width) / 2,
@@ -555,8 +606,11 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) 
         width,
         height,
     };
-    let block =
-        frame_block(format!(" Copy to · {} ", shorten(&entry.title, 24))).border_style(accent());
+    let title = match entries.first() {
+        Some(entry) if single => format!(" Copy to · {} ", shorten(&entry.title, 24)),
+        _ => format!(" Copy {} to ", crate::books::books(entries.len())),
+    };
+    let block = frame_block(title).border_style(accent());
     let inner = block.inner(popup);
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);

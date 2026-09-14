@@ -17,11 +17,76 @@ pub(super) fn library_options(options: &Options) -> crate::books::Options {
         cache: None,
     }
 }
-pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -> Result<String> {
+/// Copy every chosen book, reporting each one and stopping cleanly when asked.
+/// One failure does not abandon the rest; the summary names what went wrong.
+pub(super) fn perform(
+    options: Options,
+    entries: Vec<Entry>,
+    target: crate::books::Place,
+    cancel: &std::sync::atomic::AtomicBool,
+    progress: impl Fn(&str),
+) -> Result<String> {
+    let total = entries.len();
+    let mut done = 0;
+    let mut failures: Vec<String> = vec![];
+    let mut last = String::new();
+    let mut stopped = false;
+    for (index, entry) in entries.into_iter().enumerate() {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            stopped = true;
+            break;
+        }
+        let title = entry.title.clone();
+        if total > 1 {
+            progress(&format!("Copying {} of {total}: {title}…", index + 1));
+        }
+        match one(&options, entry, target, &progress) {
+            Ok(message) => {
+                done += 1;
+                last = message;
+            }
+            Err(e) => failures.push(format!("{title}: {e:#}")),
+        }
+    }
+    if total == 1 && failures.is_empty() {
+        return Ok(format!("{last} Press r to refresh."));
+    }
+    if total == 1 {
+        anyhow::bail!("{}", failures.remove(0));
+    }
+    let mut summary = format!(
+        "Copied {done} of {} to {}.",
+        crate::books::books(total),
+        target.label()
+    );
+    if stopped {
+        summary.push_str(" Stopped on request.");
+    }
+    if !failures.is_empty() {
+        summary.push_str(&format!(
+            " {} failed: {}{}",
+            failures.len(),
+            failures
+                .iter()
+                .take(2)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("; "),
+            if failures.len() > 2 { "; …" } else { "" }
+        ));
+    }
+    summary.push_str(" Press r to refresh.");
+    Ok(summary)
+}
+fn one(
+    options: &Options,
+    entry: Entry,
+    target: crate::books::Place,
+    progress: &impl Fn(&str),
+) -> Result<String> {
     let path = match entry.source {
-        Source::Book(book, target) => {
-            return crate::books::transfer(&library_options(&options), &book, target, &progress)
-                .map(|message| format!("{message} Press r to refresh."))
+        Source::Book(book) => {
+            return crate::books::transfer(&library_options(options), &book, target, progress)
         }
         Source::Local(path) if entry.kind == "ACSM" => {
             progress("Fulfilling ACSM and importing EPUB…");
