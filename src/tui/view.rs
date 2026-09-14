@@ -90,9 +90,24 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
             };
             Line::styled(
                 clean(&format!(
-                    "{} {:7} {}  {}",
+                    "{} {:7} {:8} {}  {}",
                     if i == model.selected { ">" } else { " " },
                     entry.kind,
+                    if entry.preview
+                        || matches!(entry.source, super::Source::Directory(_))
+                        || entry.kind == "ACSM"
+                    {
+                        "—"
+                    } else if model.checking.is_some() {
+                        "Checking"
+                    } else {
+                        model
+                            .presence
+                            .iter()
+                            .find(|(s, _)| s == &entry.source)
+                            .map(|(_, status)| status.as_str())
+                            .unwrap_or("Unknown")
+                    },
                     entry.title,
                     entry.author
                 )),
@@ -104,7 +119,7 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     frame.render_widget(Paragraph::new(format!("{} entries | Enter: open/import/transfer | Tab: Local/Kobo\n↑↓/j k: select | /: search | Backspace: parent | o: output | r: refresh | q: quit", entries.len())), areas[4]);
     let prefix = if model.pending_quit {
         "Finishing before quit"
-    } else if model.busy.is_some() || model.loading.is_some() {
+    } else if model.busy.is_some() || model.loading.is_some() || model.checking.is_some() {
         ["Working .", "Working ..", "Working ..."][model.tick % 3]
     } else {
         "Status"

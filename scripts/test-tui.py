@@ -4,6 +4,7 @@ import fcntl
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import struct
 import subprocess
@@ -27,14 +28,35 @@ class Terminal:
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
     def send(self, data):
         os.write(self.master, data)
+    def screen(self):
+        # Reconstruct cursor-positioned output, including characters retained by
+        # Ratatui's differential renderer between frames.
+        cells = {}
+        row = col = 1
+        for token in re.findall(r'\x1b\[[0-?]*[ -/]*[@-~]|[^\x1b]', self.output.decode('utf-8', errors='replace')):
+            if token.startswith('\x1b['):
+                if token[-1] in 'Hf':
+                    values = token[2:-1].split(';')
+                    row = int(values[0] or 1)
+                    col = int(values[1] or 1) if len(values) > 1 else 1
+                elif token == '\x1b[2J':
+                    cells.clear()
+            elif token == '\r':
+                col = 1
+            elif token == '\n':
+                row += 1
+            else:
+                cells[row, col] = token
+                col += 1
+        return '\n'.join(''.join(cells.get((r, c), ' ') for c in range(1, 121))
+                         for r in range(1, 40)).encode()
     def expect(self, needle):
         deadline = time.monotonic() + 15
-        while needle not in self.output:
+        while needle not in self.screen():
             if time.monotonic() > deadline:
                 raise AssertionError((needle, self.output[-2000:]))
             if select.select([self.master], [], [], .1)[0]:
                 self.output += os.read(self.master, 65536)
-        self.output = b''
     def quit(self):
         self.send(b'\x03')
         assert self.proc.wait(timeout=10) == 0
@@ -66,17 +88,19 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
             '--output', str(root / 'imports'), '--copy-to', str(card)]
     t = Terminal(args)
     try:
-        t.expect(b'Test.epub')
+        t.expect(b'Reader checked.')
         t.send(b'/Test\r\r')
         t.expect(b'verified')
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
         assert source.read_bytes() == original
+        t.send(b'r')
+        t.expect(b'Present')
         t.resize(3, 12)
         t.send(b'r')
         time.sleep(.2)
         t.resize(28, 120)
         t.send(b'r')
-        t.expect(b'Test.epub')
+        t.expect(b'Reader checked.')
         t.quit()
     finally:
         t.close()
@@ -84,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
     source.write_bytes(b'not an EPUB')
     t = Terminal(args)
     try:
-        t.expect(b'Test.epub')
+        t.expect(b'Reader checked.')
         t.send(b'\r')
         t.expect(b'Error:')
         t.quit()

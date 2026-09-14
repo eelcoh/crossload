@@ -175,3 +175,77 @@ fn tears_runtime_proof_blocking_progress_completion_error_and_panic() {
         }
     }
 }
+
+#[test]
+fn reader_status_rejects_stale_results_and_keeps_search_responsive() {
+    let mut model = Model::new(options());
+    model.update(Message::Refresh);
+    let load = model.loading.unwrap();
+    let effects = model.update(Message::Loaded(load, Ok(vec![entry("book")])));
+    assert!(matches!(effects.as_slice(), [Effect::Check { .. }]));
+    let check = model.checking.unwrap();
+    model.update(key(KeyCode::Char('/')));
+    model.update(key(KeyCode::Char('b')));
+    assert_eq!(model.filtered().len(), 1);
+    model.update(key(KeyCode::Esc));
+    assert!(model.update(key(KeyCode::Enter)).is_empty());
+    model.update(Message::Presence(
+        check + 1,
+        Ok(vec![(Source::Kobo("book".into()), "Present".into())]),
+    ));
+    assert!(model.presence.is_empty());
+    model.update(Message::Presence(check, Err("offline".into())));
+    assert!(model.presence.is_empty());
+    assert!(model.status.contains("unknown"));
+    model.update(Message::Refresh);
+    let load = model.loading.unwrap();
+    model.update(Message::Loaded(load, Ok(vec![entry("book")])));
+    let check = model.checking.unwrap();
+    assert!(model.update(key(KeyCode::Char('q'))).is_empty());
+    assert!(matches!(
+        model
+            .update(Message::Presence(check, Ok(vec![])))
+            .as_slice(),
+        [Effect::Quit]
+    ));
+}
+
+#[test]
+fn reader_inventory_checks_local_contents_without_publishing() {
+    use std::io::Write;
+    let temp = tempfile::tempdir().unwrap();
+    let card = temp.path().join("card");
+    std::fs::create_dir(&card).unwrap();
+    let source = temp.path().join("book.epub");
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, data) in [
+        ("mimetype", "application/epub+zip"),
+        ("META-INF/container.xml", "<container><rootfiles><rootfile full-path='book.opf'/></rootfiles></container>"),
+        ("book.opf", "<package><metadata><title>Book</title></metadata><manifest><item id='c' href='c.xhtml' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>"),
+        ("c.xhtml", "<html><head><title>Book</title></head><body>Text</body></html>"),
+    ] { zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap(); zip.write_all(data.as_bytes()).unwrap(); }
+    std::fs::write(&source, zip.finish().unwrap().into_inner()).unwrap();
+    let mut opts = options();
+    opts.device = None;
+    opts.send_to = None;
+    opts.copy_to = Some(card.clone());
+    opts.output = temp.path().join("unpublished");
+    let mut book = entry("book");
+    book.kind = "EPUB";
+    book.source = Source::Local(source.clone());
+    assert_eq!(
+        backend::presence(&opts, vec![book.clone()]).unwrap()[0].1,
+        "Missing"
+    );
+    std::fs::copy(&source, card.join("renamed.epub")).unwrap();
+    assert_eq!(
+        backend::presence(&opts, vec![book.clone()]).unwrap()[0].1,
+        "Present"
+    );
+    std::fs::write(&source, b"broken").unwrap();
+    assert_eq!(
+        backend::presence(&opts, vec![book]).unwrap()[0].1,
+        "Unknown"
+    );
+    assert!(!opts.output.exists());
+}

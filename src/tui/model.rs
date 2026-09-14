@@ -9,6 +9,7 @@ pub(super) enum Message {
     Loaded(u64, Result<Vec<Entry>, String>),
     Progress(u64, String),
     Finished(u64, Result<String, String>),
+    Presence(u64, Result<Vec<(Source, String)>, String>),
 }
 pub(super) enum Effect {
     Load {
@@ -22,6 +23,11 @@ pub(super) enum Effect {
         entry: Entry,
     },
     Quit,
+    Check {
+        id: u64,
+        options: Box<Options>,
+        entries: Vec<Entry>,
+    },
 }
 pub(super) struct Model {
     pub options: Options,
@@ -35,6 +41,8 @@ pub(super) struct Model {
     pub pending_quit: bool,
     pub status: String,
     pub tick: usize,
+    pub checking: Option<u64>,
+    pub presence: Vec<(Source, String)>,
     next_id: u64,
 }
 impl Model {
@@ -51,6 +59,8 @@ impl Model {
             pending_quit: false,
             status: "Loading books…".into(),
             tick: 0,
+            checking: None,
+            presence: vec![],
             next_id: 0,
         }
     }
@@ -73,6 +83,8 @@ impl Model {
         self.next_id
     }
     fn reload(&mut self, clear: bool) -> Vec<Effect> {
+        self.checking = None;
+        self.presence.clear();
         if clear {
             self.entries.clear();
             self.query.clear();
@@ -90,7 +102,7 @@ impl Model {
         }]
     }
     fn quit(&mut self) -> Vec<Effect> {
-        if self.busy.is_some() || self.loading.is_some() {
+        if self.busy.is_some() || self.loading.is_some() || self.checking.is_some() {
             self.pending_quit = true;
             self.status = "Will quit when the current work finishes.".into();
             vec![]
@@ -114,6 +126,17 @@ impl Model {
                         if self.busy.is_none() && !self.pending_quit {
                             self.status =
                                 "Select a book. Enter opens, imports or transfers it.".into();
+                            if self.options.send_to.is_some() || self.options.copy_to.is_some() {
+                                let check_id = self.id();
+                                self.checking = Some(check_id);
+                                self.status =
+                                    "Checking reader contents; browsing remains available…".into();
+                                return vec![Effect::Check {
+                                    id: check_id,
+                                    options: Box::new(self.options.clone()),
+                                    entries: self.entries.clone(),
+                                }];
+                            }
                         }
                     }
                     Err(error) => {
@@ -129,6 +152,21 @@ impl Model {
             Message::Finished(id, result) if self.busy == Some(id) => {
                 self.busy = None;
                 self.status = result.unwrap_or_else(|e| format!("Error: {e}"));
+                self.presence.clear();
+                self.status.push_str(" Press r to refresh reader status.");
+            }
+            Message::Presence(id, result) if self.checking == Some(id) => {
+                self.checking = None;
+                match result {
+                    Ok(presence) => {
+                        self.presence = presence;
+                        self.status = "Reader checked. Missing means no matching contents; filename conflicts may still prevent transfer.".into();
+                    }
+                    Err(error) => {
+                        self.presence.clear();
+                        self.status = format!("Reader status unknown: {error}. Press r to retry.");
+                    }
+                }
             }
             Message::InputError(error) => {
                 self.status = format!("Terminal error: {error}");
@@ -196,6 +234,9 @@ impl Model {
                                 self.status =
                                     "This is a preview. Download the full book on the Kobo first."
                                         .into();
+                            } else if self.checking.is_some() {
+                                self.status =
+                                    "Wait for the reader check before transferring.".into();
                             } else if self.busy.is_none() {
                                 let id = self.id();
                                 self.busy = Some(id);
@@ -213,7 +254,11 @@ impl Model {
             }
             _ => {}
         }
-        if self.pending_quit && self.busy.is_none() && self.loading.is_none() {
+        if self.pending_quit
+            && self.busy.is_none()
+            && self.loading.is_none()
+            && self.checking.is_none()
+        {
             return vec![Effect::Quit];
         }
         vec![]

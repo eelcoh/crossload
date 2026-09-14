@@ -55,8 +55,10 @@
    preserves conflicts and reuses verified local imports on retry. Wi-Fi
    `--repair` preserves matching incomplete uploads before replacement.
 
-7. [ ] TUI features
+7. [x] TUI features
    Show which books are already on the reader, using the same inventory as sync.
+   Background content checks show Present/Missing/Unknown when --send-to or
+   --copy-to is selected. Refresh with r; errors never imply a missing book.
 
 8. [ ] TUI UI
    Explore good examples of TUI applications for inspiration and improve layout,

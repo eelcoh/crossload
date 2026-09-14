@@ -65,7 +65,10 @@ impl Application for App {
                 Err(e) => Message::InputError(e.to_string()),
             }),
         ];
-        if self.model.busy.is_some() || self.model.loading.is_some() {
+        if self.model.busy.is_some()
+            || self.model.loading.is_some()
+            || self.model.checking.is_some()
+        {
             subs.push(Subscription::new(Timer::new(150)).map(|_| Message::Tick));
         }
         subs
@@ -74,6 +77,19 @@ impl Application for App {
 fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
+        Effect::Check {
+            id,
+            options,
+            entries,
+        } => Command::future(async move {
+            let result = blocking(move || backend::presence(&options, entries)).await;
+            Message::Presence(
+                id,
+                result
+                    .map_err(|e| format!("Inventory worker stopped: {e}"))
+                    .and_then(|r| r.map_err(|e| format!("{e:#}"))),
+            )
+        }),
         Effect::Load { id, options, local } => Command::future(async move {
             let result = blocking(move || backend::load(&options, local)).await;
             Message::Loaded(

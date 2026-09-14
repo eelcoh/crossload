@@ -151,3 +151,59 @@ pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -
         format!("{local} remains intact; retry from Local or use crossload send/copy")
     })
 }
+
+/// Read-only snapshot and the same exact/resource identities used by sync.
+pub(super) fn presence(options: &Options, entries: Vec<Entry>) -> Result<Vec<(Source, String)>> {
+    use crate::inventory::{self, Destination, Inventory};
+    let destination = if let Some(address) = &options.send_to {
+        Destination::Reader(crosspoint::Reader::new(address, &options.folder)?)
+    } else {
+        crate::sync::card(
+            options
+                .copy_to
+                .as_ref()
+                .context("No destination selected")?,
+        )?
+    };
+    let inventory = Inventory::scan(&destination, |_| {})?;
+    let library = if entries.iter().any(|e| matches!(e.source, Source::Kobo(_))) {
+        options
+            .device
+            .as_ref()
+            .map(|p| kobo::Library::open(p))
+            .transpose()?
+    } else {
+        None
+    };
+    let mut results = Vec::new();
+    for entry in entries {
+        if entry.preview || matches!(entry.source, Source::Directory(_)) || entry.kind == "ACSM" {
+            continue;
+        }
+        let check = (|| -> Result<bool> {
+            let staging = tempfile::tempdir()?;
+            let path = match &entry.source {
+                Source::Kobo(id) => library.as_ref().context("No Kobo")?.import(
+                    id,
+                    staging.path(),
+                    options.serial.as_deref(),
+                )?,
+                Source::Local(path) => path.clone(),
+                Source::Directory(_) => unreachable!(),
+            };
+            let prepared = prepare::prepare(&path, options.optimize, options.organized)?;
+            let original = inventory::identity(&fs::read(&path)?);
+            let optimized = inventory::identity(&fs::read(&prepared.path)?);
+            Ok(inventory.matching(&[&original, &optimized]).is_some())
+        })();
+        results.push((
+            entry.source,
+            match check {
+                Ok(true) => "Present".into(),
+                Ok(false) => "Missing".into(),
+                Err(_) => "Unknown".into(),
+            },
+        ));
+    }
+    Ok(results)
+}

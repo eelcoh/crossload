@@ -643,6 +643,14 @@ crossload kobo list > books.tsv
 ```
 
 The TUI uses Tears 0.8.0 and Ratatui 0.30.2 with Elm-style messages and effects.
+With `--send-to` or `--copy-to`, a background inventory check shows `Present`,
+`Missing`, or `Unknown` for Kobo books and local EPUBs. It uses sync's full-content
+checks, including the optimized copy. Wi-Fi checks download destination EPUBs
+and may take time; searching and selection remain available. Transfers wait for
+the current check. ACSM files and previews are not checked or fulfilled by inventory.
+`Missing` means no matching contents, so a different book at the same filename
+can still block transfer. Failed checks stay `Unknown`; press `r` to retry or
+refresh after a transfer. Reader status is a snapshot, not a live connection.
 [TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and migration results.
 Run `mise run test:tui` for the synthetic terminal smoke check (host Python 3 is
 required). It covers search, verified copying, resizing, failure display and
