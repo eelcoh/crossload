@@ -594,6 +594,17 @@ or disconnecting a device, or after copying. Refresh keeps the current list and
 selection visible until the new scan completes, then applies additions/removals.
 Copy actions wait during that refresh; an initial scan still shows partial results.
 
+Discovery remembers what it learned about each local file in an identity cache
+under `~/.cache/crossload/index.json` (`XDG_CACHE_HOME` is respected;
+`~/Library/Caches/crossload` on macOS). A file is reused only while its size and
+modification time are unchanged, and only for the same optimization settings,
+so a repeated scan of an unchanged library is close to instant while a changed
+or replaced book is read again. The identity of a book's optimized copy is
+remembered by content, which spares Kobo books the same work. The cache holds
+identities, never books: a title only appears when the current scan finds its
+file, so this remains a fresh inventory rather than an offline history. Deleting
+the file only costs the next scan its work; the cache is never required.
+
 Matching copies share a row, with an **L K X** column for Local, Kobo and
 Xteink: `●` an original copy, `◐` a device copy that went through optimization,
 `·` absent and `✗` a copy that could not be read. A `⇩` row is a local ACSM

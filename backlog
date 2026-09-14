@@ -90,6 +90,86 @@
     Use Calibre ACSM Input activation export instead. README documents setup,
     the correct ZIP export, Mac-to-Linux reuse and the subsequent import flow.
 
+12. [x] Discovery content index — implemented
+    Every scan re-reads and re-hashes each book, and `books::candidate` also runs
+    `prepare::prepare` per book only to learn the optimized variant's identity,
+    then throws the result away. Nothing is cached; there is no mtime check.
+    Measured here: 10 books of 3 MB take 4.4 s cold and 4.4 s again on r; the
+    same library with --no-optimize takes 1.4 s, so about two thirds of the time
+    is discarded image re-encoding. One 18 MB book costs 1.55 s to optimize.
+    A 500-book library is roughly 3.7 minutes of CPU on every launch and every
+    refresh, single-threaded per location.
+    Cache identity per (place, path, size, mtime) in the XDG cache directory,
+    recording the optimize/organized options that produced it so a settings
+    change invalidates the entry. A hit must only supply identity for a file the
+    current scan actually enumerated: this stays a fresh inventory, never an
+    offline history. The cache must be best-effort — unreadable, corrupt or
+    unwritable never fails a scan. Also compute the optimized variant lazily,
+    when a device copy that might match it actually appears.
+    Implemented in `src/cache.rs`: a versioned, best-effort JSON index keyed by
+    (place, path, size, mtime, optimize, organized) for local files, plus an
+    optimized-variant identity keyed by content hash, which also spares Kobo
+    books the image re-encoding without needing the lazy scheme above. Entries
+    expire after 90 days and are capped at 20000, most recently used kept.
+    Writes are atomic; a missing, corrupt, foreign-version or unwritable index
+    degrades to recomputation. Measured on the same 10 books of 3 MB: cold
+    4.6 s unchanged, repeat scan 0.01-0.04 s, one modified book 0.10 s.
+    Tests cover reopening, corruption, an unwritable location, key
+    invalidation, and that a cached book whose file is gone never appears.
+
+13. [ ] Device scans reuse known identities
+    Xteink discovery downloads every EPUB in full on every scan, and Kobo
+    discovery decrypts every book into a temporary directory on every scan.
+    `Reader::files` returns only path, size and directory, so identity cannot be
+    derived remotely, but we already know the identity of everything we uploaded
+    and (path, size) is a sound key for a device we do not otherwise write to.
+    With item 12 in place, a refresh against an unchanged reader should cost one
+    listing call.
+
+14. [ ] Stream discovery results and parallelize within a location
+    `books::scan` emits a snapshot only when a whole location finishes, so a
+    large local scan shows nothing for minutes and then everything at once.
+    Emit every N books or every 250 ms; the model already merges partial
+    snapshots. `progress(snapshot.clone())` deep-clones the whole catalog per
+    emission, which gets expensive as emissions get more frequent. Within a
+    location books are processed one at a time; the work is CPU-bound and
+    independent, so a pool across books should scale with the core count.
+
+15. [ ] Catalog on the command line
+    The unified Local/Kobo/Xteink catalog is reachable only from the TUI.
+    Add `crossload books [--json]` for the same catalog as a table or JSON, and
+    generalize `kobo sync` into `crossload sync --from PLACE --to PLACE`, reusing
+    the preferred-original rules in `Book::preferred`. This also makes discovery
+    testable without a pseudo-terminal.
+
+16. [ ] Bulk actions and filters in the TUI
+    Copying is one book at a time, while the real task is "copy everything that
+    is not on the reader yet". On top of item 15's sync engine, add multi-select
+    (space), a copy-all-missing action per destination, and filter presets for
+    missing from Xteink, only on the reader, and unreadable.
+
+17. [ ] Small corrections
+    `Model::filtered` formats and lowercases a String per entry per call, and is
+    called several times per keystroke plus once per frame; precompute a search
+    key and cache the filtered indices. `view::shorten` counts chars, so CJK and
+    emoji titles truncate to the wrong display width — `unicode-width` is already
+    a dependency and is currently referenced nowhere in src. Each `candidate`
+    holds a whole book in memory (up to 128 MiB) while `prepare` holds another
+    copy plus its re-encoded output, across three location threads.
+
+18. [ ] Archive fulfilled ACSM files
+    A fulfilled ACSM keeps appearing in the library as a pending request. After a
+    verified fulfillment, move the file into an `archive/` folder beside it
+    rather than deleting it, never overwriting an existing archived file. Do not
+    archive when the fulfillment outcome is uncertain: that case must stay
+    visible and must not be replayed automatically.
+
+19. [ ] macOS verification and published releases
+    Native ADEPT, the Tears TUI and packaging have never run on a Mac; CI is
+    configured but unverified. No binaries are published yet — a tag-triggered
+    release workflow reusing `scripts/package.py` would make `dist/` installable
+    by someone other than the author.
+
 ## macOS verification update
 
 The user compiled and smoke-tested the version currently on GitHub on a Mac.
@@ -103,3 +183,9 @@ packaging changes still need macOS verification after the checkpoint push.
 - [x] Arrow/page navigation while searching.
 - [x] Preserve the visible list and selection until refresh completes.
 - [x] Use a looping single-character spinner for background work.
+- [x] Framed library and details, one-line location pills, an L K X presence
+      column with a legend, a copy dialog that marks each destination before the
+      keypress, margin-preserving scrolling with a scrollbar, width-earned
+      columns with ellipsis truncation, and a full-line selection highlight.
+      Secondary text keeps the terminal's default foreground: grey and DIM sit
+      too close to the background in many themes.

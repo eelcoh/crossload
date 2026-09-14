@@ -11,5 +11,6 @@ pub mod tui;
 pub mod config;
 
 pub mod books;
+pub mod cache;
 pub mod inventory;
 pub mod sync;

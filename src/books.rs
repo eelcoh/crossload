@@ -1,5 +1,5 @@
 //! A content-based library across local storage, Kobo and CrossPoint.
-use crate::{copy, crosspoint::Reader, epub, inventory, kobo, prepare};
+use crate::{cache, copy, crosspoint::Reader, epub, inventory, kobo, prepare};
 use anyhow::{ensure, Context, Result};
 use std::{
     fs,
@@ -67,6 +67,8 @@ pub struct Options {
     pub serial: Option<String>,
     pub optimize: bool,
     pub organized: bool,
+    /// Identity cache file; None uses the default cache location.
+    pub cache: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -92,7 +94,39 @@ fn bytes(path: &Path) -> Result<Vec<u8>> {
     );
     Ok(data)
 }
-fn candidate(path: &Path, place: Place, source: String, options: &Options) -> Result<Book> {
+fn book(entry: cache::Source, place: Place, path: String, size: u64) -> Book {
+    Book {
+        title: entry.title,
+        author: entry.author,
+        copies: vec![Copy {
+            place,
+            path,
+            size,
+            sha: entry.sha,
+            resources: entry.resources,
+            optimized: entry.optimized,
+            variants: entry.variants,
+        }],
+    }
+}
+fn candidate(
+    path: &Path,
+    place: Place,
+    source: String,
+    options: &Options,
+    index: &cache::Index,
+) -> Result<Book> {
+    // Only a file we can stat has a key; devices reach candidate() through a
+    // temporary copy, whose path and timestamps say nothing about the device.
+    let key = (place == Place::Local)
+        .then(|| cache::source_key(place.label(), path, options.optimize, options.organized))
+        .flatten();
+    if let Some((entry, size)) = key
+        .as_ref()
+        .and_then(|(key, size)| Some((index.source(key)?, *size)))
+    {
+        return Ok(book(entry, place, source, size));
+    }
     let data = bytes(path)?;
     epub::validate(&data)?;
     let metadata = epub::metadata(path)?.context("Missing EPUB metadata")?;
@@ -103,23 +137,36 @@ fn candidate(path: &Path, place: Place, source: String, options: &Options) -> Re
             .is_ok();
     let mut variants = vec![(id.sha256.clone(), id.resources.clone())];
     if place != Place::Xteink {
-        let prepared = prepare::prepare(path, options.optimize, options.organized)?;
-        let identity = inventory::identity(&bytes(&prepared.path)?);
-        variants.push((identity.sha256, identity.resources));
+        // Identical bytes always optimize to the same copy, wherever they came
+        // from, so this hit also spares Kobo books the image re-encoding.
+        let key = cache::variant_key(&id.sha256, options.optimize, options.organized);
+        let variant = match index.variant(&key) {
+            Some(variant) => variant,
+            None => {
+                let prepared = prepare::prepare(path, options.optimize, options.organized)?;
+                let identity = inventory::identity(&bytes(&prepared.path)?);
+                let variant = cache::Variant {
+                    sha: identity.sha256,
+                    resources: identity.resources,
+                };
+                index.put_variant(key, variant.clone());
+                variant
+            }
+        };
+        variants.push((variant.sha, variant.resources));
     }
-    Ok(Book {
+    let entry = cache::Source {
         title: metadata.title.unwrap_or_else(|| "Untitled".into()),
         author: metadata.author,
-        copies: vec![Copy {
-            place,
-            path: source,
-            size: data.len() as u64,
-            sha: id.sha256,
-            resources: id.resources,
-            optimized,
-            variants,
-        }],
-    })
+        sha: id.sha256,
+        resources: id.resources,
+        optimized,
+        variants,
+    };
+    if let Some((key, _)) = key {
+        index.put_source(key, entry.clone());
+    }
+    Ok(book(entry, place, source, data.len() as u64))
 }
 fn unreadable(place: Place, path: String, title: String, reason: String) -> Book {
     Book {
@@ -180,7 +227,7 @@ struct Found {
     acsm: Vec<PathBuf>,
     warnings: usize,
 }
-fn discover(options: &Options, place: Place) -> Result<Found> {
+fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Found> {
     let mut found = Found {
         books: vec![],
         acsm: vec![],
@@ -244,8 +291,13 @@ fn discover(options: &Options, place: Place) -> Result<Found> {
                         if ext != "epub" {
                             continue;
                         }
-                        match candidate(&path, place, path.to_string_lossy().into_owned(), options)
-                        {
+                        match candidate(
+                            &path,
+                            place,
+                            path.to_string_lossy().into_owned(),
+                            options,
+                            index,
+                        ) {
                             Ok(book) => found.books.push(book),
                             Err(e) => {
                                 found.warnings += 1;
@@ -284,7 +336,7 @@ fn discover(options: &Options, place: Place) -> Result<Found> {
                 let temp = tempfile::tempdir()?;
                 let result = library
                     .import(&book.id, temp.path(), options.serial.as_deref())
-                    .and_then(|p| candidate(&p, place, book.id.clone(), options));
+                    .and_then(|p| candidate(&p, place, book.id.clone(), options, index));
                 match result {
                     Ok(book) => found.books.push(book),
                     Err(e) => {
@@ -308,7 +360,7 @@ fn discover(options: &Options, place: Place) -> Result<Found> {
                     let temp = tempfile::tempdir()?;
                     let path = temp.path().join("book.epub");
                     fs::write(&path, data)?;
-                    candidate(&path, place, file.path.clone(), options)
+                    candidate(&path, place, file.path.clone(), options, index)
                 })();
                 match result {
                     Ok(book) => found.books.push(book),
@@ -342,13 +394,15 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
         ],
         ..Snapshot::default()
     };
+    let index = cache::Index::open(options.cache.clone());
     std::thread::scope(|scope| {
         let (tx, rx) = std::sync::mpsc::channel();
         for place in [Place::Local, Place::Kobo, Place::Xteink] {
             let tx = tx.clone();
+            let index = &index;
             scope.spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    discover(options, place)
+                    discover(options, place, index)
                 }))
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("Location worker stopped")));
                 let _ = tx.send((place, result));
@@ -376,6 +430,7 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
             progress(snapshot.clone());
         }
     });
+    index.save();
     snapshot
 }
 fn destination(options: &Options) -> Result<inventory::Destination> {

@@ -14,6 +14,7 @@ pub(super) fn library_options(options: &Options) -> crate::books::Options {
         serial: options.serial.clone(),
         optimize: options.optimize,
         organized: options.organized,
+        cache: None,
     }
 }
 pub(super) fn perform(options: Options, entry: Entry, progress: impl Fn(&str)) -> Result<String> {

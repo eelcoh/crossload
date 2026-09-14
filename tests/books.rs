@@ -31,6 +31,7 @@ fn options(root: &std::path::Path) -> Options {
         serial: None,
         optimize: true,
         organized: true,
+        cache: Some(root.join("index.json")),
     }
 }
 fn kobo(root: &std::path::Path) {
@@ -198,4 +199,43 @@ fn disconnected_card_and_browse_keep_output_books_and_unreadable_rows_visible() 
         .unwrap();
     assert!(books::transfer(&o, broken, Place::Kobo, &|_| {}).is_err());
     assert!(!o.card.unwrap().exists());
+}
+
+#[test]
+fn stored_identities_are_reused_until_a_file_changes_and_never_outlive_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let path = o.local.join("book.epub");
+    fs::write(&path, epub("text", CompressionMethod::Stored)).unwrap();
+    let first = books::scan(&o, |_| {});
+    assert_eq!(first.books.len(), 1);
+    // An unchanged library produces exactly the same catalog from the cache.
+    let second = books::scan(&o, |_| {});
+    assert_eq!(second.books, first.books);
+    // Rewriting the bytes while restoring size and timestamp is deliberately
+    // invisible: trusting (size, mtime) is what makes a refresh cheap.
+    let modified = fs::metadata(&path).unwrap().modified().unwrap();
+    fs::write(&path, epub("txet", CompressionMethod::Stored)).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(modified)
+        .unwrap();
+    assert_eq!(books::scan(&o, |_| {}).books, first.books);
+    // A newer timestamp is a miss, and the new contents take over.
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(modified + std::time::Duration::from_secs(2))
+        .unwrap();
+    let rescanned = books::scan(&o, |_| {});
+    assert_ne!(
+        rescanned.books[0].copies[0].sha,
+        first.books[0].copies[0].sha
+    );
+    // A cached book whose file is gone must not survive as an offline history.
+    fs::remove_file(&path).unwrap();
+    assert!(books::scan(&o, |_| {}).books.is_empty());
 }
