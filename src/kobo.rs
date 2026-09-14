@@ -134,6 +134,21 @@ impl Library {
         Ok(books)
     }
 
+    /// The device file a book is imported from. Discovery fingerprints it to
+    /// detect change without decrypting the book again.
+    pub fn source_path(&self, book: &Book) -> Result<PathBuf> {
+        match &book.path {
+            Some(relative) => {
+                let path = self.root.join(relative).canonicalize()?;
+                ensure!(
+                    path.starts_with(&self.root),
+                    "Book path points outside the device"
+                );
+                Ok(path)
+            }
+            None => self.book_path(&book.id),
+        }
+    }
     pub fn import(&self, id: &str, output: &Path, serial: Option<&str>) -> Result<PathBuf> {
         self.import_inner(id, output, serial, false)
     }
@@ -159,17 +174,7 @@ impl Library {
             !book.preview,
             "This Kobo entry is a preview, not the full book. Download the full edition on your Kobo, then reconnect and retry"
         );
-        let path = match &book.path {
-            Some(relative) => {
-                let path = self.root.join(relative).canonicalize()?;
-                ensure!(
-                    path.starts_with(&self.root),
-                    "Book path points outside the device"
-                );
-                path
-            }
-            None => self.book_path(id)?,
-        };
+        let path = self.source_path(&book)?;
         let mut data = Vec::new();
         fs::File::open(&path)?
             .take(epub::MAX_BOOK_BYTES + 1)

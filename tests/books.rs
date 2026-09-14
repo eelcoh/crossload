@@ -239,3 +239,42 @@ fn stored_identities_are_reused_until_a_file_changes_and_never_outlive_it() {
     fs::remove_file(&path).unwrap();
     assert!(books::scan(&o, |_| {}).books.is_empty());
 }
+
+#[test]
+fn an_unchanged_kobo_book_is_not_imported_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let root = o.kobo.as_ref().unwrap();
+    kobo(root);
+    let sideloaded = root.join("Author/Book.epub");
+    fs::create_dir_all(sideloaded.parent().unwrap()).unwrap();
+    fs::write(&sideloaded, epub("text", CompressionMethod::Stored)).unwrap();
+    let first = books::scan(&o, |_| {});
+    assert_eq!(first.books.len(), 1);
+    assert!(first.books[0].has(Place::Kobo));
+    // Replacing the contents while restoring size and timestamp proves the
+    // second scan never read the device file: the identity is unchanged.
+    let modified = fs::metadata(&sideloaded).unwrap().modified().unwrap();
+    fs::write(&sideloaded, epub("txet", CompressionMethod::Stored)).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&sideloaded)
+        .unwrap()
+        .set_modified(modified)
+        .unwrap();
+    assert_eq!(books::scan(&o, |_| {}).books, first.books);
+    // A newer timestamp is a miss, and a removed book never lingers.
+    fs::File::options()
+        .write(true)
+        .open(&sideloaded)
+        .unwrap()
+        .set_modified(modified + std::time::Duration::from_secs(2))
+        .unwrap();
+    let rescanned = books::scan(&o, |_| {});
+    assert_ne!(
+        rescanned.books[0].copies[0].sha,
+        first.books[0].copies[0].sha
+    );
+    fs::remove_file(&sideloaded).unwrap();
+    assert!(books::scan(&o, |_| {}).books.is_empty());
+}

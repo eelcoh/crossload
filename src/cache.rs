@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 /// Bumped whenever a stored field changes meaning; older files are discarded.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const MAX_ENTRIES: usize = 20_000;
 const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 /// What discovery would otherwise reread and rehash the whole book to learn.
@@ -22,6 +22,7 @@ const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 pub struct Source {
     pub title: String,
     pub author: String,
+    pub size: u64,
     pub sha: String,
     pub resources: Option<String>,
     pub optimized: bool,
@@ -73,25 +74,29 @@ pub fn default_path() -> Option<PathBuf> {
     };
     Some(base.join("crossload").join("index.json"))
 }
-/// A file's identity key. Any change to its size or modification time is a
-/// miss, as is a change to the options that shaped the stored variants.
+/// An identity key. `scope` separates devices and libraries that could
+/// otherwise share an id, and `fingerprint` is whatever cheap evidence that
+/// location offers that the source is unchanged. Any difference is a miss, as
+/// is a change to the options that shaped the stored variants.
 pub fn source_key(
-    place: &str,
-    path: &Path,
+    scope: &str,
+    id: &str,
+    fingerprint: &str,
     optimize: bool,
     organized: bool,
-) -> Option<(String, u64)> {
+) -> String {
+    format!("{scope}\u{1}{id}\u{1}{fingerprint}\u{1}{optimize}{organized}")
+}
+/// Size and modification time: what a local or mounted file can be checked for
+/// without reading it.
+pub fn file_fingerprint(path: &Path) -> Option<String> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
-    Some((
-        format!(
-            "{place}\u{1}{}\u{1}{}\u{1}{}.{:09}\u{1}{optimize}{organized}",
-            path.display(),
-            metadata.len(),
-            modified.as_secs(),
-            modified.subsec_nanos(),
-        ),
+    Some(format!(
+        "{}.{}.{:09}",
         metadata.len(),
+        modified.as_secs(),
+        modified.subsec_nanos()
     ))
 }
 pub fn variant_key(sha: &str, optimize: bool, organized: bool) -> String {

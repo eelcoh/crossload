@@ -594,16 +594,21 @@ or disconnecting a device, or after copying. Refresh keeps the current list and
 selection visible until the new scan completes, then applies additions/removals.
 Copy actions wait during that refresh; an initial scan still shows partial results.
 
-Discovery remembers what it learned about each local file in an identity cache
-under `~/.cache/crossload/index.json` (`XDG_CACHE_HOME` is respected;
-`~/Library/Caches/crossload` on macOS). A file is reused only while its size and
-modification time are unchanged, and only for the same optimization settings,
-so a repeated scan of an unchanged library is close to instant while a changed
-or replaced book is read again. The identity of a book's optimized copy is
-remembered by content, which spares Kobo books the same work. The cache holds
-identities, never books: a title only appears when the current scan finds its
-file, so this remains a fresh inventory rather than an offline history. Deleting
-the file only costs the next scan its work; the cache is never required.
+Discovery remembers what it learned in an identity cache under
+`~/.cache/crossload/index.json` (`XDG_CACHE_HOME` is respected;
+`~/Library/Caches/crossload` on macOS), so a repeated scan of an unchanged
+library is close to instant. Each location proves a source is unchanged in the
+way it can: local and Kobo books by the size and modification time of the file
+on disk, so an unchanged Kobo book is never decrypted again; books on the reader
+by the path and size its listing reports, so they are not downloaded again. A
+book replaced by one of exactly the same size, with its timestamp restored where
+there is one, is not detected. Entries are also specific to the device or card
+they came from, and to the optimization settings that produced them.
+
+The cache holds identities, never books: a title only appears when the current
+scan finds its file, so this remains a fresh inventory rather than an offline
+history. Deleting the file only costs the next scan its work; a missing,
+unreadable or unwritable cache is never an error.
 
 Matching copies share a row, with an **L K X** column for Local, Kobo and
 Xteink: `●` an original copy, `◐` a device copy that went through optimization,

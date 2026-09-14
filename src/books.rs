@@ -94,14 +94,14 @@ fn bytes(path: &Path) -> Result<Vec<u8>> {
     );
     Ok(data)
 }
-fn book(entry: cache::Source, place: Place, path: String, size: u64) -> Book {
+fn book(entry: cache::Source, place: Place, path: String) -> Book {
     Book {
         title: entry.title,
         author: entry.author,
         copies: vec![Copy {
             place,
             path,
-            size,
+            size: entry.size,
             sha: entry.sha,
             resources: entry.resources,
             optimized: entry.optimized,
@@ -109,24 +109,21 @@ fn book(entry: cache::Source, place: Place, path: String, size: u64) -> Book {
         }],
     }
 }
+/// A location's stored identity for a source it has just enumerated and found
+/// unchanged. Nothing here invents a book: the caller has already seen it.
+fn stored(index: &cache::Index, key: Option<&String>, place: Place, source: &str) -> Option<Book> {
+    Some(book(index.source(key?)?, place, source.to_owned()))
+}
+/// `key` is the caller's evidence that this source is unchanged; `None` means
+/// this location cannot prove it, and the result is not stored.
 fn candidate(
     path: &Path,
     place: Place,
     source: String,
     options: &Options,
     index: &cache::Index,
+    key: Option<String>,
 ) -> Result<Book> {
-    // Only a file we can stat has a key; devices reach candidate() through a
-    // temporary copy, whose path and timestamps say nothing about the device.
-    let key = (place == Place::Local)
-        .then(|| cache::source_key(place.label(), path, options.optimize, options.organized))
-        .flatten();
-    if let Some((entry, size)) = key
-        .as_ref()
-        .and_then(|(key, size)| Some((index.source(key)?, *size)))
-    {
-        return Ok(book(entry, place, source, size));
-    }
     let data = bytes(path)?;
     epub::validate(&data)?;
     let metadata = epub::metadata(path)?.context("Missing EPUB metadata")?;
@@ -158,15 +155,16 @@ fn candidate(
     let entry = cache::Source {
         title: metadata.title.unwrap_or_else(|| "Untitled".into()),
         author: metadata.author,
+        size: data.len() as u64,
         sha: id.sha256,
         resources: id.resources,
         optimized,
         variants,
     };
-    if let Some((key, _)) = key {
+    if let Some(key) = key {
         index.put_source(key, entry.clone());
     }
-    Ok(book(entry, place, source, data.len() as u64))
+    Ok(book(entry, place, source))
 }
 fn unreadable(place: Place, path: String, title: String, reason: String) -> Book {
     Book {
@@ -291,13 +289,21 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                         if ext != "epub" {
                             continue;
                         }
-                        match candidate(
-                            &path,
-                            place,
-                            path.to_string_lossy().into_owned(),
-                            options,
-                            index,
-                        ) {
+                        let source = path.to_string_lossy().into_owned();
+                        let key = cache::file_fingerprint(&path).map(|fingerprint| {
+                            cache::source_key(
+                                place.label(),
+                                &source,
+                                &fingerprint,
+                                options.optimize,
+                                options.organized,
+                            )
+                        });
+                        if let Some(book) = stored(index, key.as_ref(), place, &source) {
+                            found.books.push(book);
+                            continue;
+                        }
+                        match candidate(&path, place, source, options, index, key) {
                             Ok(book) => found.books.push(book),
                             Err(e) => {
                                 found.warnings += 1;
@@ -333,10 +339,36 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
                     ));
                     continue;
                 }
+                // The decrypted copy follows from the device file, the serial
+                // and this library, so an unchanged file needs no import.
+                let scope = format!(
+                    "{}\u{1}{}\u{1}{}",
+                    place.label(),
+                    root.display(),
+                    options.serial.as_deref().unwrap_or_default()
+                );
+                let key = library
+                    .source_path(&book)
+                    .ok()
+                    .as_deref()
+                    .and_then(cache::file_fingerprint)
+                    .map(|fingerprint| {
+                        cache::source_key(
+                            &scope,
+                            &book.id,
+                            &fingerprint,
+                            options.optimize,
+                            options.organized,
+                        )
+                    });
+                if let Some(found_book) = stored(index, key.as_ref(), place, &book.id) {
+                    found.books.push(found_book);
+                    continue;
+                }
                 let temp = tempfile::tempdir()?;
                 let result = library
                     .import(&book.id, temp.path(), options.serial.as_deref())
-                    .and_then(|p| candidate(&p, place, book.id.clone(), options, index));
+                    .and_then(|p| candidate(&p, place, book.id.clone(), options, index, key));
                 match result {
                     Ok(book) => found.books.push(book),
                     Err(e) => {
@@ -350,17 +382,43 @@ fn discover(options: &Options, place: Place, index: &cache::Index) -> Result<Fou
         }
         Place::Xteink => {
             let destination = destination(options)?;
+            // Which reader or card this is: paths and sizes alone could
+            // otherwise be shared by two different devices.
+            let scope = format!(
+                "{}\u{1}{}\u{1}{}",
+                place.label(),
+                options
+                    .card
+                    .as_ref()
+                    .map(|card| card.display().to_string())
+                    .or_else(|| options.reader.clone())
+                    .unwrap_or_default(),
+                options.folder
+            );
             for file in destination
                 .files()?
                 .into_iter()
                 .filter(|f| !f.directory && f.path.to_lowercase().ends_with(".epub"))
             {
+                // The reader's listing offers a size and nothing else; a
+                // replacement of exactly the same size is not detected.
+                let key = Some(cache::source_key(
+                    &scope,
+                    &file.path,
+                    &file.size.to_string(),
+                    options.optimize,
+                    options.organized,
+                ));
+                if let Some(book) = stored(index, key.as_ref(), place, &file.path) {
+                    found.books.push(book);
+                    continue;
+                }
                 let result = (|| -> Result<Book> {
                     let data = destination.read(&file)?;
                     let temp = tempfile::tempdir()?;
                     let path = temp.path().join("book.epub");
                     fs::write(&path, data)?;
-                    candidate(&path, place, file.path.clone(), options, index)
+                    candidate(&path, place, file.path.clone(), options, index, key)
                 })();
                 match result {
                     Ok(book) => found.books.push(book),

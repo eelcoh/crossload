@@ -117,7 +117,7 @@
     Tests cover reopening, corruption, an unwritable location, key
     invalidation, and that a cached book whose file is gone never appears.
 
-13. [ ] Device scans reuse known identities
+13. [x] Device scans reuse known identities — implemented
     Xteink discovery downloads every EPUB in full on every scan, and Kobo
     discovery decrypts every book into a temporary directory on every scan.
     `Reader::files` returns only path, size and directory, so identity cannot be
@@ -125,6 +125,13 @@
     and (path, size) is a sound key for a device we do not otherwise write to.
     With item 12 in place, a refresh against an unchanged reader should cost one
     listing call.
+    Implemented: `kobo::Library::source_path` exposes the device file each book
+    is imported from, and discovery fingerprints it exactly as a local file, so
+    an unchanged Kobo book is never decrypted again. Reader and card books are
+    keyed by the path and size the listing reports, scoped to that device or
+    mount, so they are not downloaded again. A same-size replacement is not
+    detected, which is recorded in the README and in a test. Measured on ten
+    3 MB books on a card: 0.73 s cold, 0.01 s warm.
 
 14. [ ] Stream discovery results and parallelize within a location
     `books::scan` emits a snapshot only when a whole location finishes, so a
