@@ -66,10 +66,16 @@
    Added responsive title/status/author/type columns, selected-book details,
    explicit empty states, contextual Enter hints, and Home/End/Page navigation.
 
-9. [ ] ByteBooks integration
+9. [x] ByteBooks integration — investigation
    Investigate starting activation from the CLI without needing Calibre to obtain
    an activation export. Establish supported authentication and activation flows
    before implementing; keep the current activation ZIP import as a fallback.
+   See BYTEBOOKS-ACTIVATION.md. Native sign-in/activation functions are present;
+   public service discovery was verified. Direct login remains unverified.
+
+10. [ ] Direct ByteBooks activation — implementation
+    Add HTTPS-only activation, interactive secret input, recoverable private
+    staging and synthetic protocol tests; then verify a real account locally.
 
 ## macOS verification update
 

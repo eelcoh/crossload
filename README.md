@@ -656,6 +656,10 @@ the current check. ACSM files and previews are not checked or fulfilled by inven
 can still block transfer. Failed checks stay `Unknown`; press `r` to retry or
 refresh after a transfer. Reader status is a snapshot, not a live connection.
 [TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and migration results.
+
+Direct ByteBooks account activation is planned; activation ZIP import remains
+the supported setup method. [BYTEBOOKS-ACTIVATION.md](BYTEBOOKS-ACTIVATION.md)
+records the protocol investigation and implementation requirements.
 Run `mise run test:tui` for the synthetic terminal smoke check (host Python 3 is
 required). It covers search, verified copying, resizing, failure display and
 terminal restoration without a real reader. Native macOS execution is pending.
