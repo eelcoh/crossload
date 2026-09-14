@@ -203,6 +203,13 @@ impl Model {
                     KeyCode::Up | KeyCode::Char('k') => {
                         self.selected = self.selected.saturating_sub(1)
                     }
+                    KeyCode::Home => self.selected = 0,
+                    KeyCode::End => self.selected = self.filtered().len().saturating_sub(1),
+                    KeyCode::PageDown => {
+                        self.selected =
+                            (self.selected + 10).min(self.filtered().len().saturating_sub(1))
+                    }
+                    KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
                     KeyCode::Char('/') => self.search = true,
                     KeyCode::Char('r') => return self.reload(false),
                     KeyCode::Char('o') => {

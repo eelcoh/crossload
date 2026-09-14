@@ -643,6 +643,10 @@ crossload kobo list > books.tsv
 ```
 
 The TUI uses Tears 0.8.0 and Ratatui 0.30.2 with Elm-style messages and effects.
+The book table shows title, reader status, author and type. Narrow terminals show
+title and status; the selected-book details appear below when height permits.
+Use Home/End for the first/last result and Page Up/Page Down to move ten results.
+The footer shows the selected position and the current Enter action.
 With `--send-to` or `--copy-to`, a background inventory check shows `Present`,
 `Missing`, or `Unknown` for Kobo books and local EPUBs. It uses sync's full-content
 checks, including the optimized copy. Wi-Fi checks download destination EPUBs

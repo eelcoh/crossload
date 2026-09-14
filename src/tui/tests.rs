@@ -249,3 +249,22 @@ fn reader_inventory_checks_local_contents_without_publishing() {
     );
     assert!(!opts.output.exists());
 }
+
+#[test]
+fn page_navigation_stays_within_filtered_results() {
+    let mut model = Model::new(options());
+    model.entries = (0..25).map(|i| entry(&format!("Book {i:02}"))).collect();
+    model.update(key(KeyCode::PageDown));
+    assert_eq!(model.selected, 10);
+    model.update(key(KeyCode::End));
+    assert_eq!(model.selected, 24);
+    model.update(key(KeyCode::PageDown));
+    assert_eq!(model.selected, 24);
+    model.update(key(KeyCode::PageUp));
+    assert_eq!(model.selected, 14);
+    model.update(key(KeyCode::Home));
+    assert_eq!(model.selected, 0);
+    model.query = "absent".into();
+    model.update(key(KeyCode::End));
+    assert_eq!(model.selected, 0);
+}
