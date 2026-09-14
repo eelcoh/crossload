@@ -126,7 +126,7 @@ the Linux executable has only platform C/C++ runtime dependencies. Activation
 export import and ACSM fulfillment/download/decryption are implemented. Nine
 synthetic ADEPT tests include a local HTTP round trip and receipt reuse after
 a failed download. Live ByteBooks and macOS execution remain unverified. See
-[README.md](README.md) for current commands/limits and
+[MANUAL.md](MANUAL.md) for current commands/limits and
 [native/README.md](native/README.md) for pins and integration changes.
 
 ## Implementation update (2026-09-13)

@@ -1,7 +1,7 @@
 # Direct ByteBooks activation — archived investigation
 
 Decision: direct activation is no longer planned. Use the Calibre ACSM Input
-activation-export workflow documented in [README.md](README.md#adobebytebooks-acsm-files).
+activation-export workflow documented in [MANUAL.md](MANUAL.md#adobebytebooks-acsm-files).
 The September 14, 2026 investigation below is retained for reference; its proposed
 commands and implementation sequence are not active roadmap items.
 
