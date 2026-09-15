@@ -368,9 +368,9 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
             let books = &books;
             let next = &next;
             std::thread::scope(|scope| {
-                for _ in 0..workers {
+                for worker in 0..workers {
                     let tx = tx.clone();
-                    scope.spawn(move || {
+                    let read = move || {
                         while let Some(path) =
                             books.get(next.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
                         {
@@ -406,7 +406,11 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                             });
                             let _ = tx.send(book_update(place, book));
                         }
-                    });
+                    };
+                    std::thread::Builder::new()
+                        .name(format!("read-local-{worker}"))
+                        .spawn_scoped(scope, read)
+                        .expect("cannot start a reading thread");
                 }
             });
         }
@@ -554,7 +558,7 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
         for place in [Place::Local, Place::Kobo, Place::Xteink] {
             let tx = tx.clone();
             let index = &index;
-            scope.spawn(move || {
+            let worker = move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     discover(options, place, index, &tx)
                 }))
@@ -563,7 +567,13 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
                     place,
                     result.map_err(|e| format!("{e:#}")),
                 ));
-            });
+            };
+            // Naming costs nothing and makes a busy scan identifiable from
+            // outside; a failure to spawn panics exactly as scope.spawn does.
+            std::thread::Builder::new()
+                .name(format!("scan-{}", place.label().to_lowercase()))
+                .spawn_scoped(scope, worker)
+                .expect("cannot start a discovery thread");
         }
         drop(tx);
         let mut last = std::time::Instant::now();

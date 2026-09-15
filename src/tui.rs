@@ -218,6 +218,7 @@ pub fn run(options: Options) -> Result<()> {
         "The TUI needs an interactive terminal; use the CLI commands for redirected input/output"
     );
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_name("crossload-ui")
         .worker_threads(2)
         .enable_all()
         .build()?;

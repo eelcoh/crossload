@@ -354,6 +354,29 @@ Run `crossload --help` or `crossload kobo import --help` for command options. Er
 are printed to stderr and return a nonzero exit status. JSON list output goes
 to stdout without table decoration or summary text.
 
+### Crossload is using a whole core
+
+That is a scan, not a loop. Discovery reads and hashes books, decrypts Kobo
+books and downloads what is on the reader, and it uses several threads for local
+books. While it runs, the location line says `Checking (37 books)` with a
+spinner; when every location says `Ready`, no work is left and the interface
+sits at zero.
+
+Threads are named after the work they do, so a busy one identifies itself:
+
+```sh
+top -H -p "$(pgrep -x crossload)"          # or: ps -L -o tid,pcpu,comm -p "$(pgrep -x crossload)"
+```
+
+`scan-local`, `scan-kobo` and `scan-xteink` are the three locations,
+`read-local-N` the pool that reads local books, `crossload-ui` the interface.
+On macOS, `sample crossload` reports the same names. Sustained work while every
+location reads `Ready` is a bug worth reporting.
+
+A first scan after the identity cache is removed costs full price again: every
+book is read, every Kobo book decrypted, everything on the reader downloaded.
+That is the expected one-off, not a regression.
+
 ## Build and check
 
 [mise](https://mise.jdx.dev/getting-started.html) is the task runner. Rust stays
