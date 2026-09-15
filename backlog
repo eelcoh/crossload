@@ -216,10 +216,15 @@
 19. [~] macOS verification and published releases
     macOS verification is done: see the section below. Packaging on a `v*` tag
     already exists and produces Linux and both macOS archives as Actions
-    artifacts, but it has never been run and does not publish a GitHub Release,
-    so there is still nothing a stranger can install. Remaining: run the tag
-    workflow once, confirm a Mac archive actually executes, and decide whether
-    to publish Releases given that Mac packages are unsigned and not notarized.
+    artifacts, and the v0.1.0 tag ran it: ubuntu-24.04, macos-15 and
+    macos-15-intel all passed and produced archives with checksums.
+    A packaged macOS binary still has not executed anywhere. On the user's
+    corporate MacBook the quarantine attribute cannot be cleared, so an unsigned
+    download will not run there at all; building from source on that Mac works
+    and reports 0.1.0. Confirming a Mac archive runs therefore needs either an
+    unmanaged Mac or signing and notarization.
+    Remaining: decide whether to publish GitHub Releases at all, knowing that
+    the macOS archives in them are unsigned and unrunnable on managed devices.
 
 ## macOS verification update
 

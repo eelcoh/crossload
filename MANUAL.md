@@ -30,8 +30,14 @@ install -m 755 crossload "$HOME/.local/bin/crossload"
 On macOS use `shasum -a 256 -c FILE.sha256`. The checksum file covers both the
 binary and corresponding source archive, so download both for that check.
 Apple Silicon packages use `aarch64-apple-darwin`; Intel Macs use
-`x86_64-apple-darwin`. Mac packages are unsigned and not notarized; company policy
-may restrict running them. macOS packages must still be built and tested by CI.
+`x86_64-apple-darwin`.
+
+Mac packages are unsigned and not notarized. macOS quarantines a downloaded
+binary, and clearing that (`xattr -d com.apple.quarantine crossload`) is exactly
+what a managed device may forbid: this was tried on a corporate MacBook and the
+restrictions did not allow it. Build from source there instead, which works and
+needs no exception. A packaged macOS binary has therefore been produced by CI
+but never executed.
 
 `BUILD.json` records the compiler, platform, source revision, whether the working
 tree was modified, and dynamic libraries. Local Linux packages use the Debian 12
@@ -675,9 +681,12 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   output for the result.
 - **Escape** during a copy stops it after the book in progress; books already
   copied are complete and verified, and the summary says where it stopped.
-- **f** cycles filters: all books, missing from Kobo, missing from Xteink, only
-  on Xteink, and unreadable. The filter and search apply together, and the line
-  above the library shows which filter is active and how many books it matches.
+- **f** cycles filters and **F** cycles back: all books, missing from Local,
+  missing from Kobo, missing from Xteink, only on Xteink, and unreadable. Every
+  location can be the one a book is missing from, so the same key that finds
+  what the reader lacks also finds what has never been copied back. The filter
+  and search apply together, and the line above the library shows which filter
+  is active and how many books it matches.
 - **/** searches; arrows and page-navigation keys still move through matches.
   Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
   Page Up/Page Down navigate. **q** quits, waiting for active work.

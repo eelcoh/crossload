@@ -335,13 +335,28 @@ fn marking_filters_and_bulk_copies_act_on_the_set() {
     model.update(Message::Finished(job, Ok("Copied 1 of 2".into())));
     // A filter narrows the same list; an ACSM is only ever an import request.
     model.update(key(KeyCode::Char('f')));
-    assert_eq!(model.filter.label(), "Missing from Kobo");
+    assert_eq!(model.filter.label(), "Missing from Local");
     assert!(model.filtered().is_empty());
     model.update(key(KeyCode::Char('a')));
     assert!(model.marked.is_empty());
-    for _ in 0..4 {
+    // Shift-F walks back, so overshooting costs one key rather than a lap.
+    model.update(key(KeyCode::Char('F')));
+    assert_eq!(model.filter.label(), "All books");
+    model.update(key(KeyCode::Char('F')));
+    assert_eq!(model.filter.label(), "Unreadable");
+    // A full lap forward, in order, ending where it started.
+    for expected in [
+        "All books",
+        "Missing from Local",
+        "Missing from Kobo",
+        "Missing from Xteink",
+        "Only on Xteink",
+        "Unreadable",
+    ] {
         model.update(key(KeyCode::Char('f')));
+        assert_eq!(model.filter.label(), expected);
     }
+    model.update(key(KeyCode::Char('f')));
     assert_eq!(model.filter.label(), "All books");
     // Mark-all covers everything shown, and repeating it clears the set.
     model.update(key(KeyCode::Char('a')));

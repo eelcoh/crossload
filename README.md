@@ -51,7 +51,10 @@ crossload --version
 Cargo installs into `~/.cargo/bin`; make sure that is on your `PATH`.
 
 Linux and macOS are supported. Linux is what has been used against real
-hardware; macOS builds and passes its tests in CI on every change.
+hardware; macOS builds and passes its tests in CI on every change. Building from
+source is the right path on a managed Mac: the packaged binaries are unsigned,
+and a corporate policy that forbids clearing macOS quarantine will not run
+them.
 
 ## Start here
 
@@ -94,7 +97,7 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | `enter` | copy the highlighted book, or everything marked |
 | `1` `2` `3` | choose Local, Kobo or Xteink in the dialog |
 | `space` `a` | mark one book, mark or clear everything shown |
-| `f` | filter: missing from Kobo, missing from Xteink, only on the reader, unreadable |
+| `f` `F` | filter, forwards or back: missing from Local, from Kobo, from Xteink, only on the reader, unreadable |
 | `/` | search by title or author |
 | `r` | rescan |
 | `esc` | stop a running copy after the book in progress |

@@ -46,14 +46,24 @@ impl Filter {
             Self::Unreadable => "Unreadable".into(),
         }
     }
-    fn next(self) -> Self {
-        match self {
-            Self::All => Self::Missing(Place::Kobo),
-            Self::Missing(Place::Kobo) => Self::Missing(Place::Xteink),
-            Self::Missing(_) => Self::Only(Place::Xteink),
-            Self::Only(_) => Self::Unreadable,
-            Self::Unreadable => Self::All,
-        }
+    /// Every location can be the one a book is missing from: books come back
+    /// from a device as readily as they go to one.
+    const CYCLE: [Self; 6] = [
+        Self::All,
+        Self::Missing(Place::Local),
+        Self::Missing(Place::Kobo),
+        Self::Missing(Place::Xteink),
+        Self::Only(Place::Xteink),
+        Self::Unreadable,
+    ];
+    fn step(self, forward: bool) -> Self {
+        let at = Self::CYCLE.iter().position(|f| *f == self).unwrap_or(0);
+        let len = Self::CYCLE.len();
+        Self::CYCLE[if forward {
+            (at + 1) % len
+        } else {
+            (at + len - 1) % len
+        }]
     }
     fn keeps(self, entry: &Entry) -> bool {
         let Source::Book(book) = &entry.source else {
@@ -541,8 +551,8 @@ impl Model {
                             }
                         }
                     }
-                    KeyCode::Char('f') => {
-                        self.filter = self.filter.next();
+                    KeyCode::Char('f') | KeyCode::Char('F') => {
+                        self.filter = self.filter.step(key.code == KeyCode::Char('f'));
                         self.selected = 0;
                         self.touched = false;
                         self.scroll.set(0);
