@@ -47,3 +47,55 @@ jobs:
           path: dist/*
           if-no-files-found: error
           compression-level: 0
+
+  release:
+    # Linux only: the macOS archives are unsigned, and a managed Mac cannot
+    # clear their quarantine, so publishing them would offer what will not run.
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: crossload-ubuntu-24.04
+          path: dist
+      - name: Publish the Linux archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<'NOTES'
+          Crossload keeps your books in sync between a Kobo, your computer, and
+          an XTeink X4 or another CrossPoint reader. See the
+          [README](https://github.com/eelcoh/crossload#crossload) for what it
+          does and how to use it.
+
+          ## Install on Linux (x86-64)
+
+          ```sh
+          sha256sum -c crossload-VERSION-x86_64-unknown-linux-gnu.sha256
+          tar -xzf crossload-VERSION-x86_64-unknown-linux-gnu.tar.gz
+          install -m 755 crossload-VERSION-x86_64-unknown-linux-gnu/crossload ~/.local/bin/crossload
+          crossload --version
+          ```
+
+          The binary needs no Rust, Python, Calibre or separately installed ebook
+          libraries; it uses the system C/C++ runtime. `BUILD.json` in the archive
+          records the compiler, platform and source revision.
+
+          ## macOS
+
+          Build from source: `cargo install --path . --locked`. No macOS binary is
+          published, because an unsigned download is quarantined and a managed Mac
+          may forbid clearing that, which would leave a package that cannot run.
+
+          The source archive below builds offline and carries every dependency.
+          NOTES
+          sed -i "s/VERSION/${TAG#v}/g" notes.md
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Crossload ${TAG#v}" \
+            --notes-file notes.md
