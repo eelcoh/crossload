@@ -27,7 +27,21 @@ pub(super) enum Effect {
         /// Set to stop a multi-book copy after the book in progress.
         cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
+    Remove {
+        id: u64,
+        options: Box<Options>,
+        book: Box<crate::books::Book>,
+        place: Place,
+        path: String,
+    },
     Quit,
+}
+/// Whether one copy may be deleted. The dialog shows these and the key handler
+/// enforces them, and `books::remove` checks every one of them again.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Removal {
+    Ready,
+    Blocked(&'static str, String),
 }
 /// The questions worth asking of a library, in the order they are cycled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +119,9 @@ pub(super) struct Model {
     /// set. Empty means no dialog.
     pub action: Vec<Entry>,
     pub filter: Filter,
+    /// The book whose copies are listed, and the copy awaiting confirmation.
+    pub copies: Option<Entry>,
+    pub confirm: Option<(Place, String)>,
     /// Whether the selection is the reader's own. Until it is, arriving books
     /// must not drag it along: discovery reorders the list as it streams.
     touched: bool,
@@ -137,6 +154,8 @@ impl Model {
             catalog: Snapshot::default(),
             action: vec![],
             filter: Filter::All,
+            copies: None,
+            confirm: None,
             touched: false,
             marked: vec![],
             cancel: None,
@@ -271,6 +290,45 @@ impl Model {
             }
         }
     }
+    pub fn removal(&self, book: &crate::books::Book, copy: &crate::books::Copy) -> Removal {
+        if self.busy.is_some() {
+            return Removal::Blocked("busy", "Wait for the current work to finish.".into());
+        }
+        if self.loading.is_some() {
+            return Removal::Blocked(
+                "scanning",
+                "Wait for discovery to finish before deleting anything.".into(),
+            );
+        }
+        if book.copies.len() < 2 {
+            return Removal::Blocked(
+                "only copy",
+                format!(
+                    "This is the only copy of {}; copy it somewhere else first.",
+                    book.title
+                ),
+            );
+        }
+        if copy.locked {
+            return Removal::Blocked(
+                "Kobo library",
+                "The Kobo database lists this book; remove it on the Kobo itself.".into(),
+            );
+        }
+        if copy.sha.is_empty() {
+            return Removal::Blocked(
+                "unreadable",
+                "This copy could not be read, so it cannot be identified.".into(),
+            );
+        }
+        if copy.place == Place::Xteink && self.options.copy_to.is_none() {
+            return Removal::Blocked(
+                "needs the card",
+                "Deleting over Wi-Fi is not supported; mount the reader's card.".into(),
+            );
+        }
+        Removal::Ready
+    }
     fn selected_entry(&self) -> Option<Entry> {
         self.filtered().get(self.selected).map(|e| (*e).clone())
     }
@@ -295,6 +353,8 @@ impl Model {
                     return vec![];
                 }
                 self.action.clear();
+                self.copies = None;
+                self.confirm = None;
                 self.retaining = !self.entries.is_empty();
                 self.pending_catalog = None;
                 let id = self.id();
@@ -387,6 +447,67 @@ impl Model {
                     return self.quit();
                 }
                 if self.pending_quit {
+                    return vec![];
+                }
+                if let Some(entry) = self.copies.clone() {
+                    let Source::Book(book) = &entry.source else {
+                        self.copies = None;
+                        return vec![];
+                    };
+                    let book = self.current(book).clone();
+                    if let Some((place, path)) = self.confirm.clone() {
+                        // Only one key deletes, and only while the question is
+                        // on screen; anything else is a refusal.
+                        if key.code != KeyCode::Char('y') {
+                            self.confirm = None;
+                            self.status = "Nothing was deleted.".into();
+                            return vec![];
+                        }
+                        let Some(copy) = book
+                            .copies
+                            .iter()
+                            .find(|c| c.place == place && c.path == path)
+                        else {
+                            self.confirm = None;
+                            self.status = "That copy is gone; refresh and look again.".into();
+                            return vec![];
+                        };
+                        if let Removal::Blocked(_, reason) = self.removal(&book, copy) {
+                            self.confirm = None;
+                            self.status = reason;
+                            return vec![];
+                        }
+                        let id = self.id();
+                        self.busy = Some(id);
+                        self.confirm = None;
+                        self.copies = None;
+                        self.status = format!("Deleting the {} copy…", place.label());
+                        return vec![Effect::Remove {
+                            id,
+                            options: Box::new(self.options.clone()),
+                            book: Box::new(book),
+                            place,
+                            path,
+                        }];
+                    }
+                    let chosen = match key.code {
+                        KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
+                            c.to_digit(10).map(|n| n as usize - 1)
+                        }
+                        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('d') => {
+                            self.copies = None;
+                            return vec![];
+                        }
+                        _ => None,
+                    };
+                    if let Some(copy) = chosen.and_then(|i| book.copies.get(i)) {
+                        match self.removal(&book, copy) {
+                            Removal::Blocked(_, reason) => self.status = reason,
+                            Removal::Ready => {
+                                self.confirm = Some((copy.place, copy.path.clone()));
+                            }
+                        }
+                    }
                     return vec![];
                 }
                 if !self.action.is_empty() {
@@ -549,6 +670,14 @@ impl Model {
                             if all == self.is_marked(&entry) {
                                 self.mark(&entry);
                             }
+                        }
+                    }
+                    KeyCode::Char('d') if self.busy.is_none() => {
+                        self.copies = self
+                            .selected_entry()
+                            .filter(|e| matches!(e.source, Source::Book(_)));
+                        if self.copies.is_none() {
+                            self.status = "An import request has no copies to delete.".into();
                         }
                     }
                     KeyCode::Char('f') | KeyCode::Char('F') => {

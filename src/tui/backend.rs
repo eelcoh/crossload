@@ -90,6 +90,18 @@ pub(super) fn perform(
     summary.push_str(" Press r to refresh.");
     Ok(summary)
 }
+pub(super) fn remove(
+    options: Options,
+    book: &crate::books::Book,
+    place: crate::books::Place,
+    path: &str,
+    report: impl Fn(Report),
+) -> Result<String> {
+    crate::books::remove(&library_options(&options), book, place, path, &|text| {
+        report(Report::Text(text))
+    })
+    .map(|message| format!("{message}. Press r to refresh."))
+}
 fn one(
     options: &Options,
     entry: Entry,

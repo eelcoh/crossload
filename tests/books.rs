@@ -324,3 +324,110 @@ fn a_fulfilled_request_in_archive_is_no_longer_pending() {
     assert_eq!(snapshot.acsm.len(), 1);
     assert!(snapshot.acsm[0].ends_with("waiting.acsm"));
 }
+
+#[test]
+fn removing_a_copy_keeps_the_book_and_refuses_the_last_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let original = epub("text", CompressionMethod::Stored);
+    let here = o.local.join("keep.epub");
+    let duplicate = o.local.join("duplicate.epub");
+    fs::write(&here, &original).unwrap();
+    fs::write(&duplicate, epub("text", CompressionMethod::Deflated)).unwrap();
+    let snapshot = books::scan(&o, |_| {});
+    // Repacked bytes are the same book, so both files are copies of one book.
+    assert_eq!(snapshot.books.len(), 1);
+    let book = &snapshot.books[0];
+    assert_eq!(book.copies.len(), 2);
+    let removed = books::remove(
+        &o,
+        book,
+        Place::Local,
+        &duplicate.to_string_lossy(),
+        &|_| {},
+    )
+    .unwrap();
+    assert!(removed.contains("Deleted"), "{removed}");
+    assert!(!duplicate.exists());
+    assert_eq!(
+        fs::read(&here).unwrap(),
+        original,
+        "the other copy is untouched"
+    );
+    // What remains is the only copy, and the only copy is never removed.
+    let snapshot = books::scan(&o, |_| {});
+    let book = &snapshot.books[0];
+    assert_eq!(book.copies.len(), 1);
+    let refused = books::remove(&o, book, Place::Local, &here.to_string_lossy(), &|_| {})
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("only copy"), "{refused}");
+    assert!(here.exists());
+}
+
+#[test]
+fn a_changed_or_unknown_copy_is_never_removed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let first = o.local.join("one.epub");
+    let second = o.local.join("two.epub");
+    fs::write(&first, epub("text", CompressionMethod::Stored)).unwrap();
+    fs::write(&second, epub("text", CompressionMethod::Deflated)).unwrap();
+    let book = books::scan(&o, |_| {}).books.remove(0);
+    // Replaced contents are not the copy that was found.
+    fs::write(
+        &second,
+        epub("different text entirely", CompressionMethod::Stored),
+    )
+    .unwrap();
+    let refused = books::remove(&o, &book, Place::Local, &second.to_string_lossy(), &|_| {})
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("changed since discovery"), "{refused}");
+    assert!(second.exists());
+    // A path that is not one of this book's copies is refused outright.
+    let unknown = books::remove(&o, &book, Place::Local, "/elsewhere.epub", &|_| {})
+        .unwrap_err()
+        .to_string();
+    assert!(unknown.contains("no longer in the library"), "{unknown}");
+}
+
+#[test]
+fn a_reader_copy_is_removed_from_a_card_but_never_over_wifi() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut o = options(tmp.path());
+    let local = o.local.join("book.epub");
+    fs::write(&local, epub("text", CompressionMethod::Stored)).unwrap();
+    let card = o.card.clone().unwrap();
+    fs::write(
+        card.join("copy.epub"),
+        epub("text", CompressionMethod::Stored),
+    )
+    .unwrap();
+    let book = books::scan(&o, |_| {}).books.remove(0);
+    assert_eq!(book.copies.len(), 2);
+    let on_card = book
+        .copies
+        .iter()
+        .find(|c| c.place == Place::Xteink)
+        .unwrap()
+        .path
+        .clone();
+    // Over Wi-Fi the protocol cannot delete, and nothing is attempted.
+    let wifi = books::Options {
+        card: None,
+        reader: Some("127.0.0.1:1".into()),
+        ..o.clone()
+    };
+    let refused = books::remove(&wifi, &book, Place::Xteink, &on_card, &|_| {})
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("Wi-Fi"), "{refused}");
+    assert!(card.join("copy.epub").exists());
+    // On a mounted card it is an ordinary file, and only that file goes.
+    o.reader = None;
+    let removed = books::remove(&o, &book, Place::Xteink, &on_card, &|_| {}).unwrap();
+    assert!(removed.contains("card"), "{removed}");
+    assert!(!card.join("copy.epub").exists());
+    assert!(local.exists());
+}

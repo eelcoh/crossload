@@ -30,9 +30,26 @@ pub struct Copy {
     pub sha: String,
     pub resources: Option<String>,
     pub optimized: bool,
+    /// A Kobo store book: the device database lists it, so its file is not ours
+    /// to remove. Sideloaded books and everything elsewhere are.
+    pub locked: bool,
     /// How this copy is recognized again; an implementation detail, not output.
     #[serde(skip)]
     variants: Vec<(String, Option<String>)>,
+}
+#[cfg(test)]
+/// A copy for interface tests, which cannot see how matching is stored.
+pub(crate) fn copy(place: Place, path: &str, size: u64, locked: bool) -> Copy {
+    Copy {
+        place,
+        path: path.to_owned(),
+        size,
+        sha: format!("sha-of-{path}"),
+        resources: None,
+        optimized: false,
+        locked,
+        variants: vec![],
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Book {
@@ -107,6 +124,7 @@ fn book(entry: cache::Source, place: Place, path: String) -> Book {
             sha: entry.sha,
             resources: entry.resources,
             optimized: entry.optimized,
+            locked: entry.locked,
             variants: entry.variants,
         }],
     }
@@ -118,6 +136,7 @@ fn stored(index: &cache::Index, key: Option<&String>, place: Place, source: &str
 }
 /// `key` is the caller's evidence that this source is unchanged; `None` means
 /// this location cannot prove it, and the result is not stored.
+#[allow(clippy::too_many_arguments)]
 fn candidate(
     path: &Path,
     place: Place,
@@ -125,6 +144,7 @@ fn candidate(
     options: &Options,
     index: &cache::Index,
     key: Option<String>,
+    locked: bool,
 ) -> Result<Book> {
     let data = bytes(path)?;
     epub::validate(&data)?;
@@ -161,6 +181,7 @@ fn candidate(
         sha: id.sha256,
         resources: id.resources,
         optimized,
+        locked,
         variants,
     };
     if let Some(key) = key {
@@ -179,6 +200,7 @@ fn unreadable(place: Place, path: String, title: String, reason: String) -> Book
             sha: String::new(),
             resources: None,
             optimized: place == Place::Xteink,
+            locked: false,
             variants: vec![],
         }],
     }
@@ -390,7 +412,15 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                                 None => {
                                     let _claim = budget
                                         .claim(fs::metadata(path).map(|m| m.len()).unwrap_or(0));
-                                    candidate(path, place, source.clone(), options, index, key)
+                                    candidate(
+                                        path,
+                                        place,
+                                        source.clone(),
+                                        options,
+                                        index,
+                                        key,
+                                        false,
+                                    )
                                 }
                             }
                             .unwrap_or_else(|e| {
@@ -462,10 +492,13 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     let _ = tx.send(book_update(place, found_book));
                     continue;
                 }
+                let store = matches!(book.source, kobo::Source::KoboStore);
                 let temp = tempfile::tempdir()?;
                 let result = library
                     .import(&book.id, temp.path(), options.serial.as_deref())
-                    .and_then(|p| candidate(&p, place, book.id.clone(), options, index, key));
+                    .and_then(|p| {
+                        candidate(&p, place, book.id.clone(), options, index, key, store)
+                    });
                 let _ = tx.send(book_update(
                     place,
                     result.unwrap_or_else(|e| {
@@ -512,7 +545,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     let temp = tempfile::tempdir()?;
                     let path = temp.path().join("book.epub");
                     fs::write(&path, data)?;
-                    candidate(&path, place, file.path.clone(), options, index, key)
+                    candidate(&path, place, file.path.clone(), options, index, key, false)
                 })();
                 let _ = tx.send(book_update(
                     place,
@@ -637,6 +670,117 @@ fn destination(options: &Options) -> Result<inventory::Destination> {
             options.reader.as_deref().context("Not configured")?,
             &options.folder,
         )?))
+    }
+}
+/// Remove one copy of a book, and only when every rule holds: never the last
+/// copy anywhere, never a book the Kobo database owns, never over Wi-Fi, and
+/// never a file whose contents no longer match what discovery recorded. The
+/// file is deleted, not moved to a trash folder: the point is the space.
+pub fn remove(
+    options: &Options,
+    book: &Book,
+    place: Place,
+    path: &str,
+    progress: &dyn Fn(&str),
+) -> Result<String> {
+    ensure!(
+        book.copies.len() > 1,
+        "This is the only copy of {}; copy it somewhere else before removing this one",
+        book.title
+    );
+    let copy = book
+        .copies
+        .iter()
+        .find(|c| c.place == place && c.path == path)
+        .context("That copy is no longer in the library; refresh and try again")?;
+    ensure!(
+        !copy.locked,
+        "The Kobo database lists this book, so its file is not ours to delete; remove it on the Kobo itself"
+    );
+    ensure!(
+        !copy.sha.is_empty(),
+        "This copy could not be read during discovery, so it cannot be identified; resolve that first"
+    );
+    progress(&format!("Checking the {} copy…", place.label()));
+    let changed = "Contents changed since discovery; nothing was deleted. Refresh and look again";
+    match place {
+        Place::Local => {
+            let file = PathBuf::from(&copy.path);
+            ensure!(
+                inventory::identity(&bytes(&file)?).sha256 == copy.sha,
+                "{changed}"
+            );
+            ensure!(
+                fs::symlink_metadata(&file)?.is_file(),
+                "Refusing to remove anything but a regular file"
+            );
+            progress("Deleting…");
+            fs::remove_file(&file)?;
+            Ok(format!("Deleted {} ({})", file.display(), size(copy.size)))
+        }
+        Place::Kobo => {
+            let root = options.kobo.as_ref().context("No Kobo configured")?;
+            let library = kobo::Library::open(root)?;
+            let entry = library
+                .books()?
+                .into_iter()
+                .find(|b| b.id == copy.path)
+                .context("That book is no longer on the Kobo; refresh and try again")?;
+            ensure!(
+                matches!(entry.source, kobo::Source::Sideloaded),
+                "The Kobo database lists this book; remove it on the Kobo itself"
+            );
+            let file = library.source_path(&entry)?;
+            ensure!(
+                inventory::identity(&bytes(&file)?).sha256 == copy.sha,
+                "{changed}"
+            );
+            progress("Deleting…");
+            fs::remove_file(&file)?;
+            Ok(format!(
+                "Deleted {} from the Kobo ({}). Eject it so the library updates",
+                file.display(),
+                size(copy.size)
+            ))
+        }
+        Place::Xteink => {
+            let destination = destination(options)?;
+            let file = inventory::FileEntry {
+                path: copy.path.clone(),
+                size: copy.size,
+                directory: false,
+            };
+            ensure!(
+                matches!(destination, inventory::Destination::Card(_)),
+                "Deleting over Wi-Fi is not supported by the reader's protocol; mount its card and use --copy-to, or delete on the device"
+            );
+            ensure!(
+                inventory::identity(&destination.read(&file)?).sha256 == copy.sha,
+                "{changed}"
+            );
+            progress("Deleting…");
+            destination.remove(&file)?;
+            Ok(format!(
+                "Deleted {} from the reader's card ({})",
+                copy.path,
+                size(copy.size)
+            ))
+        }
+    }
+}
+/// Human-readable bytes, matching what the interface shows.
+fn size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
     }
 }
 pub fn transfer(

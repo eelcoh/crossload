@@ -98,6 +98,7 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | `1` `2` `3` | choose Local, Kobo or Xteink in the dialog |
 | `space` `a` | mark one book, mark or clear everything shown |
 | `f` `F` | filter, forwards or back: missing from Local, from Kobo, from Xteink, only on the reader, unreadable |
+| `d` | list every copy of a book, and delete one of them |
 | `/` | search by title or author |
 | `r` | rescan |
 | `esc` | stop a running copy after the book in progress |
@@ -118,6 +119,13 @@ it indexes them. Copying to the reader converts images for the X4 screen and
 files the book under its author. When a book exists in several places, the
 original is always preferred over a device copy, because the conversion is
 lossy and cannot be undone.
+
+**d** lists every copy of a book with its size and path — the only place a
+duplicate shows itself, since two files of the same book share one row. Pressing
+its number asks for confirmation, and only **y** deletes it. Crossload refuses
+to remove the last copy of a book, a book the Kobo database lists, anything it
+cannot verify is still the copy it found, and anything on a reader reached over
+Wi-Fi rather than as a mounted card. A deleted file is gone, not moved aside.
 
 ACSM files are fulfilled by choosing **Local**. The spent request is then moved
 into an `archive/` folder beside itself, so it stops asking to be dealt with.

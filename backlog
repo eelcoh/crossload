@@ -226,6 +226,19 @@
     Remaining: decide whether to publish GitHub Releases at all, knowing that
     the macOS archives in them are unsigned and unrunnable on managed devices.
 
+20. [x] Delete redundant copies — implemented
+    Duplicates were invisible and unremovable: two files of the same book share
+    one row, and nothing in the tool had ever deleted anything. `d` now lists
+    every copy of a book and can remove one, and `books::remove` enforces the
+    rules independently of the dialog that shows them: never the last copy,
+    never a book the Kobo database lists, never an unreadable copy, never over
+    Wi-Fi (the reader protocol here has no delete; a mounted card is a plain
+    unlink), and never a file whose contents changed since discovery.
+    Deliberately not done: deleting the last copy of a book, which would need a
+    stronger confirmation than one keystroke, and bulk deletion, which combines
+    the two most dangerous ideas in the tool. `Copy` gained a `locked` flag for
+    Kobo store books, so the cache format moved to version 3.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest

@@ -8,6 +8,7 @@ fn source(sha: &str) -> Source {
         sha: sha.into(),
         resources: None,
         optimized: false,
+        locked: false,
         variants: vec![(sha.into(), None)],
     }
 }

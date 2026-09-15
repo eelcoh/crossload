@@ -679,6 +679,18 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   while each book's own progress replaces the line beneath it. `crossload sync
   --apply` prints the same count per book to standard error, leaving standard
   output for the result.
+- **d** lists every copy of the highlighted book: location, size, whether it is
+  an original or a device copy, and its path. Two files of the same book share
+  one row in the library, so this is where a redundant copy becomes visible.
+  A number asks to delete that copy, and only **y** confirms it. Five rules are
+  checked when the dialog is drawn and again before anything is removed: never
+  the last copy of a book, never a book the Kobo database lists (remove those on
+  the Kobo), never a copy that could not be read, never over Wi-Fi (the reader's
+  protocol has no delete; mount its card with `--copy-to`), and never a file
+  whose contents no longer match what discovery recorded. The file is deleted
+  rather than moved aside, because reclaiming the space is the point. Deleting a
+  sideloaded Kobo book leaves the device to notice on its next scan, so eject it
+  normally.
 - **Escape** during a copy stops it after the book in progress; books already
   copied are complete and verified, and the summary says where it stopped.
 - **f** cycles filters and **F** cycles back: all books, missing from Local,

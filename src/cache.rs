@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 /// Bumped whenever a stored field changes meaning; older files are discarded.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_ENTRIES: usize = 20_000;
 const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 /// What discovery would otherwise reread and rehash the whole book to learn.
@@ -26,6 +26,7 @@ pub struct Source {
     pub sha: String,
     pub resources: Option<String>,
     pub optimized: bool,
+    pub locked: bool,
     pub variants: Vec<(String, Option<String>)>,
 }
 /// The identity of the optimized copy that these bytes would produce.

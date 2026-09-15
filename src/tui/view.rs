@@ -1,5 +1,5 @@
 use super::{
-    model::{Destination, Model},
+    model::{Destination, Model, Removal},
     Entry, Source,
 };
 use crate::books::{Book, Place};
@@ -83,6 +83,23 @@ pub(super) fn shorten(text: &str, limit: usize) -> String {
     }
     result.push('…');
     result
+}
+/// Keep the end of a path: a file is identified by its name, not by the
+/// directories above it.
+fn tail(path: &str, limit: usize) -> String {
+    use unicode_width::UnicodeWidthStr;
+    let path = clean(path);
+    if path.width() <= limit {
+        return path;
+    }
+    let mut kept = String::new();
+    for c in path.chars().rev() {
+        if kept.width() + c.len_utf8() > limit.saturating_sub(1) {
+            break;
+        }
+        kept.push(c);
+    }
+    format!("…{}", kept.chars().rev().collect::<String>())
 }
 /// A location pill: state glyph, name and the shortest useful detail.
 fn pill(model: &Model, place: Place) -> Vec<Span<'static>> {
@@ -218,7 +235,11 @@ fn presence(book: &Book, selected: bool) -> Line<'static> {
 fn unreadable(book: &Book) -> bool {
     !book.copies.is_empty() && book.copies.iter().all(|c| c.sha.is_empty())
 }
-fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'static>>)> {
+fn details(
+    model: &Model,
+    entries: &[&Entry],
+    width: usize,
+) -> Option<(String, Vec<Line<'static>>)> {
     let entry = model
         .action
         .first()
@@ -249,7 +270,10 @@ fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'stati
                 ]),
                 Line::from(vec![
                     label("Path"),
-                    Span::raw(copy.map(|c| clean(&c.path)).unwrap_or_default()),
+                    Span::raw(
+                        copy.map(|c| tail(&c.path, width.saturating_sub(10)))
+                            .unwrap_or_default(),
+                    ),
                 ]),
             ]
         }
@@ -261,7 +285,7 @@ fn details(model: &Model, entries: &[&Entry]) -> Option<(String, Vec<Line<'stati
             ]),
             Line::from(vec![
                 label("Path"),
-                Span::raw(clean(&path.display().to_string())),
+                Span::raw(tail(&path.display().to_string(), width.saturating_sub(10))),
             ]),
         ],
     };
@@ -332,15 +356,22 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     if !model.action.is_empty() {
         draw_action(model, frame, areas[2]);
     }
+    if let Some(entry) = &model.copies {
+        draw_copies(model, frame, areas[2], entry);
+    }
     if areas[3].height > 0 {
-        if let Some((title, lines)) = details(model, &entries) {
+        if let Some((title, lines)) = details(model, &entries, areas[3].width as usize) {
             let block = frame_block(title);
             let inner = block.inner(areas[3]);
             frame.render_widget(block, areas[3]);
             frame.render_widget(Paragraph::new(lines), inner);
         }
     }
-    let keys: &[(&str, &str)] = if !model.action.is_empty() {
+    let keys: &[(&str, &str)] = if model.confirm.is_some() {
+        &[("y", "delete"), ("esc", "keep")]
+    } else if model.copies.is_some() {
+        &[("1-9", "delete a copy"), ("esc", "close")]
+    } else if !model.action.is_empty() {
         &[("1 2 3", "destination"), ("esc", "cancel")]
     } else if model.busy.is_some() {
         &[("esc", "stop after this book"), ("q", "quit when finished")]
@@ -350,6 +381,7 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
             ("space", "mark"),
             ("a", "mark all"),
             ("f", "filter"),
+            ("d", "copies"),
             ("/", "search"),
             ("r", "refresh"),
             ("q", "quit"),
@@ -641,6 +673,101 @@ fn progress_line(done: usize, total: usize, width: u16) -> Line<'static> {
         Span::styled("░".repeat(cells - filled), plain()),
         Span::styled(counted, bold()),
     ])
+}
+/// Every copy of one book, which is also the only place a duplicate becomes
+/// visible: two files of the same book share a single row in the library.
+fn draw_copies(model: &Model, frame: &mut Frame<'_>, area: Rect, entry: &Entry) {
+    let Source::Book(book) = &entry.source else {
+        return;
+    };
+    let width = area.width.min(72);
+    let mut lines = vec![];
+    for (index, copy) in book.copies.iter().enumerate().take(9) {
+        let blocked = match model.removal(book, copy) {
+            Removal::Ready => None,
+            Removal::Blocked(reason, _) => Some(reason),
+        };
+        let key = format!("{}", index + 1);
+        lines.push(Line::from(vec![
+            if blocked.is_some() {
+                Span::raw(key)
+            } else {
+                Span::styled(key, accent())
+            },
+            Span::raw("  "),
+            Span::styled(format!("{:<7}", copy.place.label()), bold()),
+            Span::styled(format!("{:>9}  ", size(copy.size)), plain()),
+            Span::styled(
+                format!(
+                    "{:<12}",
+                    if copy.sha.is_empty() {
+                        "unreadable"
+                    } else if copy.optimized {
+                        "device copy"
+                    } else {
+                        "original"
+                    }
+                ),
+                if copy.optimized {
+                    fg(Color::Yellow)
+                } else {
+                    fg(Color::Green)
+                },
+            ),
+            Span::styled(blocked.unwrap_or("").to_string(), plain()),
+        ]));
+        lines.push(Line::from(Span::styled(
+            format!(
+                "     {}",
+                tail(&copy.path, width.saturating_sub(8) as usize)
+            ),
+            plain(),
+        )));
+    }
+    lines.push(Line::default());
+    match &model.confirm {
+        Some((place, path)) => {
+            lines.push(Line::from(vec![
+                Span::styled("Delete this ", fg(Color::Red)),
+                Span::styled(place.label(), bold()),
+                Span::styled(" copy? It cannot be undone.", fg(Color::Red)),
+            ]));
+            lines.push(Line::from(Span::raw(format!(
+                "  {}",
+                tail(path, width.saturating_sub(5) as usize)
+            ))));
+            lines.push(Line::from(vec![
+                Span::styled("  y", accent()),
+                Span::styled(" deletes it · ", plain()),
+                Span::styled("esc", accent()),
+                Span::styled(" keeps it", plain()),
+            ]));
+        }
+        None => lines.push(Line::from(vec![
+            Span::styled("1-9", accent()),
+            Span::styled(" delete that copy · ", plain()),
+            Span::styled("esc", accent()),
+            Span::styled(" close", plain()),
+        ])),
+    }
+    let height = (lines.len() as u16 + 2).min(area.height);
+    let popup = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    let block = frame_block(format!(" Copies · {} ", shorten(&entry.title, 30))).border_style(
+        if model.confirm.is_some() {
+            fg(Color::Red)
+        } else {
+            accent()
+        },
+    );
+    let inner = block.inner(popup);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 fn status_lines(model: &Model) -> Vec<Line<'static>> {
     let text = clean(&model.status);

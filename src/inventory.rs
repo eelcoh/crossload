@@ -133,6 +133,45 @@ impl Destination {
             }
         }
     }
+    /// Resolve a card entry to a real path, refusing anything that escapes the
+    /// card or turned into a symlink since it was listed.
+    fn on_card(root: &Path, path: &str) -> Result<PathBuf> {
+        let relative = Path::new(path.strip_prefix('/').context("Invalid card path")?);
+        ensure!(
+            relative
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_))),
+            "Invalid card path"
+        );
+        let mut resolved = root.to_path_buf();
+        for component in relative.components() {
+            resolved.push(component);
+            ensure!(
+                !fs::symlink_metadata(&resolved)?.file_type().is_symlink(),
+                "Card entry became a symlink"
+            );
+        }
+        Ok(resolved)
+    }
+    /// Delete one file. A reader reached over Wi-Fi cannot: this protocol
+    /// uploads, downloads, renames and lists, and has no delete.
+    pub fn remove(&self, file: &FileEntry) -> Result<()> {
+        ensure!(!file.directory, "Refusing to remove a directory");
+        match self {
+            Self::Reader(_) => anyhow::bail!(
+                "Deleting over Wi-Fi is not supported by the reader's protocol; mount its card and use --copy-to, or delete on the device"
+            ),
+            Self::Card(root) => {
+                let path = Self::on_card(root, &file.path)?;
+                ensure!(
+                    fs::symlink_metadata(&path)?.is_file(),
+                    "Refusing to remove anything but a regular file"
+                );
+                fs::remove_file(path)?;
+                Ok(())
+            }
+        }
+    }
     pub fn read(&self, file: &FileEntry) -> Result<Vec<u8>> {
         ensure!(
             !file.directory && file.size <= epub::MAX_BOOK_BYTES,
@@ -142,21 +181,7 @@ impl Destination {
         match self {
             Self::Reader(reader) => reader.read_file(&file.path, file.size),
             Self::Card(root) => {
-                let relative = Path::new(file.path.strip_prefix('/').context("Invalid card path")?);
-                ensure!(
-                    relative
-                        .components()
-                        .all(|c| matches!(c, std::path::Component::Normal(_))),
-                    "Invalid card path"
-                );
-                let mut path = root.clone();
-                for component in relative.components() {
-                    path.push(component);
-                    ensure!(
-                        !fs::symlink_metadata(&path)?.file_type().is_symlink(),
-                        "Card entry became a symlink"
-                    );
-                }
+                let path = Self::on_card(root, &file.path)?;
                 let file_on_disk = fs::File::open(path)?;
                 ensure!(
                     file_on_disk.metadata()?.is_file(),

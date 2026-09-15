@@ -88,6 +88,15 @@ fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
         Effect::Load { id, options, .. } => Command::stream(library_stream(id, *options)),
+        Effect::Remove {
+            id,
+            options,
+            book,
+            place,
+            path,
+        } => Command::stream(work_stream(id, move |report| {
+            backend::remove(*options, &book, place, &path, report)
+        })),
         Effect::Work {
             id,
             options,

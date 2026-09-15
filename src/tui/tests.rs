@@ -461,3 +461,89 @@ fn a_running_set_reports_how_far_it_has_come() {
     model.update(Message::Step(job, 0, 1));
     assert_eq!(model.step, None);
 }
+
+fn shelf(copies: Vec<crate::books::Copy>) -> Entry {
+    Entry::new(
+        "Slough House".into(),
+        "Mick Herron".into(),
+        "EPUB",
+        Source::Book(Box::new(crate::books::Book {
+            title: "Slough House".into(),
+            author: "Mick Herron".into(),
+            copies,
+        })),
+    )
+}
+#[test]
+fn deleting_a_copy_needs_the_dialog_a_choice_and_a_confirmation() {
+    let mut model = Model::new(options());
+    model.entries = vec![shelf(vec![
+        crate::books::copy(Place::Local, "/books/original.epub", 17_800_000, false),
+        crate::books::copy(Place::Local, "/books/device.epub", 11_900_000, false),
+    ])];
+    model.catalog.books = match &model.entries[0].source {
+        Source::Book(book) => vec![(**book).clone()],
+        Source::Local(_) => unreachable!(),
+    };
+    // The dialog lists the copies; nothing is chosen yet.
+    model.update(key(KeyCode::Char('d')));
+    assert!(model.copies.is_some());
+    assert!(model.confirm.is_none());
+    // Choosing asks rather than deletes, and any other key is a refusal.
+    assert!(model.update(key(KeyCode::Char('2'))).is_empty());
+    assert_eq!(
+        model.confirm,
+        Some((Place::Local, "/books/device.epub".into()))
+    );
+    assert!(model.update(key(KeyCode::Char('n'))).is_empty());
+    assert!(model.confirm.is_none());
+    assert_eq!(model.status, "Nothing was deleted.");
+    assert!(model.copies.is_some(), "the list stays open");
+    // Only y deletes, and only the copy that was confirmed.
+    model.update(key(KeyCode::Char('2')));
+    let effects = model.update(key(KeyCode::Char('y')));
+    assert!(
+        matches!(effects.as_slice(), [Effect::Remove { place, path, .. }]
+            if *place == Place::Local && path == "/books/device.epub"),
+        "expected exactly that copy to be removed"
+    );
+    assert!(model.busy.is_some());
+    assert!(model.copies.is_none() && model.confirm.is_none());
+}
+#[test]
+fn the_only_copy_and_a_kobo_library_book_are_never_offered() {
+    let mut model = Model::new(options());
+    let alone = shelf(vec![crate::books::copy(
+        Place::Local,
+        "/books/only.epub",
+        100,
+        false,
+    )]);
+    model.entries = vec![alone.clone()];
+    model.catalog.books = match &alone.source {
+        Source::Book(book) => vec![(**book).clone()],
+        Source::Local(_) => unreachable!(),
+    };
+    model.update(key(KeyCode::Char('d')));
+    assert!(model.update(key(KeyCode::Char('1'))).is_empty());
+    assert!(model.confirm.is_none());
+    assert!(model.status.contains("only copy"), "{}", model.status);
+    // A book the Kobo database owns is the Kobo's to remove, not ours.
+    let kobo = shelf(vec![
+        crate::books::copy(Place::Kobo, "store-id", 100, true),
+        crate::books::copy(Place::Local, "/books/copy.epub", 100, false),
+    ]);
+    model.entries = vec![kobo.clone()];
+    model.catalog.books = match &kobo.source {
+        Source::Book(book) => vec![(**book).clone()],
+        Source::Local(_) => unreachable!(),
+    };
+    model.copies = None;
+    model.update(key(KeyCode::Char('d')));
+    assert!(model.update(key(KeyCode::Char('1'))).is_empty());
+    assert!(model.confirm.is_none());
+    assert!(model.status.contains("Kobo database"), "{}", model.status);
+    // The local copy beside it is still removable.
+    model.update(key(KeyCode::Char('2')));
+    assert!(model.confirm.is_some());
+}
