@@ -24,12 +24,12 @@ All books  11 of 11  ✓ 2 marked
 │   ● · ◐ Slow Horses                       Mick Herron                      ║
 │   ● · · The Dispossessed                  Ursula K. Le Guin                ║
 │   · · ◐ The Left Hand of Darkness         Ursula K. Le Guin                ║
-└────────────────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────────── 3/11 ┘
 ┌ Dune · Frank Herbert ──────────────────────────────────────────────────────┐
 │ Source  Local · original · 1.0 MiB                                         │
 │ Path    ~/Books/Dune.epub                                                  │
 └────────────────────────────────────────────────────────────────────────────┘
-3/11   enter copy   space mark   a mark all   f filter   / search   r refresh
+enter copy   space mark   a mark all   f filter   d copies   / search   q quit
 · Library ready. Enter chooses a copy destination; r refreshes locations.
 ```
 
@@ -110,7 +110,7 @@ unavailable, still scanning. While a set is copying, a bar shows how far it has
 come while the line beneath it names the book in progress:
 
 ```
-████████████████████░░░░░░░░░░░░ 8 of 12 books
+Copying ████████████████░░░░░░░░░░░░░░░░ 6 of 12 books
 ⠹ Sending to CrossPoint and verifying contents…
 ```
 

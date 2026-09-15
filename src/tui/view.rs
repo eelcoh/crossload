@@ -387,21 +387,10 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
             ("q", "quit"),
         ]
     };
-    let mut hints = vec![Span::styled(
-        format!(
-            "{}/{}",
-            if entries.is_empty() {
-                0
-            } else {
-                model.selected + 1
-            },
-            entries.len()
-        ),
-        bold(),
-    )];
+    let mut hints: Vec<Span<'static>> = vec![];
     for (key, action) in keys {
         let group = vec![
-            Span::raw("   "),
+            Span::raw(if hints.is_empty() { "" } else { "   " }),
             Span::styled(*key, accent()),
             Span::raw(" "),
             Span::styled(*action, plain()),
@@ -427,6 +416,21 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
     } else {
         format!(" Library · {} of {total} ", entries.len())
     });
+    let block = block.title_bottom(
+        Line::from(Span::styled(
+            format!(
+                " {}/{} ",
+                if entries.is_empty() {
+                    0
+                } else {
+                    model.selected + 1
+                },
+                entries.len()
+            ),
+            plain(),
+        ))
+        .right_aligned(),
+    );
     let block = if area.width >= 72 {
         let mut legend = vec![
             Span::styled(PRESENT, fg(Color::Green)),
@@ -663,12 +667,14 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
 /// A bar that says how far a set has come, because each book's own progress
 /// replaces the text beneath it many times over.
 fn progress_line(done: usize, total: usize, width: u16) -> Line<'static> {
+    let label = "Copying ";
     let counted = format!(" {done} of {total} books");
     let cells = usize::from(width)
-        .saturating_sub(counted.len() + 2)
+        .saturating_sub(label.len() + counted.len() + 2)
         .clamp(0, 32);
     let filled = cells.saturating_mul(done).checked_div(total).unwrap_or(0);
     Line::from(vec![
+        Span::styled(label, bold()),
         Span::styled("█".repeat(filled), fg(Color::Green)),
         Span::styled("░".repeat(cells - filled), plain()),
         Span::styled(counted, bold()),
