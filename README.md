@@ -102,7 +102,13 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 
 The copy dialog tells you what each destination will do before you choose it —
 how many books it would copy, or why it would not: already there, device
-unavailable, still scanning.
+unavailable, still scanning. While a set is copying, a bar shows how far it has
+come while the line beneath it names the book in progress:
+
+```
+████████████████████░░░░░░░░░░░░ 8 of 12 books
+⠹ Sending to CrossPoint and verifying contents…
+```
 
 Copying to Kobo produces an ordinary sideloaded EPUB; eject the Kobo normally so
 it indexes them. Copying to the reader converts images for the X4 screen and

@@ -669,6 +669,10 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   how many of them it would copy, and why the rest would not. Books that cannot
   be copied are left behind with their reason rather than refusing the set.
   Marks are cleared when a copy starts and by a refresh.
+- A set being copied shows a bar with the count of books finished, kept visible
+  while each book's own progress replaces the line beneath it. `crossload sync
+  --apply` prints the same count per book to standard error, leaving standard
+  output for the result.
 - **Escape** during a copy stops it after the book in progress; books already
   copied are complete and verified, and the summary says where it stopped.
 - **f** cycles filters: all books, missing from Kobo, missing from Xteink, only

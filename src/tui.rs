@@ -94,8 +94,8 @@ fn commands(effects: Vec<Effect>) -> Command<Message> {
             entries,
             target,
             cancel,
-        } => Command::stream(work_stream(id, move |progress| {
-            backend::perform(*options, entries, target, &cancel, progress)
+        } => Command::stream(work_stream(id, move |report| {
+            backend::perform(*options, entries, target, &cancel, report)
         })),
     }))
 }
@@ -128,7 +128,7 @@ fn library_stream(id: u64, options: Options) -> impl futures::Stream<Item = Mess
 /// order, and a worker panic becomes a completion error rather than a stuck job.
 fn work_stream<F>(id: u64, work: F) -> impl futures::Stream<Item = Message> + Send
 where
-    F: FnOnce(&dyn Fn(&str)) -> Result<String> + Send + 'static,
+    F: FnOnce(&dyn Fn(backend::Report)) -> Result<String> + Send + 'static,
 {
     use futures::StreamExt;
     futures::stream::once(async move {
@@ -136,8 +136,12 @@ where
         tokio::spawn(async move {
             let progress_tx = tx.clone();
             let result = blocking(move || {
-                work(&|value| {
-                    let _ = progress_tx.blocking_send(Message::Progress(id, value.to_owned()));
+                work(&|report| {
+                    let message = match report {
+                        backend::Report::Text(text) => Message::Progress(id, text.to_owned()),
+                        backend::Report::Step { done, total } => Message::Step(id, done, total),
+                    };
+                    let _ = progress_tx.blocking_send(message);
                 })
             })
             .await;

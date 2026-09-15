@@ -10,6 +10,8 @@ pub(super) enum Message {
     Catalog(u64, Snapshot),
     CatalogFinished(u64, Result<(), String>),
     Progress(u64, String),
+    /// Books finished and books in the running job.
+    Step(u64, usize, usize),
     Finished(u64, Result<String, String>),
 }
 pub(super) enum Effect {
@@ -86,6 +88,8 @@ pub(super) struct Model {
     pub pending_quit: bool,
     pub status: String,
     pub tick: usize,
+    /// How far a running job has come, once it has more than one book.
+    pub step: Option<(usize, usize)>,
     pub catalog: Snapshot,
     /// The books a copy dialog is open for: the highlighted one, or the marked
     /// set. Empty means no dialog.
@@ -100,6 +104,8 @@ pub(super) struct Model {
     /// Layout-only: the list offset the last frame settled on. Rendering may
     /// adjust it to keep the selection visible; it holds no operation state.
     pub scroll: std::cell::Cell<usize>,
+    /// Layout-only: the width the last frame had, for sizing the progress bar.
+    pub width: std::cell::Cell<u16>,
     retaining: bool,
     pending_catalog: Option<Snapshot>,
     next_id: u64,
@@ -117,6 +123,7 @@ impl Model {
             pending_quit: false,
             status: "Discovering books…".into(),
             tick: 0,
+            step: None,
             catalog: Snapshot::default(),
             action: vec![],
             filter: Filter::All,
@@ -124,6 +131,7 @@ impl Model {
             marked: vec![],
             cancel: None,
             scroll: std::cell::Cell::new(0),
+            width: std::cell::Cell::new(80),
             retaining: false,
             pending_catalog: None,
             next_id: 0,
@@ -350,9 +358,13 @@ impl Model {
                 }
             }
             Message::Progress(id, s) if self.busy == Some(id) => self.status = s,
+            Message::Step(id, done, total) if self.busy == Some(id) => {
+                self.step = (total > 1).then_some((done, total));
+            }
             Message::Finished(id, result) if self.busy == Some(id) => {
                 self.busy = None;
                 self.cancel = None;
+                self.step = None;
                 self.status = result.unwrap_or_else(|e| format!("Error: {e}"));
             }
             Message::Tick => self.tick = self.tick.wrapping_add(1),

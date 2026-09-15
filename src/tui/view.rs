@@ -288,6 +288,7 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         );
         return;
     }
+    model.width.set(area.width);
     let header = header(model, area.width);
     let areas = Layout::vertical([
         Constraint::Length(header.len() as u16),
@@ -627,6 +628,20 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(block, popup);
     frame.render_widget(Paragraph::new(lines), inner);
 }
+/// A bar that says how far a set has come, because each book's own progress
+/// replaces the text beneath it many times over.
+fn progress_line(done: usize, total: usize, width: u16) -> Line<'static> {
+    let counted = format!(" {done} of {total} books");
+    let cells = usize::from(width)
+        .saturating_sub(counted.len() + 2)
+        .clamp(0, 32);
+    let filled = cells.saturating_mul(done).checked_div(total).unwrap_or(0);
+    Line::from(vec![
+        Span::styled("█".repeat(filled), fg(Color::Green)),
+        Span::styled("░".repeat(cells - filled), plain()),
+        Span::styled(counted, bold()),
+    ])
+}
 fn status_lines(model: &Model) -> Vec<Line<'static>> {
     let text = clean(&model.status);
     let busy = model.busy.is_some() || model.loading.is_some();
@@ -642,8 +657,12 @@ fn status_lines(model: &Model) -> Vec<Line<'static>> {
     } else {
         ("·".into(), plain())
     };
-    vec![Line::from(vec![
+    let status = Line::from(vec![
         Span::styled(format!("{mark} "), style),
         Span::styled(text, if busy { Style::default() } else { style }),
-    ])]
+    ]);
+    match model.step {
+        Some((done, total)) => vec![progress_line(done, total, model.width.get()), status],
+        None => vec![status],
+    }
 }

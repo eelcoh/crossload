@@ -19,12 +19,19 @@ pub(super) fn library_options(options: &Options) -> crate::books::Options {
 }
 /// Copy every chosen book, reporting each one and stopping cleanly when asked.
 /// One failure does not abandon the rest; the summary names what went wrong.
+/// What a running job tells the interface. The step is separate from the text
+/// because each book's own progress replaces the text several times, and how
+/// far along the set is must stay visible through all of it.
+pub(super) enum Report<'a> {
+    Text(&'a str),
+    Step { done: usize, total: usize },
+}
 pub(super) fn perform(
     options: Options,
     entries: Vec<Entry>,
     target: crate::books::Place,
     cancel: &std::sync::atomic::AtomicBool,
-    progress: impl Fn(&str),
+    report: impl Fn(Report),
 ) -> Result<String> {
     let total = entries.len();
     let mut done = 0;
@@ -37,16 +44,21 @@ pub(super) fn perform(
             break;
         }
         let title = entry.title.clone();
+        report(Report::Step { done: index, total });
         if total > 1 {
-            progress(&format!("Copying {} of {total}: {title}…", index + 1));
+            report(Report::Text(&format!("{title}…")));
         }
-        match one(&options, entry, target, &progress) {
+        match one(&options, entry, target, &|text| report(Report::Text(text))) {
             Ok(message) => {
                 done += 1;
                 last = message;
             }
             Err(e) => failures.push(format!("{title}: {e:#}")),
         }
+        report(Report::Step {
+            done: index + 1,
+            total,
+        });
     }
     if total == 1 && failures.is_empty() {
         return Ok(format!("{last} Press r to refresh."));

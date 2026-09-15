@@ -440,14 +440,25 @@ fn run() -> Result<()> {
                 .filter(|book| book.preferred().is_some_and(|c| !c.sha.is_empty()))
                 .collect();
             let mut done = Vec::new();
-            for book in &planned {
+            for (index, book) in planned.iter().enumerate() {
                 let source = book.preferred().map(|c| c.place).unwrap_or(from);
                 let outcome = if apply {
+                    // Live progress goes to stderr, so stdout stays the result.
+                    eprintln!(
+                        "[{}/{}] {} — copying to {}",
+                        index + 1,
+                        planned.len(),
+                        printable(&book.title),
+                        to.label()
+                    );
                     crossload::books::transfer(&options, book, to, &|_| {})
                         .map_err(|e| format!("{e:#}"))
                 } else {
                     Ok(String::new())
                 };
+                if let Err(e) = &outcome {
+                    eprintln!("      failed: {}", printable(e));
+                }
                 done.push((book, source, outcome));
             }
             if json {

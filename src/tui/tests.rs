@@ -32,7 +32,7 @@ impl Application for Proof {
     fn new((log, mode): Self::Flags) -> (Self, Command<Message>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let cmd = Command::stream(work_stream(1, move |progress| {
-            progress("started");
+            progress(backend::Report::Text("started"));
             rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap();
             match mode {
                 1 => anyhow::bail!("synthetic failure"),
@@ -402,4 +402,47 @@ fn titles_truncate_by_printed_width_not_character_count() {
     assert_eq!(shorten("世界の終わり", 12), "世界の終わり");
     // Control characters are still replaced before anything is measured.
     assert_eq!(shorten("a\u{1b}b", 8), "a b");
+}
+
+#[test]
+fn a_running_set_reports_how_far_it_has_come() {
+    let mut model = Model::new(options());
+    model.entries = (0..3)
+        .map(|i| {
+            Entry::new(
+                format!("Book {i}"),
+                "Writer".into(),
+                "ACSM",
+                Source::Local(format!("/{i}.acsm").into()),
+            )
+        })
+        .collect();
+    model.catalog.status = vec![(Place::Local, "Ready (0 books, 0 unreadable)".into())];
+    model.update(key(KeyCode::Char('a')));
+    model.update(key(KeyCode::Enter));
+    assert!(matches!(
+        model.update(key(KeyCode::Char('1'))).as_slice(),
+        [Effect::Work { entries, .. }] if entries.len() == 3
+    ));
+    let job = model.busy.unwrap();
+    assert_eq!(model.step, None);
+    model.update(Message::Step(job, 1, 3));
+    assert_eq!(model.step, Some((1, 3)));
+    // The book's own progress replaces the text but never the count.
+    model.update(Message::Progress(job, "Sending to CrossPoint…".into()));
+    assert_eq!(model.step, Some((1, 3)));
+    assert_eq!(model.status, "Sending to CrossPoint…");
+    // A stale job cannot move the bar, and finishing clears it.
+    model.update(Message::Step(job + 1, 9, 9));
+    assert_eq!(model.step, Some((1, 3)));
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert!(rendered.contains("1 of 3 books"), "{rendered}");
+    model.update(Message::Finished(job, Ok("Copied 3 of 3".into())));
+    assert_eq!(model.step, None);
+    // A single book needs no bar.
+    model.busy = Some(job);
+    model.update(Message::Step(job, 0, 1));
+    assert_eq!(model.step, None);
 }
