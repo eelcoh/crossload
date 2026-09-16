@@ -865,7 +865,7 @@ pub fn transfer(
     Ok(format!(
         "Copied to {output} (verified).{}",
         if source.optimized || source.place == Place::Xteink {
-            " Source is a device copy; original quality cannot be restored."
+            " Source is a device copy; any image optimization in it cannot be undone."
         } else {
             ""
         }

@@ -662,8 +662,8 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   not available (already there, device unavailable, or discovery still running).
 - Copies already found at the destination are reported instead of duplicated.
 - Original Local/Kobo copies are preferred over optimized/device copies.
-  A reader-only copy can be recovered, but its original image quality cannot
-  be restored. Device-copy actions wait for discovery to finish so an original
+  A reader-only copy can be recovered, but any image optimization it went
+  through cannot be undone. Device-copy actions wait for discovery to finish so an original
   can be selected when available.
 - Local copies go to `--output`. Kobo copies are ordinary sideloaded EPUBs in
   author folders; eject the Kobo normally so it can index them. Xteink copies

@@ -253,7 +253,7 @@ fn details(
                     label("Source"),
                     match copy {
                         Some(c) if c.optimized || c.place == Place::Xteink => Span::styled(
-                            format!("{} · device copy — reduced quality", c.place.label()),
+                            format!("{} · device copy, images may be optimized", c.place.label()),
                             fg(Color::Yellow),
                         ),
                         Some(c) => Span::styled(
