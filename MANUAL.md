@@ -455,8 +455,18 @@ mise run test                       # tests only
 mise run test -- --test kobo         # forward Cargo test arguments
 mise run lint
 mise run run -- kobo list
+mise run install                    # build, then install into ~/.local/bin
+mise run install -- /usr/local/bin  # or another directory
 mise run package -- --output dist/new-release
 ```
+
+`install` builds with whichever backend is in use and then copies the binaries on
+the host, so a container build installs a host binary. It writes `crossload` and
+the `xteink` compatibility command into `~/.local/bin`, or into
+`CROSSLOAD_INSTALL_DIR`, or into a directory given as an argument; it creates the
+directory, says so when it is not on your `PATH`, and prints the installed
+version. Existing files at those names are replaced, unlike everything Crossload
+does with books.
 
 By default, tasks use native Cargo when it is on PATH, otherwise Podman on Linux.
 Set `CROSSLOAD_BUILD_BACKEND=native` or `container` to choose explicitly;

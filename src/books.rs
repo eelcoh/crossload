@@ -672,6 +672,20 @@ fn destination(options: &Options) -> Result<inventory::Destination> {
         )?))
     }
 }
+/// Whether two spellings name the same copy. Local paths are compared as files,
+/// since the same file can be reached by more than one path: a relative one, or
+/// a directory that is a symlink, as `/var` is on macOS. Devices are not
+/// filesystem paths at all and must match exactly.
+fn same_file(place: Place, recorded: &str, wanted: &str) -> bool {
+    if recorded == wanted {
+        return true;
+    }
+    place == Place::Local
+        && matches!(
+            (fs::canonicalize(recorded), fs::canonicalize(wanted)),
+            (Ok(a), Ok(b)) if a == b
+        )
+}
 /// Remove one copy of a book, and only when every rule holds: never the last
 /// copy anywhere, never a book the Kobo database owns, never over Wi-Fi, and
 /// never a file whose contents no longer match what discovery recorded. The
@@ -691,7 +705,7 @@ pub fn remove(
     let copy = book
         .copies
         .iter()
-        .find(|c| c.place == place && c.path == path)
+        .find(|c| c.place == place && same_file(place, &c.path, path))
         .context("That copy is no longer in the library; refresh and try again")?;
     ensure!(
         !copy.locked,

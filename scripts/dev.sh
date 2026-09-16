@@ -50,6 +50,25 @@ case "$action" in
         invoke bash -c 'cargo fmt --all -- --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked && cargo build --release --locked'
         ;;
     package) invoke python3 scripts/package.py "$@" ;;
+    install)
+        # Building may happen in a container; installing never does.
+        if [[ $# -gt 1 ]]; then
+            echo 'install takes at most one destination directory' >&2
+            exit 1
+        fi
+        destination=${1:-${CROSSLOAD_INSTALL_DIR:-$HOME/.local/bin}}
+        invoke cargo build --release --locked
+        mkdir -p "$destination"
+        for binary in crossload xteink; do
+            install -m 755 "target/release/$binary" "$destination/$binary"
+        done
+        echo "Installed crossload (and the xteink compatibility command) in $destination"
+        case ":$PATH:" in
+            *":$destination:"*) ;;
+            *) echo "Add it to your PATH: export PATH=\"$destination:\$PATH\"" >&2 ;;
+        esac
+        "$destination/crossload" --version
+        ;;
     run)
         # Devices, networking, activation and TUI always run on the host.
         if [[ $backend == native ]]; then

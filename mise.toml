@@ -25,6 +25,10 @@ description = "Build and run Crossload on the host; pass CLI arguments after --"
 run = "bash scripts/dev.sh run"
 raw = true
 
+[tasks.install]
+description = "Build and install crossload; accepts a destination directory"
+run = "bash scripts/dev.sh install"
+
 [tasks.package]
 description = "Build binary and offline source archives; accepts --output DIR"
 run = "bash scripts/dev.sh package"

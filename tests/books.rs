@@ -339,14 +339,10 @@ fn removing_a_copy_keeps_the_book_and_refuses_the_last_one() {
     assert_eq!(snapshot.books.len(), 1);
     let book = &snapshot.books[0];
     assert_eq!(book.copies.len(), 2);
-    let removed = books::remove(
-        &o,
-        book,
-        Place::Local,
-        &duplicate.to_string_lossy(),
-        &|_| {},
-    )
-    .unwrap();
+    // The same file reached by another spelling is the same copy.
+    let dotted = o.local.join(".").join("duplicate.epub");
+    let removed =
+        books::remove(&o, book, Place::Local, &dotted.to_string_lossy(), &|_| {}).unwrap();
     assert!(removed.contains("Deleted"), "{removed}");
     assert!(!duplicate.exists());
     assert_eq!(
