@@ -58,6 +58,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The changelog is the commits since the previous tag, so the release
+          # needs history and tags rather than a single commit.
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: crossload-ubuntu-24.04
@@ -72,11 +76,28 @@ jobs:
           an XTeink X4 or another CrossPoint reader. See the
           [README](https://github.com/eelcoh/crossload#crossload) for what it
           does and how to use it.
+          NOTES
+          # GitHub's own generator lists merged pull requests, and this history
+          # has none; the commits are the changelog.
+          previous=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            echo
+            echo "## What changed"
+            echo
+            if [ -n "$previous" ]; then
+              git log --no-merges --format='- %s' "$previous..$TAG"
+              echo
+              echo "**Full changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...$TAG"
+            else
+              git log --no-merges --format='- %s' "$TAG"
+            fi
+          } >> notes.md
+          cat >> notes.md <<'NOTES'
 
           ## Install on Linux (x86-64)
 
           ```sh
-          sha256sum -c crossload-VERSION-x86_64-unknown-linux-gnu.sha256
+          sha256sum --ignore-missing -c crossload-VERSION-x86_64-unknown-linux-gnu.sha256
           tar -xzf crossload-VERSION-x86_64-unknown-linux-gnu.tar.gz
           install -m 755 crossload-VERSION-x86_64-unknown-linux-gnu/crossload ~/.local/bin/crossload
           crossload --version
