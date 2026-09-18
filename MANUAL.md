@@ -22,9 +22,9 @@ Choose the archive matching your OS and CPU, verify its checksum, and extract it
 
 ```sh
 # Linux example (run in the directory containing the downloaded packages):
-sha256sum -c crossload-0.1.0-x86_64-unknown-linux-gnu.sha256
-tar -xzf crossload-0.1.0-x86_64-unknown-linux-gnu.tar.gz
-cd crossload-0.1.0-x86_64-unknown-linux-gnu
+sha256sum -c crossload-0.1.1-x86_64-unknown-linux-gnu.sha256
+tar -xzf crossload-0.1.1-x86_64-unknown-linux-gnu.tar.gz
+cd crossload-0.1.1-x86_64-unknown-linux-gnu
 ./crossload --help
 mkdir -p "$HOME/.local/bin"
 install -m 755 crossload "$HOME/.local/bin/crossload"

@@ -38,7 +38,7 @@ enter copy   space mark   a mark all   f filter   d copies   / search   q quit
 ### Linux: download it
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.1
 NAME=crossload-$VERSION-x86_64-unknown-linux-gnu
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
