@@ -35,26 +35,47 @@ enter copy   space mark   a mark all   f filter   d copies   / search   q quit
 
 ## Install
 
-There are no published binaries yet, so build it once from source. You need
-[Rust](https://rust-lang.org/tools/install/), a C/C++ compiler, Make, CMake and
-Perl:
+### Linux: download it
 
 ```sh
-# Debian/Ubuntu: sudo apt install build-essential cmake perl pkg-config
-# macOS:         xcode-select --install && brew install cmake
-git clone https://github.com/eelcoh/crossload.git
-cd crossload
-cargo install --path . --locked
+VERSION=0.1.0
+NAME=crossload-$VERSION-x86_64-unknown-linux-gnu
+curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
+curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
+sha256sum --ignore-missing -c $NAME.sha256
+tar -xzf $NAME.tar.gz
+install -Dm755 $NAME/crossload ~/.local/bin/crossload
 crossload --version
 ```
 
-Cargo installs into `~/.cargo/bin`; make sure that is on your `PATH`.
+[Releases](https://github.com/eelcoh/crossload/releases) lists the current
+version. The binary brings everything with it — no Rust, Python, Calibre or
+ebook libraries to install — and needs a distribution from 2024 or later
+(glibc 2.39). Anything older builds from source just as happily. Make sure
+`~/.local/bin` is on your `PATH`.
 
-Linux and macOS are supported. Linux is what has been used against real
-hardware; macOS builds and passes its tests in CI on every change. Building from
-source is the right path on a managed Mac: the packaged binaries are unsigned,
-and a corporate policy that forbids clearing macOS quarantine will not run
-them.
+### macOS, or building it yourself
+
+```sh
+# macOS:         xcode-select --install && brew install cmake
+# Debian/Ubuntu: sudo apt install build-essential cmake perl pkg-config
+# Fedora:        sudo dnf install gcc gcc-c++ make cmake perl pkgconf
+git clone https://github.com/eelcoh/crossload.git
+cd crossload
+cargo install --path . --locked      # needs Rust: https://rust-lang.org/tools/install/
+crossload --version
+```
+
+The Adobe fulfillment, database, TLS and HTTP pieces are compiled from source
+instead of borrowed from your system, so that the finished binary depends on
+nothing but the C runtime. That is the only reason a compiler, CMake and Perl
+appear here: they build it, they are not needed to run it. Cargo installs into
+`~/.cargo/bin`.
+
+No macOS binary is published, so this is the way in on a Mac — and the only way
+on a managed one, where the quarantine that macOS puts on any download cannot be
+cleared. Linux is what has been used against real hardware; macOS builds and
+passes its tests on every change.
 
 ## Start here
 
@@ -77,7 +98,10 @@ crossload tui
 
 Every location is scanned independently, so a Kobo you have not plugged in or a
 reader that is switched off costs you nothing — the books you do have stay
-usable. Press **r** after connecting or disconnecting something.
+usable, and you can start with none of them connected. Press **r** after
+connecting or disconnecting something.
+
+Scanning only reads. Nothing is copied, changed or removed until you ask for it.
 
 ## Reading the library
 
@@ -155,9 +179,10 @@ and later scans are close to instant unless a file has actually changed. The
 cache lives in `~/.cache/crossload/` and deleting it only costs you one slow
 scan.
 
-Crossload never overwrites a file and never deletes a book. A copy that would
-land on an existing, different file is reported instead. Every transfer is read
-back and verified.
+Crossload never overwrites a file. A copy that would land on an existing,
+different file is reported instead, and every transfer is read back and verified
+against its source. The one thing that removes anything is `d`, which asks first
+and refuses to take the last copy of a book.
 
 ## Further reading
 

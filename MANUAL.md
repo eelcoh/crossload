@@ -10,8 +10,11 @@ Crossload targets Linux and macOS. Linux has been tested on a real Kobo. macOS
 builds, passes the full test suite and runs its terminal smoke test on every
 push to `main` through CI, and the current version has been run on a Mac by
 hand. Kobo hardware and reader transfers have only been exercised on Linux.
-There are no published binary releases yet. Local Linux distribution archives
-are generated under `dist/`; install from one of these or build from this checkout.
+Linux binaries are published with each tagged release; see
+[Releases](https://github.com/eelcoh/crossload/releases). No macOS binary is
+published, because an unsigned download is quarantined and a managed Mac may
+forbid clearing that: build from source there. Local distribution archives are
+also generated under `dist/` by `mise run package`.
 
 ### From a binary archive
 
@@ -28,7 +31,8 @@ install -m 755 crossload "$HOME/.local/bin/crossload"
 ```
 
 On macOS use `shasum -a 256 -c FILE.sha256`. The checksum file covers both the
-binary and corresponding source archive, so download both for that check.
+binary and the corresponding source archive, so pass `--ignore-missing` when
+only one of them was downloaded.
 Apple Silicon packages use `aarch64-apple-darwin`; Intel Macs use
 `x86_64-apple-darwin`.
 
