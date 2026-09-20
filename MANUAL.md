@@ -10,11 +10,9 @@ Crossload targets Linux and macOS. Linux has been tested on a real Kobo. macOS
 builds, passes the full test suite and runs its terminal smoke test on every
 push to `main` through CI, and the current version has been run on a Mac by
 hand. Kobo hardware and reader transfers have only been exercised on Linux.
-Linux binaries are published with each tagged release; see
-[Releases](https://github.com/eelcoh/crossload/releases). No macOS binary is
-published, because an unsigned download is quarantined and a managed Mac may
-forbid clearing that: build from source there. Local distribution archives are
-also generated under `dist/` by `mise run package`.
+Linux and macOS binaries are published with each tagged release; see
+[Releases](https://github.com/eelcoh/crossload/releases). Local distribution
+archives are also generated under `dist/` by `mise run package`.
 
 ### From a binary archive
 
@@ -36,12 +34,23 @@ only one of them was downloaded.
 Apple Silicon packages use `aarch64-apple-darwin`; Intel Macs use
 `x86_64-apple-darwin`.
 
-Mac packages are unsigned and not notarized. macOS quarantines a downloaded
-binary, and clearing that (`xattr -d com.apple.quarantine crossload`) is exactly
-what a managed device may forbid: this was tried on a corporate MacBook and the
-restrictions did not allow it. Build from source there instead, which works and
-needs no exception. A packaged macOS binary has therefore been produced by CI
-but never executed.
+Mac packages are unsigned and not notarized, which is how Homebrew's own
+formula bottles are distributed too. macOS does not quarantine every download:
+it quarantines what a quarantine-aware application writes, which means a
+browser, Mail or AirDrop. `curl`, `wget` and `git` do not set the attribute, and
+Gatekeeper only refuses a file that carries it, so fetch the archive with curl
+and it runs. A browser download needs `xattr -d com.apple.quarantine crossload`,
+and that is exactly what a managed device may forbid: it was tried on a
+corporate MacBook and the restrictions did not allow it. Building from source
+works there and needs no exception, and a machine whose policy is stricter than
+Gatekeeper's default may refuse an unnotarized binary however it arrived.
+
+On Apple Silicon an executable needs a code signature to run at all, but an
+ad-hoc one satisfies that; the toolchain applies it at link time, and it is not
+notarization and costs nothing.
+
+A packaged macOS binary has been produced by CI on every tagged release and has
+still never been executed. Publishing it does not make it verified.
 
 `BUILD.json` records the compiler, platform, source revision, whether the working
 tree was modified, and dynamic libraries. Local Linux packages use the Debian 12

@@ -213,7 +213,7 @@
     the book is still imported and the request stays put, reported rather than
     raised as an error.
 
-19. [~] macOS verification and published releases
+19. [~] macOS verification and published releases — publishing settled
     macOS verification is done: see the section below. Packaging on a `v*` tag
     already exists and produces Linux and both macOS archives as Actions
     artifacts, and the v0.1.0 tag ran it: ubuntu-24.04, macos-15 and
@@ -225,6 +225,24 @@
     unmanaged Mac or signing and notarization.
     Remaining: decide whether to publish GitHub Releases at all, knowing that
     the macOS archives in them are unsigned and unrunnable on managed devices.
+    Settled: publish them. The premise was wrong. macOS does not quarantine any
+    download — it quarantines what a quarantine-aware application writes, which
+    is a browser, Mail or AirDrop. curl, wget and git do not set the attribute,
+    and Gatekeeper only refuses files that carry it. That is why Homebrew's
+    formula bottles run unsigned and unnotarized: they are plain tarballs its
+    own downloader fetched. Casks are the other case, signed by the vendor
+    rather than by Homebrew. On Apple Silicon a binary needs a signature to
+    execute at all, but an ad-hoc one satisfies that, costs nothing and is
+    applied by the toolchain at link time; it is not notarization.
+    So the release job now takes every platform's artifacts rather than only
+    Linux's — they were being built and tested on every tag and then left out —
+    and both the release notes and the README carry a curl install for macOS,
+    saying plainly that a browser download is the thing that breaks.
+    Still true, and still said in both places: no packaged macOS binary has been
+    run on a Mac. Publishing it does not make it verified. A managed Mac may
+    also enforce a policy stricter than Gatekeeper's default, which curl would
+    not get around; that is one machine's problem rather than a reason to
+    publish nothing.
 
 20. [x] Delete redundant copies — implemented
     Duplicates were invisible and unremovable: two files of the same book share

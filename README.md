@@ -54,7 +54,26 @@ ebook libraries to install — and needs a distribution from 2024 or later
 (glibc 2.39). Anything older builds from source just as happily. Make sure
 `~/.local/bin` is on your `PATH`.
 
-### macOS, or building it yourself
+### macOS: download it
+
+```sh
+VERSION=0.1.1
+NAME=crossload-$VERSION-aarch64-apple-darwin   # x86_64-apple-darwin on Intel
+curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
+curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
+shasum -a 256 --ignore-missing -c $NAME.sha256
+tar -xzf $NAME.tar.gz
+install -m 755 $NAME/crossload ~/.local/bin/crossload
+crossload --version
+```
+
+Fetch it with `curl` rather than through a browser. macOS quarantines what a
+browser downloads, not what curl does, so a curl-fetched binary runs without
+being signed or notarized — which is how Homebrew's own bottles work. A
+browser-downloaded archive needs its quarantine cleared, and a managed Mac may
+forbid that.
+
+### Building it yourself
 
 ```sh
 # macOS:         xcode-select --install && brew install cmake
@@ -72,10 +91,8 @@ nothing but the C runtime. That is the only reason a compiler, CMake and Perl
 appear here: they build it, they are not needed to run it. Cargo installs into
 `~/.cargo/bin`.
 
-No macOS binary is published, so this is the way in on a Mac — and the only way
-on a managed one, where the quarantine that macOS puts on any download cannot be
-cleared. Linux is what has been used against real hardware; macOS builds and
-passes its tests on every change.
+Linux is what has been used against real hardware; macOS builds and passes its
+tests on every change, but no packaged macOS binary has been run on a Mac yet.
 
 ## Start here
 

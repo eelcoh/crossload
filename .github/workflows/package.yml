@@ -62,11 +62,14 @@ jobs:
           # The changelog is the commits since the previous tag, so the release
           # needs history and tags rather than a single commit.
           fetch-depth: 0
+      # Every platform's archives, so a release carries what was built and
+      # tested rather than a third of it.
       - uses: actions/download-artifact@v4
         with:
-          name: crossload-ubuntu-24.04
+          pattern: crossload-*
+          merge-multiple: true
           path: dist
-      - name: Publish the Linux archives
+      - name: Publish the archives
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -107,15 +110,31 @@ jobs:
           libraries; it uses the system C/C++ runtime. `BUILD.json` in the archive
           records the compiler, platform and source revision.
 
-          ## macOS
+          ## Install on macOS (Apple Silicon; use x86_64-apple-darwin on Intel)
 
-          Build from source: `cargo install --path . --locked`. No macOS binary is
-          published, because an unsigned download is quarantined and a managed Mac
-          may forbid clearing that, which would leave a package that cannot run.
+          ```sh
+          NAME=crossload-VERSION-aarch64-apple-darwin
+          curl -fLO https://github.com/OWNER/releases/download/vVERSION/$NAME.tar.gz
+          curl -fLO https://github.com/OWNER/releases/download/vVERSION/$NAME.sha256
+          shasum -a 256 --ignore-missing -c $NAME.sha256
+          tar -xzf $NAME.tar.gz
+          install -m 755 $NAME/crossload ~/.local/bin/crossload
+          crossload --version
+          ```
+
+          Fetch it with `curl` rather than a browser. macOS quarantines what a
+          browser downloads, not what curl does, so a curl-fetched binary runs
+          without being signed or notarized — which is how Homebrew's own
+          bottles work. A browser-downloaded archive needs the quarantine
+          cleared, and a managed Mac may forbid that.
+
+          These archives build and pass their tests on every change, but no
+          packaged macOS binary has been run on a Mac yet. `cargo install --path
+          . --locked` builds from source if you would rather.
 
           The source archive below builds offline and carries every dependency.
           NOTES
-          sed -i "s/VERSION/${TAG#v}/g" notes.md
+          sed -i "s/VERSION/${TAG#v}/g; s|OWNER|$GITHUB_REPOSITORY|g" notes.md
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "Crossload ${TAG#v}" \
