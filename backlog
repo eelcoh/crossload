@@ -213,7 +213,7 @@
     the book is still imported and the request stays put, reported rather than
     raised as an error.
 
-19. [~] macOS verification and published releases — verified; one tag left to run
+19. [x] macOS verification and published releases — done
     macOS verification is done: see the section below. Packaging on a `v*` tag
     already exists and produces Linux and both macOS archives as Actions
     artifacts, and the v0.1.0 tag ran it: ubuntu-24.04, macos-15 and
@@ -257,8 +257,21 @@
     The manual said a packaged macOS binary had been produced by CI and never
     executed. That is no longer true and no longer said, in the manual, the
     README or the release notes.
-    Left: the release job's change has not run. It now takes every platform's
-    artifacts rather than only Linux's, and the next tag is what exercises that.
+    Closed by v0.2.0. The release job took every platform's artifacts and
+    published nine assets: an archive, a checksum and a source archive for
+    Linux, Apple Silicon and Intel macOS. The one-line installer then fetched
+    and verified it on both Linux and the managed Mac, which is the last link
+    that had never been walked — the mkdir that BSD install needs and the PATH
+    note that macOS needs had only been reasoned about until then.
+    The first tag failed and was worth it. The Intel macOS runner hit
+    EWOULDBLOCK in the ADEPT test's own fulfillment server: a socket accepted
+    from a non-blocking listener inherits that flag on BSD and macOS but not on
+    Linux, so a read returned immediately whenever the request had not already
+    arrived, and a read timeout cannot help a socket that never waits.
+    tests/crosspoint.rs already carried that fix, with a comment; the ADEPT
+    server was the one place it had not been applied. Re-running the job would
+    have hidden it. The tag was re-pointed rather than bumped, since the failed
+    run published nothing and there was nothing for anyone to have fetched.
 
 20. [x] Delete redundant copies — implemented
     Duplicates were invisible and unremovable: two files of the same book share
