@@ -453,6 +453,35 @@
     now checks the default is offered, then points the address at a port
     nothing answers on before saving.
 
+30. [ ] Optimize for the reader in hand, not always for an X4
+    `prepare::optimize_images` converts every book to one fixed profile,
+    `xteink-x4-images-v1:480x800:gray:jpeg85`, which is the X4's screen. Now
+    that the tool says it serves any CrossPoint reader, that is wrong for any
+    other one: an M5Paper has different geometry, so books prepared here arrive
+    scaled for a device the reader is not. The tool would be quietly degrading
+    images to the wrong size and calling it optimization.
+    The reader already answers this. `/api/status` returns a `device` field —
+    "X4" on this one — and `crosspoint::Status` parses it, so the profile can be
+    chosen from what the device says it is rather than from a setting nobody
+    knows how to fill in. The connection test in the settings screen already
+    prints it back. A mounted card has no status endpoint, so the card path
+    needs the device remembered from the last reachable reader, or asked for.
+    Three things have to move together, and the third is a correctness trap.
+    The profile string gains a per-device value, keeping
+    `xteink-x4-images-v1:...` exactly as it is so copies already on devices
+    still match. `optimize_images` already compares the stored profile byte for
+    byte and re-optimizes anything that differs, which is right, though it
+    compounds loss when the source is itself a device copy — `preferred` avoids
+    that by favouring originals. And `cache::variant_key` is
+    (sha, optimize, organized) with no profile in it, so as soon as there is
+    more than one profile, a book optimized for one device would be served from
+    the cache as if it were optimized for another. That key must carry the
+    profile before a second one exists.
+    Unknowns to settle first rather than assume: the actual screen geometry and
+    colour depth of each supported device, and whether CrossPoint reports a
+    distinct `device` string for each. Take them from hardware or from
+    CrossPoint, not from memory.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest
