@@ -668,6 +668,37 @@
     device has. Adding one now means one constant, a name that matches what
     CrossPoint reports for it, and nothing else.
 
+31. [ ] Change a book's own metadata
+    A series has nowhere to live in this library, so it lives in the title:
+    the reader holds `The Expanse - Calibans strijd.epub` under an author folder
+    called `James Corey`, where the series belongs in `calibre:series` and the
+    author is James S. A. Corey. Item 22 reads both of those; nothing writes
+    them. Setting a series, and settling on one spelling of an author across the
+    books that share them, is the ask.
+    Two things stand in the way, and both are more interesting than the edit.
+    First, identity. `inventory::identity` hashes every file's name, size and
+    contents, skipping only the device-profile marker, so rewriting a package
+    document changes both the sha and the resources hash. An edited local book
+    would stop matching its copy on the reader, and the library would show one
+    book as two and offer to copy each to the other. The README already claims
+    that "a renamed or repacked copy is still recognized as the same edition",
+    which editing metadata quietly breaks. Excluding the package document from
+    the resources hash — as the device marker already is — would make a metadata
+    edit identity-neutral and make that claim true. The cost is that two books
+    whose every other file matches byte for byte become one book, which is
+    almost certainly what they are.
+    Second, the promise not to touch anything. Nothing here has ever modified a
+    book: copies are verified, nothing is overwritten, and deleting took its own
+    item and a confirmation. Editing metadata writes to a file the reader owns.
+    The alternatives are to write a corrected copy beside the original, as PDF
+    conversion does, which keeps the promise and leaves two copies to tidy up;
+    or to edit in place, which is what anyone actually wants and needs saying
+    plainly in the interface rather than in a manual.
+    Open questions, in the order they change the work: does an edit apply to the
+    local copy alone or to every copy of that book; does it write in place or
+    beside; and does it live in the TUI on a selected book, on the command line,
+    or both.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest
