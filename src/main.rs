@@ -443,7 +443,7 @@ fn run() -> Result<()> {
             let planned: Vec<_> = snapshot
                 .books
                 .iter()
-                .filter(|book| book.has(from) && !book.readable_at(to))
+                .filter(|book| book.has(from) && !book.has(to))
                 .filter(|book| book.preferred().is_some_and(|c| !c.sha.is_empty()))
                 .collect();
             let mut done = Vec::new();

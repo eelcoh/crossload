@@ -307,7 +307,7 @@ impl Model {
             Source::Local(_) => Destination::Ready("fulfil ACSM"),
             Source::Book(book) => {
                 let book = self.current(book);
-                if book.readable_at(target) {
+                if book.has(target) {
                     return Destination::Blocked(
                         "already here",
                         format!("A copy is already in {}.", target.label()),

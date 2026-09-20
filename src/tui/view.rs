@@ -261,7 +261,7 @@ fn details(
     let lines = match &entry.source {
         Source::Book(book) => {
             let copy = book.preferred();
-            let mut lines = vec![
+            vec![
                 Line::from(vec![
                     label("Source"),
                     match copy {
@@ -292,26 +292,7 @@ fn details(
                             .unwrap_or_default(),
                     ),
                 ]),
-            ];
-            // A file the reader stores but never lists is on the device
-            // without being in its library; say so where the copy is named.
-            if let Some(stranded) = book
-                .copies
-                .iter()
-                .find(|c| c.place == Place::Xteink && !c.format.shown_on_reader())
-            {
-                lines.push(Line::from(vec![
-                    label("Reader"),
-                    Span::styled(
-                        format!(
-                            "holds this {} but lists only EPUB, so it is not in its library",
-                            stranded.format.label()
-                        ),
-                        fg(Color::Red),
-                    ),
-                ]));
-            }
-            lines
+            ]
         }
         Source::Local(path) => vec![
             Line::from(vec![

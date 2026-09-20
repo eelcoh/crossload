@@ -68,14 +68,6 @@ impl Book {
     pub fn has(&self, place: Place) -> bool {
         self.copies.iter().any(|c| c.place == place)
     }
-    /// Whether the book is readable at a place, which is not the same as being
-    /// there: a PDF sits on the reader's storage without ever being listed by
-    /// it, so as far as reading goes the book has not arrived.
-    pub fn readable_at(&self, place: Place) -> bool {
-        self.copies
-            .iter()
-            .any(|c| c.place == place && (place != Place::Xteink || c.format.shown_on_reader()))
-    }
     pub fn preferred(&self) -> Option<&Copy> {
         self.copies.iter().min_by_key(|c| {
             (
@@ -576,11 +568,12 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     .unwrap_or_default(),
                 options.folder
             );
-            for file in destination
-                .files()?
-                .into_iter()
-                .filter(|f| !f.directory && Format::of(&f.path).is_some())
-            {
+            for file in destination.files()?.into_iter().filter(|f| {
+                // The reader's library lists only EPUB, so that is what is
+                // on it as far as anyone reading is concerned. A PDF left
+                // there is a file, not a book.
+                !f.directory && Format::of(&f.path).is_some_and(Format::shown_on_reader)
+            }) {
                 // The reader's listing offers a size and nothing else; a
                 // replacement of exactly the same size is not detected.
                 let key = Some(cache::source_key(

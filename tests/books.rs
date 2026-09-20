@@ -454,8 +454,8 @@ fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
     let comic = cbz(&["001.jpg", "002.jpg"]);
     fs::write(o.local.join("Some Paper.pdf"), &paper).unwrap();
     fs::write(o.local.join("Vol 1.cbz"), &comic).unwrap();
-    // The same PDF already on the reader is the same book, and nothing about
-    // being there makes it a lesser copy: nobody rewrote it.
+    // A PDF on the reader is not listed by it, so Crossload does not list it
+    // either: the file is there, but no one can read it there.
     fs::write(card.join("Some Paper.pdf"), &paper).unwrap();
     // A format Crossload does not carry stays out of the library, and a file
     // that lies about its format is a warning rather than a book.
@@ -471,8 +471,8 @@ fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
         .iter()
         .find(|b| b.title == "Some Paper")
         .unwrap();
-    assert!(paper_book.has(Place::Local) && paper_book.has(Place::Xteink));
-    assert_eq!(paper_book.preferred().unwrap().place, Place::Local);
+    assert!(paper_book.has(Place::Local) && !paper_book.has(Place::Xteink));
+    assert_eq!(paper_book.copies.len(), 1);
     assert!(paper_book.copies.iter().all(|c| !c.optimized));
     // No metadata was invented: the file's own name is the whole of it.
     assert_eq!(paper_book.author, "");

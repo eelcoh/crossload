@@ -408,6 +408,12 @@
     and both the dialog and the sync planner use it.
     Verified against the real X4: a PDF converted, kept locally, sent over
     Wi-Fi, and listed by the device — /api/files reports isEpub true for it.
+    Then simplified: discovery lists only EPUB on the reader, mirroring what the
+    reader lists itself, so a PDF left there is skipped rather than shown as a
+    copy. That removes the distinction between being at a place and being
+    readable there, since nothing unlistable is discovered any more, and it
+    spares the scan from downloading such a file over Wi-Fi only to hash
+    something no book will ever match.
 
 28. [-] Google Books — dropped
     Nothing on offer was actually sync. Uploading your own library to Play

@@ -217,12 +217,15 @@ impl Inventory {
                 "Case-colliding entries in destination: {}",
                 file.path
             );
-            let identity = if !file.directory && Format::of(&file.path).is_some() {
-                progress(&file.path);
-                Some(identity(&destination.read(&file)?))
-            } else {
-                None
-            };
+            // Hashing a file the reader will never list means downloading it
+            // over Wi-Fi for nothing.
+            let identity =
+                if !file.directory && Format::of(&file.path).is_some_and(Format::shown_on_reader) {
+                    progress(&file.path);
+                    Some(identity(&destination.read(&file)?))
+                } else {
+                    None
+                };
             entries.push(Existing { file, identity });
         }
         Ok(Self { entries })

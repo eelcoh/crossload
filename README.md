@@ -133,7 +133,9 @@ The reader is the exception: **the X4's library lists only EPUB.** It will store
 a PDF happily — its own file listing marks every entry `isEpub`, and says false
 for anything else — but its reading app never shows one. So a PDF reaches the
 reader by being **converted to EPUB**, and a CBZ, which cannot be, is refused
-with the reason given. Kobo and your computer take every format as it is.
+with the reason given. Crossload lists only EPUB on the reader, for the same
+reason the reader does: a PDF left there is a file, not a book. Kobo and your
+computer take every format as it is.
 
 Crossload judges a PDF when it reads it, and the copy dialog acts on that
 judgement: a PDF of ordinary text says `convert to EPUB, copy` and goes; one

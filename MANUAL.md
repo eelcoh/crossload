@@ -790,9 +790,11 @@ tables and footnotes are not carried over, and a word broken across a line
 break loses its hyphen, so a compound such as real-time can come back as
 realtime.
 
-A copy that the reader stores but cannot list does not count as the book having
-arrived: a PDF sitting on the device leaves the book still missing from Xteink,
-so it can be converted and sent properly.
+Discovery lists only EPUB on the reader, mirroring what the reader itself lists.
+A PDF or CBZ left on the device by other means is skipped rather than shown as a
+copy that has arrived, so the book still reads as missing from Xteink and can be
+converted and sent properly. Such a file stays where it is; Crossload neither
+lists it nor removes it.
 
 The reader takes EPUB only. CrossPoint stores whatever is uploaded, but the X4's
 library lists nothing else: every entry its `/api/files` returns carries an
