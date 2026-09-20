@@ -686,7 +686,7 @@ impl Model {
                             }
                         }
                         super::settings::Action::Run(task) => {
-                            panel.message = match &task {
+                            panel.message = match task.as_ref() {
                                 super::settings::Task::Save { .. } => "Saving settings…",
                                 super::settings::Task::Detect => "Looking for mounted Kobos…",
                                 super::settings::Task::Test { .. } => "Testing reader connection…",
@@ -694,7 +694,7 @@ impl Model {
                             .into();
                             let id = self.id();
                             self.configuring = Some(id);
-                            return vec![Effect::Configure { id, task }];
+                            return vec![Effect::Configure { id, task: *task }];
                         }
                         super::settings::Action::None => {}
                     }

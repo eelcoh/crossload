@@ -37,6 +37,10 @@ pub struct Defaults {
     #[arg(long)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// OPDS catalogue browsed by default, instead of the Palace Bookshelf.
+    #[arg(long)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<String>,
 }
 pub fn default_path() -> Result<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -101,6 +105,16 @@ impl Defaults {
             self.reader.as_deref().unwrap_or("crosspoint.local"),
             self.folder.as_deref().unwrap_or("/"),
         )?;
+        // A catalogue that is not a usable address is refused at save time,
+        // like the screen below, rather than on every browse afterwards.
+        if let Some(catalog) = &self.catalog {
+            let url = url::Url::parse(catalog)
+                .with_context(|| format!("Invalid catalogue address {catalog}"))?;
+            ensure!(
+                matches!(url.scheme(), "http" | "https"),
+                "A catalogue address must be http or https"
+            );
+        }
         // A screen nobody knows is refused here, when it is being saved,
         // rather than on every command that reads it afterwards.
         self.screen()?;
@@ -131,6 +145,9 @@ impl Defaults {
         if update.profile.is_some() {
             self.profile = update.profile;
         }
+        if update.catalog.is_some() {
+            self.catalog = update.catalog;
+        }
     }
     pub fn unset(&mut self, key: &str) -> Result<()> {
         match key {
@@ -142,8 +159,9 @@ impl Defaults {
             "folder" => self.folder = None,
             "kepub" => self.kepub = None,
             "profile" => self.profile = None,
+            "catalog" => self.catalog = None,
             _ => anyhow::bail!(
-                "Unknown setting {key}; use device, output, reader, copy-to, browse, folder, kepub or profile"
+                "Unknown setting {key}; use device, output, reader, copy-to, browse, folder, kepub, profile or catalog"
             ),
         }
         Ok(())

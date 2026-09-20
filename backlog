@@ -741,7 +741,7 @@
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.
 
-32. [ ] OPDS catalogues, as a client — the case is proven, for US libraries
+32. [~] OPDS catalogues, as a client — reading works; borrowing does not
     OPDS is a syndication format for ebook catalogues: 1.2 is Atom XML and is
     what nearly everything speaks, 2.0 is JSON and is not widely deployed. A
     feed is either navigation, linking on to more feeds, or acquisition, whose
@@ -846,6 +846,29 @@
     before starting. Order if it goes ahead: read Palace Bookshelf open-access
     first, then unauthenticated browsing of any registry library, then a card
     and the borrow chain into adobe.rs.
+    The first two are done, in src/opds.rs and crossload catalog. browse,
+    search and get read any OPDS 1.2 feed, resolve relative links, follow
+    rel=next, fill an OpenSearch template, and tell navigation entries from
+    books so Gutenberg's per-book feeds are reachable. A download is named from
+    the file's own metadata rather than the catalogue's, and lands in the
+    import folder where discovery already finds it; --send-to and --copy-to
+    carry it onward as they do for an ACSM import. Verified against the live
+    Palace Bookshelf, Boston Public, LA Public and Gutenberg, with offline
+    fixtures in tests/opds.rs.
+    What an entry offers is read from the feed's own indirectAcquisition chain
+    and reported rather than guessed: free EPUB, EPUB via Adobe DRM, Readium
+    LCP, an audiobook, a browser reader, a bearer-token handover. Undeliverable
+    entries are hidden with a count, and --all lists them with the reason.
+    Still to do, and the reason this is not finished: borrowing. It needs
+    auth/basic with Barcode and PIN from the authentication document, somewhere
+    to keep that credential, the borrow POST, then the shelf feed and the ACSM
+    into adobe.rs. None of it can be tested from here, because nobody on this
+    side of the Atlantic holds a US library card, so it should wait for someone
+    who does rather than be written blind against a feed that cannot be tried.
+    The TUI has no catalogue view yet either; the CLI is the whole of it.
+    One thing found while building it, now fixed: PDF /Info strings are
+    PDFDocEncoding, and pdf.rs was reading them as UTF-8, which turned an en
+    dash into a replacement character in titles and filenames.
 
 ## macOS verification update
 

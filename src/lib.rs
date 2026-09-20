@@ -7,6 +7,7 @@ pub mod history;
 pub mod kepub;
 pub mod kobo;
 pub mod metadata;
+pub mod opds;
 pub mod pdf;
 
 pub mod prepare;

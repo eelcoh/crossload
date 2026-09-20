@@ -5,8 +5,9 @@ CrossPoint — an XTeink X4, an M5Paper, or another.
 
 Crossload shows one library across all three places and tells you which books
 are where, so you can copy what is missing in either direction. It fulfills
-Adobe/ByteBooks ACSM files on its own, prepares images for the X4's screen, and
-verifies every copy it makes. Nothing is ever overwritten or deleted.
+Adobe/ByteBooks ACSM files on its own, reads OPDS catalogues, prepares images
+for the X4's screen, and verifies every copy it makes. Nothing is ever
+overwritten or deleted.
 
 Python and Calibre are not needed to run it.
 
@@ -271,6 +272,25 @@ crossload sync --from kobo --to xteink --apply  # copy it
 `sync` is a dry run until you add `--apply`. Single books have their own
 commands too: `crossload import book.acsm`, `crossload send book.epub`,
 `crossload copy book.epub --to /mnt/card`, `crossload kobo list`.
+
+## Finding books
+
+Crossload reads OPDS catalogues, which is how most library and ebook catalogues
+publish themselves. With no address it opens the Palace Bookshelf, the Digital
+Public Library of America's open collection: no account, no DRM, and free to
+take.
+
+```sh
+crossload catalog browse
+crossload catalog search dickens
+crossload catalog get <address printed above> --output ~/Books
+```
+
+Any OPDS feed works, including Project Gutenberg and the 1400-odd US public
+libraries in the Palace Project registry. What an entry offers is shown as the
+feed states it, so a loan that turns out to be an audiobook or a DRM Crossload
+cannot open says so rather than failing at the download. Borrowing with a
+library card is not implemented yet; browsing those catalogues already is.
 
 ## Good to know
 

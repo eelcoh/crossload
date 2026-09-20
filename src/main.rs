@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use comfy_table::{presets::NOTHING, ColumnConstraint, ContentArrangement, Table};
 use crossload::config::{self, required};
@@ -123,6 +123,11 @@ enum Command {
         #[arg(long)]
         folder: Option<String>,
     },
+    /// Browse an OPDS catalogue and download from it.
+    Catalog {
+        #[command(subcommand)]
+        command: CatalogCommand,
+    },
     /// Import or check an Adobe/ByteBooks ADEPT activation.
     Adobe {
         #[command(subcommand)]
@@ -144,6 +149,41 @@ enum ConfigCommand {
     },
     Unset {
         key: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CatalogCommand {
+    /// List what a catalogue offers. Defaults to the DPLA Palace Bookshelf,
+    /// which needs no library card.
+    Browse {
+        /// Feed address, or the saved catalogue.
+        url: Option<String>,
+        /// Also list entries this program cannot deliver, with the reason.
+        #[arg(long)]
+        all: bool,
+        /// Follow rel=next this many times.
+        #[arg(long, default_value_t = 1)]
+        pages: u32,
+    },
+    /// Search a catalogue by title, author or subject.
+    Search {
+        query: String,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long, default_value_t = 1)]
+        pages: u32,
+    },
+    /// Download one book, using an address that browse or search printed.
+    Get {
+        acquisition: String,
+        /// Local directory for imported books.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[command(flatten)]
+        transfer: Transfer,
     },
 }
 
@@ -653,6 +693,69 @@ fn run() -> Result<()> {
                 !cli.flat,
             )?;
         }
+        Command::Catalog { command } => match command {
+            CatalogCommand::Browse { url, all, pages } => {
+                let start = url
+                    .or_else(|| defaults.catalog.clone())
+                    .unwrap_or_else(|| crossload::opds::BOOKSHELF.to_owned());
+                show(&start, all, pages)?;
+            }
+            CatalogCommand::Search {
+                query,
+                url,
+                all,
+                pages,
+            } => {
+                let start = url
+                    .or_else(|| defaults.catalog.clone())
+                    .unwrap_or_else(|| crossload::opds::BOOKSHELF.to_owned());
+                let feed = crossload::opds::fetch(&start)?;
+                let description = feed.search.with_context(|| {
+                    format!("{} does not offer a search", printable(&feed.title))
+                })?;
+                show(&crossload::opds::search(&description, &query)?, all, pages)?;
+            }
+            CatalogCommand::Get {
+                acquisition,
+                output,
+                transfer,
+            } => {
+                let output = required(output, defaults.output.clone(), "--output")?;
+                let transfer = transfer.resolve(&defaults)?;
+                let reader = transfer.reader()?;
+                let data = crossload::opds::download(
+                    &acquisition,
+                    crossload::epub::MAX_BOOK_BYTES as usize,
+                )?;
+                // What arrived decides what it is. A catalogue's declared type
+                // is a promise, and the bytes are the fact.
+                let format = crossload::format::Format::ALL
+                    .into_iter()
+                    .find(|&format| crossload::format::validate(format, &data).is_ok())
+                    .context(
+                        "The catalogue returned something that is not an EPUB, PDF or CBZ. \
+                         A borrow link needs a library card, which this does not yet carry",
+                    )?;
+                let path = crossload::opds::publish(&data, format, &output)?;
+                println!("Downloaded {}", printable(&path.display().to_string()));
+                if let Some(reader) = reader {
+                    send(
+                        &reader,
+                        &path,
+                        (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                        !cli.flat,
+                    )?;
+                }
+                if let Some(destination) = transfer.copy_to {
+                    copy(
+                        &path,
+                        &destination,
+                        (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                        !cli.flat,
+                    )?;
+                }
+            }
+        },
         Command::Adobe { command } => {
             match command {
                 AdobeCommand::Setup { from } => {
@@ -1155,6 +1258,93 @@ fn print_plan(planned: &[Planned<'_>], to: crossload::books::Place, apply: bool)
         println!("This was a dry run. Add --apply to copy them.");
     }
 }
+/// Print a feed, following rel=next while pages remain.
+///
+/// Entries this program cannot deliver are hidden by default rather than
+/// dropped silently: the count is always reported, so a catalogue of Readium
+/// LCP looks empty for a stated reason.
+fn show(start: &str, all: bool, pages: u32) -> Result<()> {
+    use crossload::opds;
+    let interactive = std::io::stdout().is_terminal();
+    let mut next = Some(start.to_owned());
+    let mut page = 0;
+    let mut hidden = 0usize;
+    let mut shown = 0usize;
+    let mut table = Table::new();
+    table
+        .load_style(NOTHING)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(["TITLE", "AUTHOR", "OFFER", "ADDRESS"]);
+    while let (Some(url), true) = (next.take(), page < pages.max(1)) {
+        // Nothing is printed until a feed has actually answered, so a wrong
+        // address does not leave a header standing above an error.
+        let feed = opds::fetch(&url)?;
+        if page == 0 {
+            if !feed.title.is_empty() {
+                eprintln!("{}", printable(&feed.title));
+            }
+            if !interactive {
+                println!("TITLE\tAUTHOR\tOFFER\tADDRESS");
+            }
+        }
+        for entry in feed.books() {
+            let Some(offer) = entry.best() else { continue };
+            let delivery = offer.delivery();
+            if !delivery.available() && !all {
+                hidden += 1;
+                continue;
+            }
+            shown += 1;
+            let row = [
+                printable(&entry.title),
+                printable(&entry.author()),
+                format!("{} \u{2014} {}", offer.kind.label(), delivery.label()),
+                if delivery.available() {
+                    offer.href.clone()
+                } else {
+                    "\u{2014}".to_owned()
+                },
+            ];
+            if interactive {
+                table.add_row(row);
+            } else {
+                println!("{}", row.join("\t"));
+            }
+        }
+        for entry in feed.navigation() {
+            let row = [
+                printable(&entry.title),
+                String::new(),
+                "section".to_owned(),
+                entry.subsection.clone().unwrap_or_default(),
+            ];
+            if interactive {
+                table.add_row(row);
+            } else {
+                println!("{}", row.join("\t"));
+            }
+        }
+        next = feed.next;
+        page += 1;
+    }
+    if interactive {
+        table
+            .column_mut(3)
+            .map(|c| c.set_constraint(ColumnConstraint::ContentWidth));
+        println!("{table}");
+    }
+    if hidden > 0 {
+        eprintln!("{hidden} more this cannot deliver, hidden; --all lists them with the reason");
+    }
+    if shown == 0 && hidden == 0 {
+        eprintln!("Nothing here.");
+    }
+    if next.is_some() {
+        eprintln!("More follows; --pages asks for it.");
+    }
+    Ok(())
+}
+
 fn printable(value: &str) -> String {
     value
         .chars()

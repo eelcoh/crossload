@@ -79,7 +79,9 @@ pub(super) enum Outcome {
 pub(super) enum Action {
     None,
     Close,
-    Run(Task),
+    /// Boxed because a saved Task carries the whole of Defaults, and this is
+    /// returned by value from every keystroke.
+    Run(Box<Task>),
 }
 pub(super) struct Panel {
     pub values: [String; 6],
@@ -217,6 +219,7 @@ impl Panel {
             // Not offered on this panel; saved values are carried through.
             kepub: None,
             profile: None,
+            catalog: None,
         };
         // Paths and the reader were checked above; ~ expansion is all that is
         // left to fail here, and it fails for the books folder first.
@@ -244,10 +247,10 @@ impl Panel {
     /// Save from wherever the user is, or send them to the row that stopped it.
     fn save(&mut self) -> Action {
         match self.defaults() {
-            Ok(defaults) => Action::Run(Task::Save {
+            Ok(defaults) => Action::Run(Box::new(Task::Save {
                 path: self.path.clone(),
                 defaults,
-            }),
+            })),
             Err((index, message)) => {
                 self.edit = None;
                 self.selected = index;
@@ -346,7 +349,7 @@ impl Panel {
             // Enter does whatever the row is for. The Kobo mount is the one
             // value Crossload can find on its own, so asking for it beats
             // typing a path that only a mount table knows.
-            KeyCode::Enter if self.selected == 2 => return Action::Run(Task::Detect),
+            KeyCode::Enter if self.selected == 2 => return Action::Run(Box::new(Task::Detect)),
             KeyCode::Enter | KeyCode::Char('e') if self.selected < 6 => {
                 self.message.clear();
                 self.edit = Some((
@@ -355,10 +358,10 @@ impl Panel {
                 ));
             }
             KeyCode::Enter if self.selected == 6 => {
-                return Action::Run(Task::Test {
+                return Action::Run(Box::new(Task::Test {
                     address: self.values[3].clone(),
                     folder: self.values[5].clone(),
-                })
+                }))
             }
             KeyCode::Enter => return self.save(),
             _ => {}

@@ -247,6 +247,64 @@ the device and works with temporary database copies, including any WAL data. It
 rejects output directories inside the Kobo. Stop other software syncing the device
 before importing; a change detected during the database copy is reported as an error.
 
+## OPDS catalogues
+
+Crossload reads OPDS catalogues as a client. Nothing is served, nothing syncs to
+a catalogue, and nothing is written back: a download lands in the import folder,
+where the rest of the program already finds it.
+
+With no address, `browse` opens the **Palace Bookshelf**, the Digital Public
+Library of America's open collection. It needs no library card and everything in
+it is open access.
+
+```sh
+crossload catalog browse
+crossload catalog browse --pages 3
+crossload catalog search dickens
+crossload catalog get https://dpla.thepalaceproject.org/bookshelf/works/35897/fulfill/7 \
+  --output ~/Books
+```
+
+`get` takes an address printed by `browse` or `search`, and behaves like
+`import`: the book is named from its own metadata rather than the catalogue's,
+existing files are never overwritten, and `--send-to` or `--copy-to` may carry it
+onward in the same command.
+
+Any OPDS 1.2 feed works. A different catalogue can be given as an argument or
+saved. Note that a catalogue's web address and its feed address are often not
+the same: Gutenberg serves a web page at `/ebooks/search/` and the feed at
+`/ebooks/search.opds/`.
+
+```sh
+crossload catalog browse 'https://www.gutenberg.org/ebooks/search.opds/?query=austen'
+crossload config set --catalog https://dpla.thepalaceproject.org/bookshelf/
+```
+
+Gutenberg answers a search with sections rather than books, one per title. That
+is ordinary OPDS: `browse` the section address to reach the book's own entry and
+its downloads.
+
+### What a catalogue can and cannot deliver
+
+The `OFFER` column states what an entry actually is, read from the feed's own
+declaration rather than assumed. A loan from a US public library says what
+borrowing will produce before you borrow, and the answer is not always a book:
+
+| Offer | Meaning |
+| --- | --- |
+| `free — EPUB` | Open access. Downloads as it stands. |
+| `borrow — EPUB via Adobe DRM` | An ACSM wrapping a book. Needs an activation, as `import` does. |
+| `borrow — Readium LCP…` | A DRM Crossload cannot open. |
+| `borrow — an audiobook` | Not a book this reads. |
+| `borrow — a reader in a browser, not a file` | Nothing to download. |
+
+Entries that cannot be delivered are hidden, and the count is always reported.
+`--all` lists them with the reason.
+
+Borrowing itself is not implemented yet. Libraries in the Palace Project
+registry can be browsed without a card, so their catalogues are readable now,
+but a loan needs a barcode and PIN that Crossload does not yet carry.
+
 ## Sync Kobo books
 
 Plan which full books are missing from the reader:
@@ -1004,7 +1062,8 @@ The file is `~/.config/crossload/config.json` on Linux and macOS, or
 Use global `--config <file>` to select a separate configuration. No file is
 created until you save a setting. Activation data stays in its existing location.
 
-Available settings: `device`, `output`, `reader`, `copy-to`, `browse`, `folder`.
+Available settings: `device`, `output`, `reader`, `copy-to`, `browse`, `folder`,
+`kepub`, `profile`, `catalog`.
 Paths must be absolute or start with `~/`; they may point to an unplugged device.
 Mounted destinations must exist when actually transferring. Updates preserve
 other settings, and invalid settings leave the previous configuration intact.

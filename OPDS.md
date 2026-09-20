@@ -1,7 +1,7 @@
 # OPDS catalogues
 
 Research dates: 2026-09-20 (feeds, NL), 2026-09-20 (US libraries).
-Status: investigation, nothing implemented. Findings
+Status: reading implemented (src/opds.rs, crossload catalog); borrowing not. Findings
 below come from fetching real feeds, not from the specification.
 
 ## What it is
@@ -146,7 +146,28 @@ Calibre and one tool on Linux.
 So this is not a question about the protocol any more. It is a question about
 who the program is for. Building it serves other users, not this one.
 
-## If it were built
+## What was built
+
+`crossload catalog browse | search | get`, over `src/opds.rs`. Reading only:
+any OPDS 1.2 feed, relative links resolved, `rel=next` followed, OpenSearch
+templates filled, navigation entries kept apart from books. Downloads land in
+the import folder, named from the file's own metadata rather than the
+catalogue's spelling, and `--send-to`/`--copy-to` carry them onward.
+
+Each entry's `indirectAcquisition` chain is read and reported instead of
+guessed at, so a loan says what it will actually produce before it is followed.
+Undeliverable entries are hidden behind a count, with `--all` to see them.
+
+Borrowing is not implemented. It needs Basic auth with the Barcode and PIN the
+authentication documents describe, somewhere to keep that credential, and the
+shelf feed. It also cannot be tested without a US library card, which is the
+real reason it stops here.
+
+One unrelated bug fell out of this: PDF `/Info` strings are PDFDocEncoding, and
+`pdf.rs` was decoding them as UTF-8, so an en dash in a title became a
+replacement character.
+
+## The design it was built to
 
 Client only. Serving our own library would mean becoming a daemon, and the
 reader speaks its own File Transfer API rather than OPDS.

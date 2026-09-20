@@ -145,7 +145,7 @@ fn the_kobo_row_finds_its_own_mount_and_still_takes_a_typed_path() {
     // Enter on the Kobo row asks for a search instead of a path.
     assert!(matches!(
         panel.input(KeyEvent::from(KeyCode::Enter)),
-        settings::Action::Run(settings::Task::Detect)
+        settings::Action::Run(task) if matches!(*task, settings::Task::Detect)
     ));
     panel.detected(vec![]);
     assert!(panel.message.contains("No mounted Kobo found"));

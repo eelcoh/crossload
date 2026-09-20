@@ -155,8 +155,8 @@ pub struct Info {
     pub author: Option<String>,
 }
 
-/// Read the document information dictionary. Strings there may be Latin-1 or
-/// UTF-16, and either may be absent; nothing here guesses at a missing one.
+/// Read the document information dictionary. Strings there are PDFDocEncoding
+/// or UTF-16, and either may be absent; nothing here guesses at a missing one.
 pub fn info(data: &[u8]) -> Result<Info> {
     let document = Document::load_mem(data).context("This file could not be read as a PDF")?;
     Ok(from(&document))
@@ -184,7 +184,7 @@ fn from(document: &Document) -> Info {
                     .collect();
                 String::from_utf16(&units).ok()?
             }
-            bytes => String::from_utf8_lossy(bytes).into_owned(),
+            bytes => bytes.iter().map(|&byte| pdf_doc(byte)).collect(),
         };
         let decoded = decoded.trim();
         (!decoded.is_empty()).then(|| decoded.to_owned())
@@ -192,6 +192,32 @@ fn from(document: &Document) -> Info {
     Info {
         title: text(b"Title"),
         author: text(b"Author"),
+    }
+}
+
+/// One byte of a PDF text string without a byte order mark.
+///
+/// These are PDFDocEncoding, not UTF-8 and not quite Latin-1: it agrees with
+/// Latin-1 from 0xA1 up, and replaces the C1 control range with typography.
+/// Reading a title as UTF-8 turns an en dash into a replacement character,
+/// which then ends up in a filename.
+fn pdf_doc(byte: u8) -> char {
+    const HIGH: [char; 33] = [
+        '\u{2022}', '\u{2020}', '\u{2021}', '\u{2026}', '\u{2014}', '\u{2013}', '\u{0192}',
+        '\u{2044}', '\u{2039}', '\u{203a}', '\u{2212}', '\u{2030}', '\u{201e}', '\u{201c}',
+        '\u{201d}', '\u{2018}', '\u{2019}', '\u{201a}', '\u{2122}', '\u{fb01}', '\u{fb02}',
+        '\u{0141}', '\u{0152}', '\u{0160}', '\u{0178}', '\u{017d}', '\u{0131}', '\u{0142}',
+        '\u{0153}', '\u{0161}', '\u{017e}', '\u{fffd}', '\u{20ac}',
+    ];
+    const ACCENTS: [char; 8] = [
+        '\u{02d8}', '\u{02c7}', '\u{02c6}', '\u{02d9}', '\u{02dd}', '\u{02db}', '\u{02da}',
+        '\u{02dc}',
+    ];
+    match byte {
+        0x18..=0x1F => ACCENTS[byte as usize - 0x18],
+        0x80..=0xA0 => HIGH[byte as usize - 0x80],
+        // Latin-1 from here, which is what char already is.
+        _ => byte as char,
     }
 }
 
@@ -307,6 +333,40 @@ pub fn inspect(data: &[u8]) -> Result<Report> {
 mod tests {
     use super::*;
     use lopdf::{dictionary, Object, Stream};
+
+    /// Taken from a real PDF in the DPLA Palace Bookshelf, whose title holds
+    /// byte 0x85. As UTF-8 that is invalid and becomes a replacement
+    /// character; in PDFDocEncoding it is the en dash the title actually has.
+    #[test]
+    fn a_title_is_read_in_the_encoding_pdf_strings_actually_use() {
+        let mut document = Document::with_version("1.5");
+        let dictionary = document.add_object(dictionary! {
+            "Title" => Object::string_literal(
+                b"Native American Communities in Wisconsin, 1600\x851960".to_vec(),
+            ),
+            "Author" => Object::string_literal(b"Bieder, Robert E.".to_vec()),
+        });
+        document.trailer.set("Info", dictionary);
+        let mut bytes = Vec::new();
+        document.save_to(&mut bytes).unwrap();
+        let read = info(&bytes).unwrap();
+        assert_eq!(
+            read.title.as_deref(),
+            Some("Native American Communities in Wisconsin, 1600\u{2013}1960")
+        );
+        assert_eq!(read.author.as_deref(), Some("Bieder, Robert E."));
+        // UTF-16BE behind a byte order mark still wins where it is used.
+        let utf16: Vec<u8> = [0xFE, 0xFF]
+            .into_iter()
+            .chain("Sur\u{ed}".encode_utf16().flat_map(u16::to_be_bytes))
+            .collect();
+        let mut document = Document::with_version("1.5");
+        let id = document.add_object(dictionary! { "Title" => Object::string_literal(utf16) });
+        document.trailer.set("Info", id);
+        let mut bytes = Vec::new();
+        document.save_to(&mut bytes).unwrap();
+        assert_eq!(info(&bytes).unwrap().title.as_deref(), Some("Sur\u{ed}"));
+    }
 
     /// A one-page PDF placing the given content stream on a page of `width`.
     fn page(width: i64, content: &str) -> Vec<u8> {
