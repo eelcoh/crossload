@@ -27,6 +27,7 @@ pub enum Concern {
     MostlyScanned,
     MixedColumns,
     NoChapters,
+    FiguresDropped,
 }
 impl Concern {
     pub fn describe(self) -> &'static str {
@@ -39,6 +40,7 @@ impl Concern {
                 "some pages are in columns and some are not, so the order of those is a guess"
             }
             Self::NoChapters => "the PDF has no outline, so the EPUB would have no chapters",
+            Self::FiguresDropped => "its pictures are not carried over, only its words",
         }
     }
 }
@@ -89,6 +91,8 @@ pub struct Report {
     pub image_pages: usize,
     /// Pages whose text starts in two separated bands across the width.
     pub column_pages: usize,
+    /// Pages of text that also show a picture, which converting leaves behind.
+    pub figure_pages: usize,
     pub outline: bool,
 }
 
@@ -100,10 +104,14 @@ const TEXT_ON_A_PAGE: usize = 120;
 const SAMPLED_PAGES: usize = 40;
 
 fn has_images(document: &Document, page: lopdf::ObjectId) -> bool {
-    let (_, streams) = document.get_page_resources(page).unwrap_or_default();
-    let dictionaries = streams
-        .iter()
-        .filter_map(|id| document.get_dictionary(*id).ok());
+    // A page's resources may be written inline or referenced, and looking at
+    // only the referenced ones misses every page that spells them out.
+    let (direct, streams) = document.get_page_resources(page).unwrap_or_default();
+    let dictionaries = direct.into_iter().chain(
+        streams
+            .iter()
+            .filter_map(|id| document.get_dictionary(*id).ok()),
+    );
     for resources in dictionaries {
         let Ok(objects) = resources.get(b"XObject").and_then(|o| o.as_dict()) else {
             continue;
@@ -191,6 +199,7 @@ pub fn inspect(data: &[u8]) -> Result<Report> {
         text_pages: 0,
         image_pages: 0,
         column_pages: 0,
+        figure_pages: 0,
         outline: document
             .catalog()
             .ok()
@@ -213,6 +222,11 @@ pub fn inspect(data: &[u8]) -> Result<Report> {
             report.text_pages += 1;
             if layout::two_columns(&pieces, width) {
                 report.column_pages += 1;
+            }
+            // Only the words are rebuilt, so a page of text around a figure
+            // converts to a page of text with a hole where the figure was.
+            if has_images(&document, *page) {
+                report.figure_pages += 1;
             }
         } else if has_images(&document, *page) {
             report.image_pages += 1;
@@ -240,6 +254,9 @@ pub fn inspect(data: &[u8]) -> Result<Report> {
         }
         if !report.outline {
             concerns.push(Concern::NoChapters);
+        }
+        if report.figure_pages > 0 {
+            concerns.push(Concern::FiguresDropped);
         }
         if concerns.is_empty() {
             Verdict::Good
@@ -294,7 +311,7 @@ mod tests {
         let two = page(
             510,
             &format!(
-                "BT 11 0 0 11 50 700 Tm {LINE} 0 -1.2 TD {LINE} 0 -1.2 TD {LINE} \
+                "BT /F1 1 Tf 11 0 0 11 50 700 Tm {LINE} 0 -1.2 TD {LINE} 0 -1.2 TD {LINE} \
                  20 40 TD {LINE} 0 -1.2 TD {LINE} 0 -1.2 TD {LINE} ET"
             ),
         );
@@ -306,7 +323,7 @@ mod tests {
         // The same text down one column is not two columns.
         let one = page(
             510,
-            &format!("BT 11 0 0 11 50 700 Tm {LINE} 0 -1.2 TD {LINE} 0 -1.2 TD {LINE} ET"),
+            &format!("BT /F1 1 Tf 11 0 0 11 50 700 Tm {LINE} 0 -1.2 TD {LINE} 0 -1.2 TD {LINE} ET"),
         );
         let report = inspect(&one).unwrap();
         assert_eq!(
@@ -322,14 +339,14 @@ mod tests {
         // out interleaved, which is the worst thing a conversion can do.
         let left = ["Alpha alpha alpha", "beta beta beta", "gamma gamma gamma"];
         let right = ["delta delta delta", "epsilon epsilon", "zeta zeta zeta"];
-        let mut content = String::from("BT 11 0 0 11 50 700 Tm ");
+        let mut content = String::from("BT /F1 1 Tf 11 0 0 11 50 700 Tm ");
         for (i, text) in left.iter().enumerate() {
             content.push_str(&format!(
                 "0 {} Td ({text} and more words here) Tj ",
                 -(i as f32) * 1.2
             ));
         }
-        content.push_str("ET BT 11 0 0 11 300 700 Tm ");
+        content.push_str("ET BT /F1 1 Tf 11 0 0 11 300 700 Tm ");
         for (i, text) in right.iter().enumerate() {
             content.push_str(&format!(
                 "0 {} Td ({text} and more words here) Tj ",
@@ -346,6 +363,110 @@ mod tests {
         // The whole of one column precedes any of the other.
         let blocks = crate::epub::validate(&epub);
         assert!(blocks.is_ok(), "{blocks:?}");
+    }
+
+    /// Everything a converted EPUB says, across all of its chapters.
+    fn prose(epub: &[u8]) -> String {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(epub)).unwrap();
+        let names: Vec<String> = archive
+            .file_names()
+            .filter(|name| name.starts_with("OEBPS/chapter"))
+            .map(str::to_owned)
+            .collect();
+        assert!(!names.is_empty(), "a book with no chapters in it");
+        let mut text = String::new();
+        for name in names {
+            std::io::Read::read_to_string(&mut archive.by_name(&name).unwrap(), &mut text).unwrap();
+        }
+        text
+    }
+
+    #[test]
+    fn a_hyphen_at_a_line_break_is_decided_by_what_the_document_does_elsewhere() {
+        // Two words broken across a line. The document writes one of them
+        // hyphenated where it had room, and the other closed up, which is the
+        // only evidence there is for which hyphen to keep.
+        let lines = [
+            "the system needs real",
+            "time responses from it",
+            "a real-time system is what everyone wants",
+            "and this is inconsis",
+            "tent with all of the rest",
+            "an inconsistent result appears in this case",
+        ];
+        let mut content = String::from("BT /F1 1 Tf 11 0 0 11 50 700 Tm ");
+        for (i, line) in lines.iter().enumerate() {
+            let dash = if i == 0 || i == 3 { "-" } else { "" };
+            content.push_str(&format!(
+                "0 {} Td ({line}{dash}) Tj ",
+                if i == 0 { 0.0 } else { -1.2 }
+            ));
+        }
+        content.push_str("ET");
+        let (epub, _) = convert(&page(520, &content)).unwrap();
+        let prose = prose(&epub);
+        assert!(prose.contains("real-time responses"), "{prose}");
+        assert!(prose.contains("inconsistent with"), "{prose}");
+    }
+
+    #[test]
+    fn a_page_of_text_around_a_picture_says_the_picture_will_be_left_behind() {
+        // A page carrying both text and an image XObject. Only the words are
+        // rebuilt, so the reader is told before agreeing to the conversion.
+        let mut document = Document::with_version("1.5");
+        let image = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => 2,
+                "Height" => 2,
+                "ColorSpace" => "DeviceGray",
+                "BitsPerComponent" => 8,
+            },
+            vec![0, 64, 128, 255],
+        ));
+        let pages_id = document.new_object_id();
+        let words = "a page of ordinary prose with a picture sitting underneath it, long \
+                     enough that nobody could mistake it for a running head or a page number";
+        let content = format!(
+            "BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET \
+             q 100 0 0 80 50 400 cm /Im1 Do Q"
+        );
+        let contents = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => contents,
+            "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            "Resources" => dictionary! { "XObject" => dictionary! { "Im1" => image } },
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        document.trailer.set("Root", catalog);
+        let mut data = Vec::new();
+        document.save_to(&mut data).unwrap();
+
+        let report = inspect(&data).unwrap();
+        assert_eq!(
+            (report.text_pages, report.figure_pages),
+            (1, 1),
+            "{report:?}"
+        );
+        assert!(
+            report.verdict.concerns().contains(&Concern::FiguresDropped),
+            "{:?}",
+            report.verdict
+        );
+        // Still worth converting, so long as it says what will be lost.
+        assert!(matches!(report.verdict, Verdict::Poor(_)));
+        assert!(convert(&data).is_ok());
     }
 
     #[test]

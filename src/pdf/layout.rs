@@ -37,6 +37,57 @@ const INDENT: f32 = 0.6;
 const JUSTIFIED_WITHIN: f32 = 2.0;
 const MOSTLY: f32 = 0.6;
 
+/// A word as it would be looked up: no case, no punctuation around it.
+fn word(text: &str) -> String {
+    text.trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+        .to_lowercase()
+}
+/// Every word the document uses, for deciding what a hyphen at a line break
+/// meant. A document is its own dictionary: a compound it hyphenates will be
+/// hyphenated somewhere it did not have to break, and a word it broke will
+/// appear whole elsewhere. The fragment before a break is not a word and is
+/// left out.
+fn vocabulary(lines: &[&Line]) -> std::collections::BTreeSet<String> {
+    let mut words = std::collections::BTreeSet::new();
+    for line in lines {
+        let broken = line.text.ends_with('-');
+        let mut parts = line.text.split_whitespace().peekable();
+        while let Some(part) = parts.next() {
+            if broken && parts.peek().is_none() {
+                continue;
+            }
+            let part = word(part);
+            if !part.is_empty() {
+                words.insert(part);
+            }
+        }
+    }
+    words
+}
+/// What to do with a hyphen a line break left behind: keep it, or close it up.
+fn keeps_hyphen(stem: &str, rest: &str, words: &std::collections::BTreeSet<String>) -> bool {
+    let (Some(before), Some(after)) = (
+        stem.split_whitespace().next_back(),
+        rest.split_whitespace().next(),
+    ) else {
+        return false;
+    };
+    let (before, after) = (word(before), word(after));
+    if before.is_empty() || after.is_empty() {
+        return false;
+    }
+    // Ask the document which form it uses when it is not out of room. A
+    // hyphenated compound wins over the closed-up form, because a break can
+    // only ever remove a hyphen, never invent one.
+    if words.contains(&format!("{before}-{after}")) {
+        return true;
+    }
+    if words.contains(&format!("{before}{after}")) {
+        return false;
+    }
+    // It says neither. Closing up is what a break usually meant.
+    false
+}
 /// A printed table of contents leads to a page number an EPUB does not have.
 /// It is not a heading, whatever size it is set in.
 fn dot_leader(text: &str) -> bool {
@@ -200,10 +251,18 @@ pub(super) fn furniture(pages: &[Vec<Line>]) -> std::collections::BTreeSet<Strin
             .trim()
             .to_lowercase()
     };
+    // Furniture is repetition from page to page, so a single page cannot have
+    // any: its one line would otherwise be counted as both its head and its
+    // foot and thrown away as a running head.
+    if pages.len() < 2 {
+        return std::collections::BTreeSet::new();
+    }
     let mut seen: std::collections::BTreeMap<String, usize> = Default::default();
     for page in pages {
         // Only the outermost lines can be furniture; body text repeats too.
-        for line in page.iter().take(1).chain(page.iter().rev().take(1)) {
+        // A page of one line offers it once, not once at each end.
+        let ends = [page.first(), page.last().filter(|_| page.len() > 1)];
+        for line in ends.into_iter().flatten() {
             *seen.entry(key(&line.text)).or_default() += 1;
         }
     }
@@ -251,6 +310,7 @@ pub(super) fn blocks(pages: &[Vec<Line>], body: f32) -> Vec<Block> {
         .iter()
         .map(|line| line.left)
         .fold(f32::INFINITY, f32::min);
+    let words = vocabulary(&kept);
     let mut blocks: Vec<Block> = vec![];
     let mut previous: Option<&Line> = None;
     for line in kept {
@@ -267,12 +327,13 @@ pub(super) fn blocks(pages: &[Vec<Line>], body: f32) -> Vec<Block> {
         match blocks.last_mut() {
             Some(Block::Paragraph(text)) if !starts_paragraph && !heading => {
                 if let Some(stem) = text.strip_suffix('-') {
-                    // A word broken across lines was never two words.
-                    let joined = !stem.ends_with(char::is_whitespace)
+                    // A word broken across lines was usually never two words,
+                    // but a compound that carries its own hyphen still is one.
+                    let broken = !stem.ends_with(char::is_whitespace)
                         && line.text.starts_with(char::is_lowercase);
-                    if joined {
+                    if broken && !keeps_hyphen(stem, &line.text, &words) {
                         *text = stem.to_owned();
-                    } else {
+                    } else if !broken {
                         text.push(' ');
                     }
                 } else {

@@ -325,7 +325,7 @@
     containers, so the machinery is adjacent. Narrow, but it is the difference
     between the book being on the Kobo and the book working on it.
 
-27. [~] PDF to EPUB — classifier, conversion and dialog done
+27. [~] PDF to EPUB — done but for pictures
     Many PDFs have no reason to be PDFs. Many others cannot survive the trip,
     and a bad conversion is a book you do not find out is unreadable until you
     are away from your computer. So the feature is the triage, not the
@@ -389,10 +389,32 @@
     that reads correctly, and an 8-page report converts cleanly with its
     outline. Both pass Crossload's own EPUB validation and appear as ordinary
     books in the catalog, titled from the PDF's own metadata.
-    Known imperfections: a word broken across a line loses its hyphen, so a
-    genuine compound like real-time becomes realtime; images and tables are
-    dropped, since only text is read; and the whole document is one XHTML file
-    with anchors rather than a file per chapter.
+    Hyphens and chapters since settled. A hyphen left by a line break is
+    decided by what the document does elsewhere: it is its own dictionary, and
+    a compound it hyphenates where it had room will appear that way, while a
+    word it broke appears whole. real-time survives and inconsis-tent closes up,
+    both checked against the real files. A heading now starts a file, so a
+    reader loads one chapter rather than the book; headings arriving in a run
+    stay together, and prose before the first heading opens the book. The eight
+    page report comes out as twelve named chapters.
+    Pictures are not carried over, and the verdict now says so rather than
+    dropping them quietly: a page of text that also shows an image makes the
+    PDF convert poorly, so the dialog asks first. Tables are out of scope —
+    rebuilding one needs cell geometry, and their text survives as loose lines.
+    Extraction itself is deliberately not written. Neither PDF here holds a
+    single image XObject, so it could only be developed against fixtures of its
+    own making, and every bug in this work so far — text-space offsets,
+    composite widths, spaces drawn as their own runs — was found by reading real
+    output. Write it when there is a real PDF with figures to write it against,
+    and expect DCTDecode to pass through as JPEG while Flate needs rebuilding
+    through the image crate, with indexed and CMYK colour, SMask transparency
+    and CCITT all waiting to be got wrong.
+    Two bugs fell out of testing the figure warning. Page resources written
+    inline rather than referenced were invisible to the image check, which is
+    most pages that carry one. And a one-page document had its only line counted
+    as both the page's head and its foot, reaching the repeat threshold and
+    being discarded as a running head, so the page converted to nothing;
+    furniture is repetition across pages, and one page can have none.
     Wired in. Every PDF is judged during discovery, on bytes already in hand,
     and the verdict is stored on the copy and in the cache (version 5), so the
     dialog never opens a file to draw itself. Xteink offers `convert to EPUB,

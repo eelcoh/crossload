@@ -1,9 +1,10 @@
 //! Writing rebuilt prose out as an EPUB.
 //!
-//! The book is one document with an anchor at every heading, rather than a file
-//! per chapter: a PDF's headings are a guess, and a guess that splits a book
-//! into files is harder to read past than one that only fills a table of
-//! contents.
+//! A heading starts a new file, so a reader can turn to a chapter and load only
+//! that chapter. Because a PDF's headings are a guess, headings that arrive in
+//! a run — a title page, a heading with its subtitle — stay together rather
+//! than becoming a file each, and text before the first heading opens the book
+//! in a file of its own.
 use super::layout::Block;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -40,29 +41,78 @@ pub(super) fn title(named: Option<String>, blocks: &[Block]) -> String {
         .unwrap_or_else(|| "Untitled".to_owned())
 }
 
-pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
-    let mut body = String::new();
-    let mut contents = String::new();
-    let mut headings = 0;
+/// One file of the book: what it is called in the table of contents, and the
+/// markup inside it.
+struct Chapter {
+    title: String,
+    body: String,
+}
+
+/// Cut the blocks into chapters at their headings.
+fn chapters(blocks: &[Block]) -> Vec<Chapter> {
+    let mut chapters: Vec<Chapter> = vec![];
+    // Whether the chapter being filled has any prose yet. A heading that
+    // follows another heading belongs with it, not to a file of its own.
+    let mut prose = false;
     for block in blocks {
         match block {
-            Block::Heading(text) => {
-                headings += 1;
-                let id = format!("h{headings}");
-                body.push_str(&format!("<h2 id=\"{id}\">{}</h2>\n", escaped(text.trim())));
-                contents.push_str(&format!(
-                    "<li><a href=\"book.xhtml#{id}\">{}</a></li>\n",
-                    escaped(text.trim())
-                ));
+            Block::Heading(text) if !text.trim().is_empty() => {
+                let text = text.trim();
+                if prose || chapters.is_empty() {
+                    chapters.push(Chapter {
+                        title: text.to_owned(),
+                        body: String::new(),
+                    });
+                    prose = false;
+                }
+                let chapter = chapters.last_mut().expect("just pushed or non-empty");
+                chapter
+                    .body
+                    .push_str(&format!("<h2>{}</h2>\n", escaped(text)));
             }
             Block::Paragraph(text) if !text.trim().is_empty() => {
-                body.push_str(&format!("<p>{}</p>\n", escaped(text.trim())));
+                let chapter = match chapters.last_mut() {
+                    Some(chapter) => chapter,
+                    None => {
+                        // Text before any heading still has to live somewhere.
+                        chapters.push(Chapter {
+                            title: "Beginning".to_owned(),
+                            body: String::new(),
+                        });
+                        chapters.last_mut().expect("just pushed")
+                    }
+                };
+                chapter
+                    .body
+                    .push_str(&format!("<p>{}</p>\n", escaped(text.trim())));
+                prose = true;
             }
-            Block::Paragraph(_) => {}
+            _ => {}
         }
     }
-    if contents.is_empty() {
-        contents.push_str("<li><a href=\"book.xhtml\">Text</a></li>\n");
+    chapters
+}
+
+pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
+    let chapters = chapters(blocks);
+    let name = |index: usize| format!("chapter{}.xhtml", index + 1);
+    let mut contents = String::new();
+    let mut manifest = String::new();
+    let mut spine = String::new();
+    let mut body = String::new();
+    for (index, chapter) in chapters.iter().enumerate() {
+        contents.push_str(&format!(
+            "<li><a href=\"{}\">{}</a></li>\n",
+            name(index),
+            escaped(&chapter.title)
+        ));
+        manifest.push_str(&format!(
+            "<item id=\"c{}\" href=\"{}\" media-type=\"application/xhtml+xml\"/>\n",
+            index + 1,
+            name(index)
+        ));
+        spine.push_str(&format!("<itemref idref=\"c{}\"/>\n", index + 1));
+        body.push_str(&chapter.body);
     }
     // A stable identifier: the same PDF converted twice is the same book, and
     // nothing here should depend on the clock.
@@ -111,8 +161,7 @@ pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
              </metadata>\n<manifest>\n\
              <item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" \
              properties=\"nav\"/>\n\
-             <item id=\"book\" href=\"book.xhtml\" media-type=\"application/xhtml+xml\"/>\n\
-             </manifest>\n<spine><itemref idref=\"book\"/></spine>\n</package>\n"
+             {manifest}</manifest>\n<spine>\n{spine}</spine>\n</package>\n"
         ),
     )?;
     file(
@@ -121,6 +170,8 @@ pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
             "<nav epub:type=\"toc\" id=\"toc\"><h1>Contents</h1>\n<ol>\n{contents}</ol>\n</nav>\n"
         )),
     )?;
-    file("OEBPS/book.xhtml", &page(&body))?;
+    for (index, chapter) in chapters.iter().enumerate() {
+        file(&format!("OEBPS/{}", name(index)), &page(&chapter.body))?;
+    }
     Ok(zip.finish()?.into_inner())
 }
