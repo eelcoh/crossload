@@ -741,7 +741,7 @@
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.
 
-32. [~] OPDS catalogues, as a client — investigated, one claim unproven
+32. [-] OPDS catalogues, as a client — investigated, dropped
     OPDS is a syndication format for ebook catalogues: 1.2 is Atom XML and is
     what nearly everything speaks, 2.0 is JSON and is not widely deployed. A
     feed is either navigation, linking on to more feeds, or acquisition, whose
@@ -798,6 +798,18 @@
     Ebooks wants a login. Settling it needs one lending library's feed, with
     credentials, and an entry looked at. Building on it before then would be
     building on the assumption it was recorded to test.
+    Settled, and the answer is no. The library here is Zuid-Kennemerland, part
+    of the one national platform Dutch public libraries lend through, and it has
+    no OPDS: onlinebibliotheek.nl/opds and /catalog.atom both answer 404, as
+    does the library's own site. The ACSM sitting in debug/ names its operator
+    as digitaldistribution.cb.nl, Centraal Boekhuis, which runs the Adobe
+    Content Server for Dutch books. That is a web checkout ending in a
+    downloaded file, and a file in the import folder is already a pending
+    request here, so the flow that matters is supported without OPDS.
+    What remains of OPDS is serving a library over a network to reader apps,
+    which is a detour for a program that opens the files directly, and one
+    public catalogue that answers without an account. Not enough. Worth
+    revisiting only if a catalogue worth reading from turns up that speaks it.
 
 ## macOS verification update
 

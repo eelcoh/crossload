@@ -69,9 +69,33 @@ library that actually lends, with credentials, and an entry inspected for its
 acquisition link type. Until then the case for building this rests on an
 assumption, and the assumption is the whole case.
 
-**What Dutch library systems serve** was not established at all.
+**What the library here serves was established, and it is not OPDS.** Dutch
+public library lending runs through one national platform rather than per
+library, and `onlinebibliotheek.nl/opds` and `/catalog.atom` both answer 404, as
+does the local library's own site. The ACSM already in `debug/` names its
+operator as `digitaldistribution.cb.nl` — Centraal Boekhuis, which runs the
+Adobe Content Server for Dutch retail and library ebooks. That is a web checkout
+that hands over a file, not a catalogue a client can walk.
 
-## If it is built
+## Conclusion: not worth building here
+
+The case rested on library feeds handing out ACSM. The library in question has
+no OPDS at all, and its books arrive by a web flow ending in a downloaded ACSM —
+which this program already handles, because a `.acsm` in the import folder is
+already a pending request.
+
+What is left of OPDS after that is thin. Its centre of gravity is serving a
+library over a network to reader apps: calibre-server, Calibre-Web, COPS,
+Kavita, Komga. This program opens the files directly, so for a library on local
+disk that is a network detour to files already readable. Of the public
+catalogues, only Gutenberg answered without an account; Standard Ebooks now
+wants a patron login and Feedbooks has become a commercial platform.
+
+It would become worth revisiting if a catalogue worth reading from turned up
+that speaks it — a library that lends over OPDS, or a collection kept on another
+machine. The note below stands for that day.
+
+## If it were built
 
 Client only. Serving our own library would mean becoming a daemon, and the
 reader speaks its own File Transfer API rather than OPDS.
