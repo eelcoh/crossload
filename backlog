@@ -724,6 +724,12 @@
     a title that carried its series — which is exactly what this feature is for
     — took the series out of the search box's reach. A plain search folds the
     series in now, and `series:` still narrows to it alone.
+    Also reported: the settings key appeared to do nothing. It was refused
+    while anything was running, and a scan of a reader over Wi-Fi lasts long
+    enough that being turned away reads as a key that does not work. Looking at
+    settings costs nothing, so it is never refused now. A refresh asked for
+    during work is remembered rather than refused too, and happens as soon as
+    the work finishes, which is what asking for it meant.
     Left: the correction only reaches a device by copying the book there again,
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.

@@ -664,6 +664,8 @@ an offline history of books on disconnected devices. Press **r** after connectin
 or disconnecting a device, or after copying. Refresh keeps the current list and
 selection visible until the new scan completes, then applies additions/removals.
 Copy actions wait during that refresh; an initial scan still shows partial results.
+A refresh asked for while something is already running is remembered rather than
+refused, and happens as soon as that work finishes.
 Books appear as they are read rather than only when a location finishes, so the
 first of them is on screen almost immediately, and the location line counts them
 as they arrive. Local books are read on several threads at once.
@@ -773,7 +775,7 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   a Kobo stay one book rather than becoming two. The correction reaches those
   copies the ordinary way, by copying the book to them again.
 
-- **,** opens settings when discovery and copying are idle. Edit books/import
+- **,** opens settings, at any time: looking costs nothing. Edit books/import
   folders, Kobo mount, reader address, mounted reader card, and remote base folder.
   Arrows or Tab select a field/action; Enter edits or runs it. Within a field,
   arrows and Home/End move the cursor, Ctrl+U clears it, Enter accepts, and Escape

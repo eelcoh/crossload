@@ -128,6 +128,9 @@ pub(super) enum Destination {
     Blocked(&'static str, String),
 }
 pub(super) struct Model {
+    /// A refresh asked for while something was already running, to be done
+    /// when it finishes rather than refused.
+    pub pending_refresh: bool,
     /// A book's metadata being corrected, kept apart from the book until saved.
     pub correcting: Option<super::edit::Panel>,
     /// Room left at each place, read once when the copy dialog opens. A place
@@ -192,6 +195,7 @@ impl Model {
             "Discovering books…"
         };
         Self {
+            pending_refresh: false,
             correcting: None,
             room: vec![],
             ask: None,
@@ -256,6 +260,12 @@ impl Model {
                 })
                 .then_with(|| a.title_key.cmp(&b.title_key))
         });
+    }
+    /// A refresh that was asked for while something was running, now that
+    /// nothing is.
+    fn deferred_refresh(&mut self) -> Option<Vec<Effect>> {
+        let idle = self.busy.is_none() && self.loading.is_none() && !self.pending_quit;
+        (self.pending_refresh && idle).then(|| self.update(Message::Refresh))
     }
     pub fn open_settings(&mut self, first_run: bool) {
         self.settings = Some(super::settings::Panel::new(&self.options, first_run));
@@ -530,9 +540,13 @@ impl Model {
             }
             Message::Refresh if !self.pending_quit => {
                 if self.loading.is_some() || self.busy.is_some() {
-                    self.status = "Wait for current work before refreshing.".into();
+                    // Remembered rather than refused, so asking during a scan
+                    // means "when you can" instead of "no".
+                    self.pending_refresh = true;
+                    self.status = "Will refresh when the current work finishes.".into();
                     return vec![];
                 }
+                self.pending_refresh = false;
                 self.action.clear();
                 self.copies = None;
                 self.confirm = None;
@@ -608,6 +622,9 @@ impl Model {
                 if self.busy.is_none() {
                     self.status=result.map(|_|"Library ready. Enter chooses a copy destination; r refreshes locations.".into()).unwrap_or_else(|e|format!("Discovery error: {e}"));
                 }
+                if let Some(effects) = self.deferred_refresh() {
+                    return effects;
+                }
             }
             Message::Progress(id, s) if self.busy == Some(id) => self.status = s,
             Message::Step(id, done, total) if self.busy == Some(id) => {
@@ -618,6 +635,9 @@ impl Model {
                 self.cancel = None;
                 self.step = None;
                 self.status = result.unwrap_or_else(|e| format!("Error: {e}"));
+                if let Some(effects) = self.deferred_refresh() {
+                    return effects;
+                }
             }
             Message::Tick => self.tick = self.tick.wrapping_add(1),
             Message::InputError(e) => {
@@ -998,13 +1018,10 @@ impl Model {
                         // looked at does not need to be held.
                         self.history = Some(crate::history::read(None, 200));
                     }
-                    KeyCode::Char(',') => {
-                        if self.busy.is_none() && self.loading.is_none() {
-                            self.open_settings(false);
-                        } else {
-                            self.status = "Wait for current work before changing settings.".into();
-                        }
-                    }
+                    // Looking at settings costs nothing, so it is never
+                    // refused: a scan of a reader over Wi-Fi takes long enough
+                    // that being turned away reads as the key not working.
+                    KeyCode::Char(',') => self.open_settings(false),
                     KeyCode::Char('s') => {
                         let selected = self.selected_entry();
                         self.sort = self.sort.next();

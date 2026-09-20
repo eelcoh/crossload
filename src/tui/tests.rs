@@ -344,6 +344,38 @@ fn the_copy_dialog_says_what_room_is_left_and_when_a_set_will_not_fit() {
 }
 
 #[test]
+fn asking_during_work_means_when_you_can_rather_than_no() {
+    let mut model = Model::new(options());
+    // Settings are never refused: a scan of a reader over Wi-Fi lasts long
+    // enough that being turned away reads as the key not working.
+    let effects = model.update(Message::Refresh);
+    let [Effect::Load { id, .. }] = effects.as_slice() else {
+        panic!("a refresh should start a load")
+    };
+    let id = *id;
+    assert!(model.loading.is_some());
+    model.update(key(KeyCode::Char(',')));
+    assert!(
+        model.settings.is_some(),
+        "settings should open while scanning"
+    );
+    model.update(key(KeyCode::Esc));
+
+    // A refresh asked for mid-scan is remembered, not thrown away.
+    assert!(model.update(key(KeyCode::Char('r'))).is_empty());
+    assert!(model.pending_refresh);
+    assert!(model.status.contains("when the current work finishes"));
+
+    // And happens as soon as the scan is done.
+    let effects = model.update(Message::CatalogFinished(id, Ok(())));
+    assert!(
+        matches!(effects.as_slice(), [Effect::Load { .. }]),
+        "the remembered refresh should start once the scan is done"
+    );
+    assert!(!model.pending_refresh);
+}
+
+#[test]
 fn menus_isolate_keys_and_sort_keeps_selection_and_marks() {
     let mut model = Model::new(options());
     model.entries = vec![
