@@ -29,6 +29,28 @@ impl Identity {
                 .is_some_and(|id| other.resources.as_ref() == Some(id))
     }
 }
+/// Where a book's metadata lives, as its own container names it.
+fn package_document(zip: &mut zip::ZipArchive<Cursor<&[u8]>>) -> Option<String> {
+    let mut text = String::new();
+    zip.by_name("META-INF/container.xml")
+        .ok()?
+        .read_to_string(&mut text)
+        .ok()?;
+    let container = roxmltree::Document::parse_with_options(
+        &text,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .ok()?;
+    container
+        .descendants()
+        .find(|node| node.is_element() && node.tag_name().name() == "rootfile")?
+        .attribute("full-path")
+        .map(str::to_owned)
+}
+
 /// Exact bytes, or identical ZIP resource names/content despite repackaging.
 /// Title and ISBN alone never prove that two books are the same edition.
 pub fn identity(bytes: &[u8]) -> Identity {
@@ -40,11 +62,19 @@ pub fn identity(bytes: &[u8]) -> Identity {
             zip.by_name("mimetype").is_ok() && zip.by_name("META-INF/container.xml").is_ok(),
             "Not EPUB"
         );
+        // The package document carries what a book is called, not what it
+        // says, so two copies differing only in their metadata are one book.
+        // Without this, correcting an author or adding a series would split a
+        // book from the copies of it already on a reader.
+        let package = package_document(&mut zip);
         let mut names: Vec<String> = zip.file_names().map(str::to_owned).collect();
         names.sort();
         let mut digest = Sha256::new();
         for name in names {
             if name == "META-INF/xteink-device-profile.txt" {
+                continue;
+            }
+            if package.as_deref() == Some(name.as_str()) {
                 continue;
             }
             let mut file = zip.by_name(&name)?;

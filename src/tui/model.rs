@@ -14,8 +14,13 @@ pub(super) enum Message {
     Step(u64, usize, usize),
     Finished(u64, Result<String, String>),
     Configured(u64, Result<super::settings::Outcome, String>),
+    Corrected(u64, Result<String, String>),
 }
 pub(super) enum Effect {
+    Correct {
+        id: u64,
+        task: super::edit::Task,
+    },
     Configure {
         id: u64,
         task: super::settings::Task,
@@ -123,6 +128,8 @@ pub(super) enum Destination {
     Blocked(&'static str, String),
 }
 pub(super) struct Model {
+    /// A book's metadata being corrected, kept apart from the book until saved.
+    pub correcting: Option<super::edit::Panel>,
     /// Room left at each place, read once when the copy dialog opens. A place
     /// that cannot say has None, which the dialog shows as unknown rather than
     /// leaving the reader to assume there is room.
@@ -185,6 +192,7 @@ impl Model {
             "Discovering books…"
         };
         Self {
+            correcting: None,
             room: vec![],
             ask: None,
             settings: None,
@@ -461,6 +469,24 @@ impl Model {
     }
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
         match message {
+            Message::Corrected(id, result) if self.configuring == Some(id) => {
+                self.configuring = None;
+                match result {
+                    // The library is read again, so the row shows what the book
+                    // now says rather than what it said.
+                    Ok(message) => {
+                        self.correcting = None;
+                        self.status = message;
+                        if !self.pending_quit {
+                            return self.update(Message::Refresh);
+                        }
+                    }
+                    Err(e) => match &mut self.correcting {
+                        Some(panel) => panel.message = e,
+                        None => self.status = e,
+                    },
+                }
+            }
             Message::Configured(id, result) if self.configuring == Some(id) => {
                 self.configuring = None;
                 match result {
@@ -603,6 +629,22 @@ impl Model {
                     return self.quit();
                 }
                 if self.pending_quit {
+                    return vec![];
+                }
+                if let Some(panel) = &mut self.correcting {
+                    if self.configuring.is_some() {
+                        return vec![];
+                    }
+                    match panel.input(key) {
+                        super::edit::Action::Close => self.correcting = None,
+                        super::edit::Action::Run(task) => {
+                            panel.message = "Correcting…".into();
+                            let id = self.id();
+                            self.configuring = Some(id);
+                            return vec![Effect::Correct { id, task }];
+                        }
+                        super::edit::Action::None => {}
+                    }
                     return vec![];
                 }
                 if let Some(panel) = &mut self.settings {
@@ -936,6 +978,21 @@ impl Model {
                         self.help = true;
                         self.help_scroll = 0;
                     }
+                    KeyCode::Char('e') => {
+                        match self.selected_entry().map(|entry| entry.source.clone()) {
+                            Some(Source::Book(book)) if self.busy.is_none() => {
+                                let book = self.current(&book).clone();
+                                match super::edit::Panel::new(&book) {
+                                    Ok(panel) => self.correcting = Some(panel),
+                                    Err(e) => self.status = format!("{e:#}"),
+                                }
+                            }
+                            Some(_) => {
+                                self.status = "Only a book's own metadata can be corrected.".into()
+                            }
+                            None => {}
+                        }
+                    }
                     KeyCode::Char('h') => {
                         // Read when asked for: a record that is not being
                         // looked at does not need to be held.
@@ -1036,6 +1093,7 @@ pub(super) const HELP: &[&str] = &[
     "s           Sort by title, then author, then series (ascending)",
     "d           Inspect copies; 1–9 asks to delete one; y confirms",
     "h           What was copied lately, and whether it arrived",
+    "e           Correct a book's title, author or series",
     "r           Refresh connected locations",
     ",           Settings: folders, Kobo detection and reader test",
     "Esc         Stop copying after this book; close a dialog; otherwise quit",

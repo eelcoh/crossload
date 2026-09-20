@@ -404,7 +404,9 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         frame.render_widget(block, areas[3]);
         frame.render_widget(Paragraph::new(lines), inner);
     }
-    let keys: &[(&str, &str)] = if model.history.is_some() {
+    let keys: &[(&str, &str)] = if model.correcting.is_some() {
+        &[("enter", "edit"), ("ctrl+s", "save"), ("esc", "close")]
+    } else if model.history.is_some() {
         &[("esc", "close")]
     } else if model.ask.is_some() {
         &[("y", "convert and copy"), ("esc", "cancel")]
@@ -516,6 +518,9 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     if let Some(panel) = &model.settings {
         draw_settings(panel, model.configuring.is_some(), frame);
     }
+    if let Some(panel) = &model.correcting {
+        draw_correction(panel, model.configuring.is_some(), frame);
+    }
 }
 fn overlay(frame: &mut Frame<'_>, title: &str, width: u16, height: u16) -> Rect {
     let bounds = frame.area();
@@ -533,6 +538,66 @@ fn overlay(frame: &mut Frame<'_>, title: &str, width: u16, height: u16) -> Rect 
     frame.render_widget(block, area);
     inner
 }
+/// The panel for correcting what a book says about itself.
+fn draw_correction(panel: &super::edit::Panel, working: bool, frame: &mut Frame<'_>) {
+    let area = overlay(
+        frame,
+        &format!(" Correct · {} ", shorten(&panel.book, 34)),
+        72,
+        17,
+    );
+    let parts = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(2),
+        Constraint::Length(2),
+    ])
+    .split(area);
+    let mut lines: Vec<Line<'static>> = vec![];
+    for (index, label) in super::edit::LABELS.iter().enumerate() {
+        let selected = index == panel.selected;
+        lines.push(Line::styled(
+            format!("{} {label}", if selected { "›" } else { " " }),
+            if selected { accent() } else { bold() },
+        ));
+        let Some(value) = panel.values.get(index) else {
+            continue;
+        };
+        let editing = selected && panel.edit.is_some();
+        let room = (parts[0].width as usize).saturating_sub(VALUE);
+        let text = if let (true, Some((_, cursor))) = (editing, &panel.edit) {
+            let prefix = tail(&value[..*cursor], room.saturating_sub(1));
+            format!("{prefix}▏{}", &value[*cursor..])
+        } else if value.is_empty() {
+            "(not set)".to_owned()
+        } else {
+            shorten(value, room)
+        };
+        lines.push(Line::styled(
+            format!("{:VALUE$}{text}", ""),
+            if selected {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                plain()
+            },
+        ));
+    }
+    let selected_line = panel.selected + panel.selected.min(4) + usize::from(panel.selected < 4);
+    let scroll = selected_line.saturating_sub(parts[0].height.saturating_sub(1) as usize);
+    frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), parts[0]);
+    frame.render_widget(
+        Paragraph::new(clean(&panel.hint())).wrap(Wrap { trim: false }),
+        parts[1],
+    );
+    let keys = if working {
+        "Working… the book is rewritten only once this finishes"
+    } else if panel.edit.is_some() {
+        "←/→ Home/End move · Ctrl+U clear · Enter accept · Ctrl+S save · Esc undo"
+    } else {
+        "↑/↓ Tab select · Enter edit · Ctrl+S save · Esc discard and close"
+    };
+    frame.render_widget(Paragraph::new(keys).wrap(Wrap { trim: false }), parts[2]);
+}
+
 /// How far a value sits inside the label above it.
 const VALUE: usize = 4;
 fn draw_settings(panel: &super::settings::Panel, working: bool, frame: &mut Frame<'_>) {

@@ -1,5 +1,6 @@
 //! Elm-style TUI using Tears, with blocking backend work isolated from update/view.
 mod backend;
+mod edit;
 mod model;
 mod settings;
 #[cfg(test)]
@@ -117,6 +118,13 @@ impl Application for App {
 fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
+        Effect::Correct { id, task } => Command::stream(futures::stream::once(async move {
+            let result = blocking(move || edit::perform(task))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|result| result.map_err(|e| format!("{e:#}")));
+            Message::Corrected(id, result)
+        })),
         Effect::Configure { id, task } => Command::stream(futures::stream::once(async move {
             let result = blocking(move || settings::perform(task))
                 .await

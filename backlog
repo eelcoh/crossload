@@ -668,7 +668,7 @@
     device has. Adding one now means one constant, a name that matches what
     CrossPoint reports for it, and nothing else.
 
-31. [ ] Change a book's own metadata
+31. [x] Change a book's own metadata — implemented
     A series has nowhere to live in this library, so it lives in the title:
     the reader holds `The Expanse - Calibans strijd.epub` under an author folder
     called `James Corey`, where the series belongs in `calibre:series` and the
@@ -698,6 +698,28 @@
     local copy alone or to every copy of that book; does it write in place or
     beside; and does it live in the TUI on a selected book, on the command line,
     or both.
+    Settled as the local copy, in place, in the TUI. `identity` now skips the
+    package document, as it already skipped the device marker, so a correction
+    is identity-neutral: a corrected book and the copies of it on a reader stay
+    one book. That also makes the README's claim about a repacked copy true,
+    where editing metadata had quietly broken it. The cache moves to version 8,
+    since every stored resources hash was computed the old way.
+    `src/metadata.rs` rewrites only the package document and copies every other
+    file across byte for byte. It splices rather than reparses, so anything it
+    does not name survives exactly as written; a series goes in both Calibre's
+    spelling and EPUB 3's, and correcting one again replaces rather than
+    accumulates. What was asked for is read back out of the finished book before
+    it is offered, so a change that did not take is refused rather than half
+    applied. `e` on a book opens the panel; the file is written beside itself
+    and moved over itself, so it is never half written.
+    Verified on the book that prompted this: the reader's own copy of
+    `The Expanse - Calibans strijd.epub`, by `James Corey`, with the series in
+    its title because there was nowhere else to put it. It now reads
+    `Calibans strijd` by `James S. A. Corey`, The Expanse book 2, and the
+    library groups it with the copy on the reader rather than showing two books.
+    Left: the correction only reaches a device by copying the book there again,
+    and the old copy under the old author folder stays where it is. Deleting
+    that is possible on a mounted card and not over Wi-Fi.
 
 ## macOS verification update
 

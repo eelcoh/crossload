@@ -27,7 +27,19 @@ pub fn metadata(path: &std::path::Path) -> Result<Option<Metadata>> {
         return Ok(None);
     }
     file.seek(SeekFrom::Start(0))?;
-    let mut archive = ZipArchive::new(file)?;
+    read_metadata(file)
+}
+
+/// The same, for a book already in hand rather than one on disk.
+pub fn metadata_from(data: &[u8]) -> Result<Option<Metadata>> {
+    if !data.starts_with(b"PK\x03\x04") {
+        return Ok(None);
+    }
+    read_metadata(Cursor::new(data))
+}
+
+fn read_metadata<R: Read + std::io::Seek>(source: R) -> Result<Option<Metadata>> {
+    let mut archive = ZipArchive::new(source)?;
     if archive.index_for_name("META-INF/container.xml").is_none()
         || archive.index_for_name("mimetype").is_none()
     {

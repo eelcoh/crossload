@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 /// Bumped whenever a stored field changes meaning; older files are discarded.
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 const MAX_ENTRIES: usize = 20_000;
 const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 /// What discovery would otherwise reread and rehash the whole book to learn.

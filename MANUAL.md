@@ -754,6 +754,24 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   selected and preserving marks. ACSM requests remain after the books.
 - **?** opens keyboard help and the presence legend; arrows scroll and Escape
   closes it.
+- **e** corrects what a book says about itself: its title, its author, and the
+  series it belongs to with its number in that series. Only a local EPUB can be
+  corrected — a book that is only on a device is not ours to rewrite, and a PDF
+  or CBZ has no package document to rewrite. Arrows or Tab select a field and
+  Enter edits it; Ctrl+U clears one; Ctrl+S saves from any row; Escape closes
+  without writing. A field left alone is left alone: only what changed is
+  written, so an untouched author cannot rewrite itself into another spelling.
+  A series is written both as Calibre writes it and as EPUB 3 does, so whichever
+  a reader looks for it finds the same answer, and correcting a series again
+  replaces it rather than leaving two.
+
+  The book is rewritten in place, beside itself and then moved over itself, so
+  it is never half written. Only the package document changes: every other file
+  is copied across byte for byte, and `identity` ignores the package document
+  precisely so that a corrected book and the copies of it already on a reader or
+  a Kobo stay one book rather than becoming two. The correction reaches those
+  copies the ordinary way, by copying the book to them again.
+
 - **,** opens settings when discovery and copying are idle. Edit books/import
   folders, Kobo mount, reader address, mounted reader card, and remote base folder.
   Arrows or Tab select a field/action; Enter edits or runs it. Within a field,

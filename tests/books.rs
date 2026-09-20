@@ -560,3 +560,43 @@ fn a_book_reaches_the_kobo_as_a_kepub_when_that_is_asked_for() {
     assert!(text.contains("class=\"koboSpan\""), "{text}");
     assert!(text.contains(">a sentence. </span>"), "{text}");
 }
+
+#[test]
+fn correcting_a_book_keeps_it_the_same_book_as_the_copy_on_a_device() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let card = o.card.clone().unwrap();
+    let original = epub("text", CompressionMethod::Stored);
+    fs::write(o.local.join("book.epub"), &original).unwrap();
+    // The same book, already sitting on the reader's card.
+    fs::write(card.join("book.epub"), &original).unwrap();
+    let snapshot = books::scan(&o, |_| {});
+    assert_eq!(
+        snapshot.books.len(),
+        1,
+        "one book in two places to begin with"
+    );
+
+    // Correct it where the original lives.
+    let corrected = crossload::metadata::apply(
+        &original,
+        &crossload::metadata::Edit {
+            author: Some("James S. A. Corey".into()),
+            series: Some("The Expanse".into()),
+            series_index: Some("2".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    fs::write(o.local.join("book.epub"), &corrected).unwrap();
+
+    let snapshot = books::scan(&o, |_| {});
+    // Still one book: only what it says about itself moved, so the copy on the
+    // card is recognised as the same book rather than becoming a second one.
+    assert_eq!(snapshot.books.len(), 1, "{:?}", snapshot.books);
+    let book = &snapshot.books[0];
+    assert!(book.has(Place::Local) && book.has(Place::CrossPoint));
+    assert_eq!(book.author, "James S. A. Corey");
+    assert_eq!(book.series.as_deref(), Some("The Expanse"));
+    assert_eq!(book.series_index, Some(2.0));
+}
