@@ -875,7 +875,21 @@ impl Model {
                             self.selected = 0;
                             self.touched = false;
                         }
-                        KeyCode::Char(c) => {
+                        // Clearing the line, as the settings panel does, rather
+                        // than typing a literal u.
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.query.clear();
+                            self.selected = 0;
+                            self.touched = false;
+                        }
+                        // A control chord is not text: without this, Ctrl+U and
+                        // its like arrive as the letter they are struck with.
+                        KeyCode::Char(c)
+                            if !key
+                                .modifiers
+                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                                && !c.is_control() =>
+                        {
                             self.query.push(c);
                             self.selected = 0;
                             self.touched = false;
@@ -1017,7 +1031,7 @@ pub(super) const HELP: &[&str] = &[
     "a           Mark or clear all books shown by the current filter",
     "/           Search titles and authors; arrows still navigate",
     "            author: title: series: search one field on its own",
-    "Esc/Enter   Leave search, keeping the query; / then backspace clears it",
+    "Esc/Enter   Leave search, keeping the query; Ctrl+U clears it",
     "f           Open filters; arrows + Enter or 1–6 select",
     "s           Sort by title, then author, then series (ascending)",
     "d           Inspect copies; 1–9 asks to delete one; y confirms",

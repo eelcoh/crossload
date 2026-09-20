@@ -334,7 +334,7 @@
     printed the number planned as the number copied, so a run where everything
     failed still claimed successes.
 
-22. [~] Metadata beyond title and author — implemented, series unexercised
+22. [x] Metadata beyond title and author — implemented
     `Book` is title, author and copies, which is why sorting offers title and
     author and nothing else. `epub::metadata` already parses the OPF metadata
     block and discards everything but two fields. Carry series and index,
@@ -360,12 +360,20 @@
     Search takes a field before a colon — `author:`, `title:`, `series:` —
     which searches that field alone, so `author:herron` does not also match a
     book written about him.
-    Not verified against real books: none of the ten EPUBs in this library
-    carries series metadata at all, so the sort and the search have only the
-    tests behind them. Unlike carrying pictures over, this is a documented
-    one-line field in the package document, and a fixture is exactly what a real
-    file holds, so the risk is in whether anyone's books use it rather than in
-    whether it is read correctly.
+    Since verified end to end, without waiting for a library that uses series:
+    seven EPUBs were built carrying it both ways — Calibre's `calibre:series`
+    pair and EPUB 3's `belongs-to-collection` refined by `group-position` — and
+    run through the real binary rather than through tests. Both forms parse, the
+    sort puts Slow Horses 1, Dead Lions 2, The List 2.5 and Spook Street 10 in
+    that order rather than sorting 10 next to 1, a book in no series lands last,
+    the details panel names the series and number, all three field searches
+    match only their own field, and the series survives the identity cache and
+    comes back from it.
+    Found while doing it: Ctrl+U in the search box typed the letter u rather
+    than clearing, because any Char was pushed to the query without looking at
+    its modifiers. A control chord is a command, not text. The settings panel
+    already cleared on Ctrl+U; the search box now does too, and the help says
+    so instead of suggesting backspace.
     Deliberately left: language, publisher and date are parsed by nothing and
     shown nowhere. They exist in these files, but nothing was asking for them.
 

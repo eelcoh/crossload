@@ -275,6 +275,18 @@ fn a_series_sorts_in_its_own_order_and_a_field_can_be_searched_alone() {
     assert_eq!(model.filtered().len(), 1);
     model.query = "title:herron".into();
     assert!(model.filtered().is_empty());
+
+    // Typing into the search box: a control chord is a command, not a letter.
+    // Ctrl+U used to arrive as the letter it is struck with.
+    let mut model = Model::new(options());
+    model.update(key(KeyCode::Char('/')));
+    for c in "dune".chars() {
+        model.update(key(KeyCode::Char(c)));
+    }
+    assert_eq!(model.query, "dune");
+    let ctrl_u = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+    model.update(Message::Input(Event::Key(ctrl_u)));
+    assert_eq!(model.query, "");
 }
 
 #[test]
