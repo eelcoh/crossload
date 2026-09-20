@@ -38,7 +38,7 @@ enter copy   space mark   a mark all   f filter   d copies   / search   q quit
 ### Linux: download it
 
 ```sh
-VERSION=0.1.1
+VERSION=0.2.0
 NAME=crossload-$VERSION-x86_64-unknown-linux-gnu
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
@@ -57,7 +57,7 @@ ebook libraries to install — and needs a distribution from 2024 or later
 ### macOS: download it
 
 ```sh
-VERSION=0.1.1
+VERSION=0.2.0
 NAME=crossload-$VERSION-aarch64-apple-darwin   # x86_64-apple-darwin on Intel
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
