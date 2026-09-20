@@ -568,22 +568,24 @@ fn draw_correction(panel: &super::edit::Panel, working: bool, frame: &mut Frame<
         };
         let editing = selected && panel.edit.is_some();
         let room = (parts[0].width as usize).saturating_sub(VALUE);
-        let text = if let (true, Some((_, cursor))) = (editing, &panel.edit) {
-            let prefix = tail(&value[..*cursor], room.saturating_sub(1));
-            format!("{prefix}▏{}", &value[*cursor..])
-        } else if value.is_empty() {
-            "(not set)".to_owned()
-        } else {
-            shorten(value, room)
-        };
-        lines.push(Line::styled(
-            format!("{:VALUE$}{text}", ""),
-            if selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                plain()
-            },
-        ));
+        lines.push(Line::from(match (editing, &panel.edit) {
+            (true, Some((_, cursor))) => editing_line(value, *cursor, VALUE, room),
+            _ => {
+                let text = if value.is_empty() {
+                    "(not set)".to_owned()
+                } else {
+                    shorten(value, room)
+                };
+                vec![Span::styled(
+                    format!("{:VALUE$}{text}", ""),
+                    if selected {
+                        Style::default().add_modifier(Modifier::REVERSED)
+                    } else {
+                        plain()
+                    },
+                )]
+            }
+        }));
     }
     let selected_line = panel.selected + panel.selected.min(4) + usize::from(panel.selected < 4);
     let scroll = selected_line.saturating_sub(parts[0].height.saturating_sub(1) as usize);
@@ -600,6 +602,23 @@ fn draw_correction(panel: &super::edit::Panel, working: bool, frame: &mut Frame<
         "↑/↓ Tab select · Enter edit · Ctrl+S save · Esc discard and close"
     };
     frame.render_widget(Paragraph::new(keys).wrap(Wrap { trim: false }), parts[2]);
+}
+
+/// A value being typed, drawn the way a terminal draws one: the line itself
+/// plain, and the character under the cursor reversed. Reversing the whole line
+/// is how a selected row is marked, and it leaves the cursor nothing to stand
+/// out against, which is what made it hard to follow while editing.
+fn editing_line(value: &str, cursor: usize, indent: usize, room: usize) -> Vec<Span<'static>> {
+    let prefix = tail(&value[..cursor], room.saturating_sub(1));
+    let mut rest = value[cursor..].chars();
+    let under = rest.next().map(String::from).unwrap_or_else(|| " ".into());
+    let after: String = rest.collect();
+    let used = width(&prefix) + width(&under);
+    vec![
+        Span::styled(format!("{:indent$}{prefix}", ""), plain()),
+        Span::styled(under, Style::default().add_modifier(Modifier::REVERSED)),
+        Span::styled(shorten(&after, room.saturating_sub(used)), plain()),
+    ]
 }
 
 /// How far a value sits inside the label above it.
@@ -681,26 +700,29 @@ fn draw_settings(panel: &super::settings::Panel, working: bool, frame: &mut Fram
                         width(word) + width(glyph) + 3
                     };
                     let room = (list.width as usize).saturating_sub(VALUE + reserved);
-                    let text = if value.is_empty() {
-                        "(not configured)".to_owned()
-                    } else if let (true, Some((_, cursor))) = (editing, &panel.edit) {
-                        // Keep the cursor visible even when a path is wider than the dialog.
-                        let prefix = tail(&value[..*cursor], room.saturating_sub(1));
-                        format!("{prefix}▏{}", &value[*cursor..])
-                    } else if i == 3 || i == 5 {
-                        shorten(value, room)
-                    } else {
-                        // Paths differ at their end, so that is the end to keep.
-                        tail(value, room)
+                    // Keep the cursor visible even when a path is wider than
+                    // the dialog, and let it stand out while typing.
+                    let mut spans = match (editing, &panel.edit) {
+                        (true, Some((_, cursor))) => editing_line(value, *cursor, VALUE, room),
+                        _ => {
+                            let text = if value.is_empty() {
+                                "(not configured)".to_owned()
+                            } else if i == 3 || i == 5 {
+                                shorten(value, room)
+                            } else {
+                                // Paths differ at their end, so that is the end to keep.
+                                tail(value, room)
+                            };
+                            vec![Span::styled(
+                                format!("{:VALUE$}{text}", ""),
+                                if selected {
+                                    Style::default().add_modifier(Modifier::REVERSED)
+                                } else {
+                                    plain()
+                                },
+                            )]
+                        }
                     };
-                    let mut spans = vec![Span::styled(
-                        format!("{:VALUE$}{text}", ""),
-                        if selected {
-                            Style::default().add_modifier(Modifier::REVERSED)
-                        } else {
-                            plain()
-                        },
-                    )];
                     if !word.is_empty() {
                         spans.push(Span::styled(
                             format!("  {glyph} {word}"),

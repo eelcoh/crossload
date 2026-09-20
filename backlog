@@ -730,6 +730,13 @@
     settings costs nothing, so it is never refused now. A refresh asked for
     during work is remembered rather than refused too, and happens as soon as
     the work finishes, which is what asking for it meant.
+    And the cursor was hard to follow while typing: a selected row is marked by
+    reversing its whole width, so the cursor drawn inside it had nothing to
+    stand out against. Editing now leaves the line plain and reverses the single
+    character under the cursor, which is how a terminal marks one; the full-width
+    reversal still marks a selected row that is not being edited. Both panels
+    shared the fault and both are fixed. A dot opens settings as well as a comma,
+    dotfiles being where settings usually live.
     Left: the correction only reaches a device by copying the book there again,
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.

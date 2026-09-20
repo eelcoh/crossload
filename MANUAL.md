@@ -775,11 +775,13 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   a Kobo stay one book rather than becoming two. The correction reaches those
   copies the ordinary way, by copying the book to them again.
 
-- **,** opens settings, at any time: looking costs nothing. Edit books/import
+- **,** or **.** opens settings, at any time: looking costs nothing. Edit books/import
   folders, Kobo mount, reader address, mounted reader card, and remote base folder.
   Arrows or Tab select a field/action; Enter edits or runs it. Within a field,
   arrows and Home/End move the cursor, Ctrl+U clears it, Enter accepts, and Escape
-  undoes the edit. Escape outside an edit discards the draft. The connection test
+  undoes the edit. While typing, the character under the cursor is reversed, the
+  way a terminal marks one; a selected row that is not being edited is reversed
+  along its whole width instead. Escape outside an edit discards the draft. The connection test
   reads CrossPoint status without copying. A configured card takes priority over
   Wi-Fi; clear its field to switch back.
 

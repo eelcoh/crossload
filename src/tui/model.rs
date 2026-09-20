@@ -1021,7 +1021,9 @@ impl Model {
                     // Looking at settings costs nothing, so it is never
                     // refused: a scan of a reader over Wi-Fi takes long enough
                     // that being turned away reads as the key not working.
-                    KeyCode::Char(',') => self.open_settings(false),
+                    // A dot is what people reach for, dotfiles being what
+                    // settings usually live in, so both open them.
+                    KeyCode::Char(',' | '.') => self.open_settings(false),
                     KeyCode::Char('s') => {
                         let selected = self.selected_entry();
                         self.sort = self.sort.next();
