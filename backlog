@@ -213,7 +213,7 @@
     the book is still imported and the request stays put, reported rather than
     raised as an error.
 
-19. [~] macOS verification and published releases — publishing settled
+19. [~] macOS verification and published releases — verified; one tag left to run
     macOS verification is done: see the section below. Packaging on a `v*` tag
     already exists and produces Linux and both macOS archives as Actions
     artifacts, and the v0.1.0 tag ran it: ubuntu-24.04, macos-15 and
@@ -243,6 +243,17 @@
     also enforce a policy stricter than Gatekeeper's default, which curl would
     not get around; that is one machine's problem rather than a reason to
     publish nothing.
+    Verified on 2026-09-20. The aarch64 archive CI built for the v0.1.1 tag was
+    moved to a Mac with scp — which sets no quarantine attribute, as curl does
+    not — and ran, reporting its version. So an unsigned, unnotarized package
+    executes on a Mac with no exception made for it, and the toolchain's ad-hoc
+    signature is all Apple Silicon wanted. The earlier failure on a corporate
+    MacBook was a browser download's quarantine, not the binary.
+    The manual said a packaged macOS binary had been produced by CI and never
+    executed. That is no longer true and no longer said, in the manual, the
+    README or the release notes.
+    Left: the release job's change has not run. It now takes every platform's
+    artifacts rather than only Linux's, and the next tag is what exercises that.
 
 20. [x] Delete redundant copies — implemented
     Duplicates were invisible and unremovable: two files of the same book share

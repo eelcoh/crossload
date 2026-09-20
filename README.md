@@ -92,7 +92,7 @@ appear here: they build it, they are not needed to run it. Cargo installs into
 `~/.cargo/bin`.
 
 Linux is what has been used against real hardware; macOS builds and passes its
-tests on every change, but no packaged macOS binary has been run on a Mac yet.
+tests on every change, and a packaged macOS binary has been run on a Mac.
 
 ## Start here
 

@@ -49,8 +49,10 @@ On Apple Silicon an executable needs a code signature to run at all, but an
 ad-hoc one satisfies that; the toolchain applies it at link time, and it is not
 notarization and costs nothing.
 
-A packaged macOS binary has been produced by CI on every tagged release and has
-still never been executed. Publishing it does not make it verified.
+A packaged macOS binary from CI has been run on a Mac and reports its version.
+It was moved there with scp, which sets no quarantine attribute, and needed
+neither a signature beyond the toolchain's ad-hoc one nor any exception made for
+it. Kobo hardware and reader transfers are still Linux-only ground.
 
 `BUILD.json` records the compiler, platform, source revision, whether the working
 tree was modified, and dynamic libraries. Local Linux packages use the Debian 12

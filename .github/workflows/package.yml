@@ -128,9 +128,9 @@ jobs:
           bottles work. A browser-downloaded archive needs the quarantine
           cleared, and a managed Mac may forbid that.
 
-          These archives build and pass their tests on every change, but no
-          packaged macOS binary has been run on a Mac yet. `cargo install --path
-          . --locked` builds from source if you would rather.
+          These archives build and pass their tests on every change, and a
+          packaged binary has been run on a Mac. `cargo install --path .
+          --locked` builds from source if you would rather.
 
           The source archive below builds offline and carries every dependency.
           NOTES
