@@ -16,6 +16,17 @@ archives are also generated under `dist/` by `mise run package`.
 
 ### From a binary archive
 
+`install.sh` in the repository does all of this and is the shortest way in:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/eelcoh/crossload/main/install.sh | sh
+```
+
+It picks the archive for the machine it runs on, refuses to install anything
+whose checksum does not match, needs no root, and leaves nothing in a temporary
+directory. `CROSSLOAD_VERSION` pins a version; `CROSSLOAD_BIN` chooses where the
+binary goes. Everything below is what it does, by hand.
+
 Choose the archive matching your OS and CPU, verify its checksum, and extract it:
 
 ```sh

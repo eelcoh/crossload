@@ -20,7 +20,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATHS = (
-    "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "mise.toml", "build.rs", "src", "native",
+    "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "mise.toml", "build.rs", "install.sh", "src", "native",
     "tests", "scripts", ".github", ".gitignore", ".containerignore",
     "Containerfile.build", "README.md", "MANUAL.md", "LICENSE", "THIRD-PARTY.md", "NATIVE-OPTIONS.md", "TUI-ARCHITECTURE.md",
 )

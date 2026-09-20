@@ -35,6 +35,23 @@ enter copy   space mark   a mark all   f filter   d copies   / search   q quit
 
 ## Install
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/eelcoh/crossload/main/install.sh | sh
+```
+
+That picks the right archive for your machine, checks it against its published
+checksum, puts `crossload` in `~/.local/bin`, and says so if that is not on your
+`PATH`. It works on Linux and macOS, installs nothing else, and needs no root.
+`CROSSLOAD_VERSION` pins a version and `CROSSLOAD_BIN` chooses somewhere else to
+put it. Read it first if you would rather — it is one file, and piping it
+anywhere is your decision:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/eelcoh/crossload/main/install.sh | less
+```
+
+The rest of this section is what that script does, for doing it by hand.
+
 ### Linux: download it
 
 ```sh
