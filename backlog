@@ -741,7 +741,7 @@
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.
 
-32. [-] OPDS catalogues, as a client — investigated, dropped
+32. [ ] OPDS catalogues, as a client — the case is proven, for US libraries
     OPDS is a syndication format for ebook catalogues: 1.2 is Atom XML and is
     what nearly everything speaks, 2.0 is JSON and is not widely deployed. A
     feed is either navigation, linking on to more feeds, or acquisition, whose
@@ -808,8 +808,44 @@
     request here, so the flow that matters is supported without OPDS.
     What remains of OPDS is serving a library over a network to reader apps,
     which is a detour for a program that opens the files directly, and one
-    public catalogue that answers without an account. Not enough. Worth
-    revisiting only if a catalogue worth reading from turns up that speaks it.
+    public catalogue that answers without an account. Not enough for this
+    library. Worth revisiting only if a catalogue worth reading from turns up
+    that speaks it.
+    Such a catalogue turned up, and it is the whole US. The Palace Project
+    registry at registry.thepalaceproject.org/libraries answers 200 with
+    application/opds+json — OPDS 2.0, the first seen in the wild — and lists
+    1457 US libraries, each with an OPDS 1.2 acquisition catalogue and an OPDS
+    Authentication Document. It descends from NYPL's Library Simplified and is
+    run by LYRASIS with DPLA, so it is a real deployment rather than a
+    demonstration.
+    The claim this item rests on is now proven, against Boston Public Library
+    and Los Angeles Public Library. Their entries carry
+    rel="…/acquisition/borrow" pointing at an entry document rather than a file,
+    and the DRM chain is declared ahead of borrowing as nested
+    opds:indirectAcquisition. Across those two feeds: 319 of
+    application/vnd.adobe.adept+xml, each wrapping application/epub+zip. That is
+    exactly the shape adobe.rs already fulfils, so borrow → ACSM → EPUB → X4 is
+    one tool on Linux, with neither Adobe Digital Editions nor Calibre. Also
+    present: 312 Readium LCP, which we cannot open, and OverDrive audiobooks,
+    which are not our business.
+    Two things make this cheaper than it looks. Browsing needs no card — all
+    twelve libraries tried answered 200 unauthenticated, including availability
+    as opds:availability status="available" — so the catalogue view can be
+    built and demonstrated before any credential handling exists. And Palace
+    Bookshelf at dpla.thepalaceproject.org/bookshelf/ is open access
+    throughout: rel="…/acquisition/open-access" straight to application/epub+zip
+    and application/pdf, no DRM, 100 entries a page. That is a development
+    fixture and a genuinely useful catalogue in one.
+    Borrowing wants a card. The authentication documents declare
+    http://opds-spec.org/auth/basic with labels Barcode and PIN, alongside
+    Palace's own basic-token, and a http://opds-spec.org/shelf link for loans.
+    Basic auth with two labelled fields is a small thing to implement; it is the
+    credential storage, not the protocol, that needs thought.
+    None of this helps the library here, which has no OPDS at all. It is worth
+    building for other users, or not at all, and that is the decision to make
+    before starting. Order if it goes ahead: read Palace Bookshelf open-access
+    first, then unauthenticated browsing of any registry library, then a card
+    and the borrow chain into adobe.rs.
 
 ## macOS verification update
 

@@ -1,6 +1,7 @@
 # OPDS catalogues
 
-Research date: 2026-09-20. Status: investigation, nothing implemented. Findings
+Research dates: 2026-09-20 (feeds, NL), 2026-09-20 (US libraries).
+Status: investigation, nothing implemented. Findings
 below come from fetching real feeds, not from the specification.
 
 ## What it is
@@ -77,23 +78,73 @@ operator as `digitaldistribution.cb.nl` — Centraal Boekhuis, which runs the
 Adobe Content Server for Dutch retail and library ebooks. That is a web checkout
 that hands over a file, not a catalogue a client can walk.
 
-## Conclusion: not worth building here
+## US libraries: the claim is proven
 
-The case rested on library feeds handing out ACSM. The library in question has
-no OPDS at all, and its books arrive by a web flow ending in a downloaded ACSM —
-which this program already handles, because a `.acsm` in the import folder is
-already a pending request.
+The unknown above is now settled, in the affirmative, for the United States.
 
-What is left of OPDS after that is thin. Its centre of gravity is serving a
-library over a network to reader apps: calibre-server, Calibre-Web, COPS,
-Kavita, Komga. This program opens the files directly, so for a library on local
-disk that is a network detour to files already readable. Of the public
-catalogues, only Gutenberg answered without an account; Standard Ebooks now
-wants a patron login and Feedbooks has become a commercial platform.
+**The Palace Project registry is a real, large deployment.**
+`registry.thepalaceproject.org/libraries` answers `200 application/opds+json` —
+OPDS **2.0**, the first encountered in the wild — and lists **1457 US
+libraries**. Each carries a `http://opds-spec.org/catalog` link to an OPDS 1.2
+acquisition feed and a `http://opds-spec.org/auth/document` link. The software
+descends from NYPL's Library Simplified, and the registry is run by LYRASIS with
+the DPLA.
 
-It would become worth revisiting if a catalogue worth reading from turned up
-that speaks it — a library that lends over OPDS, or a collection kept on another
-machine. The note below stands for that day.
+**Lending libraries declare the DRM chain before you borrow.** Entries there do
+not link to files. They carry `rel="http://opds-spec.org/acquisition/borrow"`
+pointing at an entry document, and nest `opds:indirectAcquisition` to say what
+borrowing will produce. Across Boston Public Library (495 entries) and Los
+Angeles Public Library (280):
+
+| indirect acquisition type | count |
+| --- | --- |
+| `application/epub+zip` | 531 |
+| **`application/vnd.adobe.adept+xml`** | **319** |
+| `application/vnd.readium.lcp.license.v1.0+json` | 312 |
+| `application/vnd.overdrive.circulation.api+json;profile=audiobook` | 242 |
+| `application/audiobook+lcp` | 144 |
+| `application/pdf` | 13 |
+
+And the ACSM entries nest exactly as hoped:
+
+```xml
+<opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+  <opds:indirectAcquisition type="application/epub+zip"/>
+</opds:indirectAcquisition>
+```
+
+That is the claim item 32 was built on, in real data: borrow → ACSM → EPUB, and
+`adobe.rs` already fulfils ACSM with its own ADEPT activation. Readium LCP is
+nearly as common and we cannot open it, so a client has to read these types and
+say so rather than promise every book.
+
+**Browsing needs no card.** All twelve registry libraries tried — Boston, LA,
+Connecticut State Library, several universities — answered `200` unauthenticated,
+including availability (`<opds:availability status="available"/>`). A catalogue
+view can therefore be built and demonstrated before any credential handling
+exists.
+
+**Borrowing does.** Authentication documents declare
+`http://opds-spec.org/auth/basic` with labels `Barcode` and `PIN`, alongside
+Palace's own `basic-token`, plus a `http://opds-spec.org/shelf` link for loans.
+The protocol is easy; storing the credential is the part that needs thought.
+
+**Palace Bookshelf is an open-access fixture.**
+`dpla.thepalaceproject.org/bookshelf/` needs no account and is open access
+throughout: `rel="http://opds-spec.org/acquisition/open-access"` straight to
+`application/epub+zip` (176) and `application/pdf` (46), no DRM elements at all,
+100 entries a page. Both a development fixture and a catalogue worth having.
+
+## Where that leaves it
+
+The Dutch finding and the US finding point opposite ways, and both are right.
+For the library here, OPDS is nothing: no endpoint exists, and loans arrive as a
+CB web checkout ending in a file the import folder already accepts. For a US
+library card holder, OPDS is the difference between Adobe Digital Editions plus
+Calibre and one tool on Linux.
+
+So this is not a question about the protocol any more. It is a question about
+who the program is for. Building it serves other users, not this one.
 
 ## If it were built
 
