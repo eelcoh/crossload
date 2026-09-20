@@ -38,6 +38,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 curl-sys = { version = "0.4", features = ["static-curl", "static-ssl"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 libz-sys = { version = "1", features = ["static"] }
+# PDF structure only, for deciding whether a PDF can become a readable EPUB.
+# Pure Rust and MIT: MuPDF and Poppler would relicense this project.
+lopdf = { version = "0.45", default-features = false }
 openssl-probe = "0.1"
 fs2 = "0.4"
 curl = "0.4"
