@@ -214,6 +214,8 @@ impl Panel {
             reader: (!self.values[3].is_empty()).then(|| self.values[3].trim().to_owned()),
             copy_to: path(4),
             folder: Some(self.values[5].clone()),
+            // Not offered on this panel; the saved value is carried through.
+            kepub: None,
         };
         // Paths and the reader were checked above; ~ expansion is all that is
         // left to fail here, and it fails for the books folder first.

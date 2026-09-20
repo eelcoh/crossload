@@ -4,6 +4,7 @@ pub mod crosspoint;
 pub mod epub;
 pub mod format;
 pub mod history;
+pub mod kepub;
 pub mod kobo;
 pub mod pdf;
 

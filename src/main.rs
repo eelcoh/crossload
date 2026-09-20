@@ -283,6 +283,7 @@ impl LibraryArgs {
             serial: self.serial,
             optimize,
             organized,
+            kepub: defaults.kepub.unwrap_or(false),
             cache: None,
             history: None,
         })
@@ -434,6 +435,7 @@ fn run() -> Result<()> {
                     .unwrap_or_else(|| "/".to_owned()),
                 optimize: !cli.no_optimize,
                 organized: !cli.flat,
+                kepub: defaults.kepub.unwrap_or(false),
             })?;
         }
         Command::History {

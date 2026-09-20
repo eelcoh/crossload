@@ -25,6 +25,7 @@ pub struct Options {
     pub copy_to: Option<PathBuf>,
     pub folder: String,
     pub optimize: bool,
+    pub kepub: bool,
     pub organized: bool,
     pub serial: Option<String>,
 }

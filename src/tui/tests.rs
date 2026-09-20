@@ -16,6 +16,7 @@ fn options() -> Options {
         copy_to: None,
         folder: "/".into(),
         optimize: true,
+        kepub: false,
         organized: true,
         serial: None,
     }

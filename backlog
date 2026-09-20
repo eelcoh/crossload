@@ -389,12 +389,32 @@
     `--organized` changes the folder layout on a device, which deserves its own
     decision rather than being folded in here.
 
-26. [ ] kepub for the Kobo
+26. [x] kepub for the Kobo — implemented
     A sideloaded EPUB on a Kobo loses the store reading experience: no reliable
     progress, no stats. Converting to .kepub.epub on transfer is what Calibre
     users do for this. `prepare.rs` already unpacks, rewrites and repacks EPUB
     containers, so the machinery is adjacent. Narrow, but it is the difference
     between the book being on the Kobo and the book working on it.
+    Implemented in `src/kepub.rs`, off unless `kepub` is saved. The rewrite is
+    deliberately shallow: it walks the markup rather than parsing it, splicing
+    spans around text between tags, so entities arrive exactly as they left and
+    no document is re-serialized. Its safety is that every document it touches
+    must still parse afterwards, or the whole conversion is refused.
+    Three things only the real library showed. Documents are chosen from the
+    manifest's media-type rather than from file names, because a book here names
+    its chapters `.htm` and every one of them would have been skipped, leaving a
+    book that looked converted while none of it was. roxmltree refuses a DOCTYPE
+    unless asked, and nearly every EPUB 2 book carries one, so parsing needed
+    allow_dtd or most of a real library would have been turned away. And a book
+    that has been through Calibre's KoboTouchExtended is already divided; going
+    over it again nested a second set of spans inside the first and left the
+    Kobo counting the same words twice, so an already-divided document is now
+    left alone.
+    Verified across the ten EPUBs on the Kobo here: all convert, and 105
+    documents come back byte-for-byte identical once the inserted spans are
+    removed again, which is the invariant that makes a shallow rewrite safe.
+    Not verified: how the device itself reads them. That needs ejecting and
+    reading on the Kobo, which no test here can do.
 
 27. [~] PDF to EPUB — done but for pictures
     Many PDFs have no reason to be PDFs. Many others cannot survive the trip,

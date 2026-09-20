@@ -16,6 +16,7 @@ pub(super) fn library_options(options: &Options) -> crate::books::Options {
         organized: options.organized,
         cache: None,
         history: None,
+        kepub: options.kepub,
     }
 }
 /// Copy every chosen book, reporting each one and stopping cleanly when asked.

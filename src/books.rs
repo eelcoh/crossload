@@ -102,6 +102,8 @@ pub struct Options {
     pub cache: Option<PathBuf>,
     /// Record of what was copied; None uses the default state location.
     pub history: Option<PathBuf>,
+    /// Send books to the Kobo as kepubs rather than plain EPUBs.
+    pub kepub: bool,
 }
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -1020,10 +1022,23 @@ fn transferred(
             // Require the mounted Kobo database; never recreate a disconnected mount.
             kobo::Library::open(root)?;
             let directory = prepare::author_directory(root, &prepared.author)?;
-            copy::copy(&prepared.path, &directory)?
-                .path
-                .display()
-                .to_string()
+            // A kepub is read by the engine the store's own books get, which is
+            // what makes progress and reading statistics work.
+            let source = if options.kepub && source.format.rewritten() {
+                progress("Preparing a kepub for the Kobo…");
+                let divided = crate::kepub::kepubify(&bytes(&prepared.path)?)?;
+                let stem = prepared
+                    .path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("Book");
+                let path = staging.path().join(crate::kepub::name(stem));
+                fs::write(&path, divided)?;
+                path
+            } else {
+                prepared.path.clone()
+            };
+            copy::copy(&source, &directory)?.path.display().to_string()
         }
         Place::CrossPoint => match destination(options)? {
             inventory::Destination::Reader(reader) => {

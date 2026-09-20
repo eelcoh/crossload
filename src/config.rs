@@ -29,6 +29,10 @@ pub struct Defaults {
     #[arg(long)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// Send books to the Kobo as kepubs, which its own reading engine counts.
+    #[arg(long)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kepub: Option<bool>,
 }
 pub fn default_path() -> Result<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -99,6 +103,9 @@ impl Defaults {
         if update.folder.is_some() {
             self.folder = update.folder;
         }
+        if update.kepub.is_some() {
+            self.kepub = update.kepub;
+        }
     }
     pub fn unset(&mut self, key: &str) -> Result<()> {
         match key {
@@ -108,8 +115,9 @@ impl Defaults {
             "copy-to" => self.copy_to = None,
             "browse" => self.browse = None,
             "folder" => self.folder = None,
+            "kepub" => self.kepub = None,
             _ => anyhow::bail!(
-                "Unknown setting {key}; use device, output, reader, copy-to, browse or folder"
+                "Unknown setting {key}; use device, output, reader, copy-to, browse, folder or kepub"
             ),
         }
         Ok(())

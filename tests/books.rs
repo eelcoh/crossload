@@ -47,6 +47,7 @@ fn options(root: &std::path::Path) -> Options {
         folder: "/".into(),
         serial: None,
         optimize: true,
+        kepub: false,
         organized: true,
         cache: Some(root.join("index.json")),
         history: Some(root.join("history.jsonl")),
@@ -519,4 +520,42 @@ fn room_is_measured_where_a_place_writes_and_admitted_where_it_cannot_be() {
     assert_eq!(books::room(Some(&unmade)), books::room(Some(tmp.path())));
     // A reader reached over Wi-Fi has no path to ask at all, and says so.
     assert_eq!(books::room(None), None);
+}
+
+#[test]
+fn a_book_reaches_the_kobo_as_a_kepub_when_that_is_asked_for() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut o = options(tmp.path());
+    o.kepub = true;
+    let root = o.kobo.clone().unwrap();
+    kobo(&root);
+    fs::write(
+        o.local.join("original.epub"),
+        epub("a sentence. and another.", CompressionMethod::Stored),
+    )
+    .unwrap();
+    let snapshot = books::scan(&o, |_| {});
+    let book = snapshot.books.iter().find(|b| b.has(Place::Local)).unwrap();
+    books::transfer(&o, book, Place::Kobo, &|_| {}).unwrap();
+
+    let sent = fs::read_dir(root.join("Author"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    // The name is what chooses the Kobo's own reading engine.
+    assert!(
+        sent.to_string_lossy().ends_with(".kepub.epub"),
+        "{}",
+        sent.display()
+    );
+    // And the text inside is divided for it to count.
+    let data = fs::read(&sent).unwrap();
+    let mut archive = zip::ZipArchive::new(Cursor::new(&data[..])).unwrap();
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut archive.by_name("chapter.xhtml").unwrap(), &mut text)
+        .unwrap();
+    assert!(text.contains("class=\"koboSpan\""), "{text}");
+    assert!(text.contains(">a sentence. </span>"), "{text}");
 }

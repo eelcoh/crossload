@@ -813,6 +813,20 @@ made and quietly wasted. A copy already on the reader in such a format is
 labelled in the details panel as held but not listed. Kobo and local folders
 accept every format Crossload carries.
 
+A book sent to a Kobo is an ordinary EPUB unless `kepub` is saved, in which
+case it is sent as a kepub: named `.kepub.epub`, with its prose divided into
+`koboSpan` elements. That is what the Kobo's own reading engine counts, and so
+what makes progress and reading statistics work; a plain sideloaded EPUB gets
+the generic engine instead. Turn it on with `crossload config set --kepub true`.
+
+The rewrite is deliberately shallow. It never parses and re-serializes a
+document, only splices spans around text it has already found, so entities
+arrive exactly as they left. Every document it touches must still parse
+afterwards or the whole conversion is refused rather than a broken book written,
+and a book that is already divided — by this or by Calibre — is left alone
+rather than divided twice. Only EPUB is converted; a PDF or CBZ goes to the Kobo
+as it is.
+
 `crossload kobo notes` prints the highlights and notes made on a Kobo as
 Markdown, grouped by book, each with how far into the book it sits and the day
 it was made. `--output DIR` writes one file per book instead of printing, and
