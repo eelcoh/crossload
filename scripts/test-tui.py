@@ -113,7 +113,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         assert saved['reader'] == '127.0.0.1:9'
         assert not (root / 'setup-imports').exists()
         t.send(b'?')
-        t.expect(b'Toggle sorting')
+        t.expect(b'Sort by title, then author, then series')
         t.send(b'\x1b')
         t.expect(b'Library ready.')
         t.send(b'f')

@@ -28,7 +28,7 @@ pub struct Options {
     pub organized: bool,
     pub serial: Option<String>,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Source {
     Local(PathBuf),
     Book(Box<crate::books::Book>),
@@ -44,13 +44,30 @@ struct Entry {
     search: String,
     title_key: String,
     author_key: String,
+    /// The series and position, folded into one key so a series sorts in its
+    /// own order. A book in no series sorts after every book in one.
+    series_key: String,
 }
 impl Entry {
     fn new(title: String, author: String, kind: &'static str, source: Source) -> Self {
         let search = format!("{title} {author}").to_lowercase();
+        let series_key = match &source {
+            Source::Book(book) => match (&book.series, book.series_index) {
+                // Pad the position so 2 sorts before 10, and keep a half
+                // number such as 1.5 between them.
+                (Some(series), index) => format!(
+                    "0{}\u{1}{:09.3}",
+                    series.to_lowercase(),
+                    index.unwrap_or(0.0)
+                ),
+                (None, _) => "1".to_owned(),
+            },
+            _ => "1".to_owned(),
+        };
         Self {
             title_key: title.to_lowercase(),
             author_key: author.to_lowercase(),
+            series_key,
             title,
             author,
             kind,

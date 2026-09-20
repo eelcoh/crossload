@@ -177,6 +177,8 @@ fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() 
         let book = crate::books::Book {
             title: "Paper".into(),
             author: String::new(),
+            series: None,
+            series_index: None,
             copies: vec![copy],
         };
         Entry::new(
@@ -222,6 +224,59 @@ fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() 
 }
 
 #[test]
+fn a_series_sorts_in_its_own_order_and_a_field_can_be_searched_alone() {
+    let volume = |title: &str, series: Option<(&str, f32)>| {
+        let book = crate::books::Book {
+            title: title.into(),
+            author: "Mick Herron".into(),
+            series: series.map(|(name, _)| name.to_owned()),
+            series_index: series.map(|(_, index)| index),
+            copies: vec![crate::books::copy(Place::Local, "/b.epub", 1, false)],
+        };
+        Entry::new(
+            title.into(),
+            "Mick Herron".into(),
+            "EPUB",
+            Source::Book(Box::new(book)),
+        )
+    };
+    let mut model = Model::new(options());
+    model.entries = vec![
+        volume("Standalone", None),
+        volume("Tenth volume", Some(("Slough House", 10.0))),
+        volume("Second volume", Some(("Slough House", 2.0))),
+        volume("An interlude", Some(("Slough House", 2.5))),
+    ];
+    // Title order first, which is what interleaves a series with everything.
+    model.update(key(KeyCode::Char('s')));
+    assert_eq!(model.sort, model::Sort::Author);
+    model.update(key(KeyCode::Char('s')));
+    assert_eq!(model.sort, model::Sort::Series);
+    let order: Vec<&str> = model.filtered().iter().map(|e| e.title.as_str()).collect();
+    // Two before ten rather than beside it, a half number in between, and a
+    // book belonging to no series after every book that does.
+    assert_eq!(
+        order,
+        [
+            "Second volume",
+            "An interlude",
+            "Tenth volume",
+            "Standalone"
+        ]
+    );
+
+    // A named field searches only that field.
+    model.query = "series:slough".into();
+    assert_eq!(model.filtered().len(), 3);
+    model.query = "author:herron".into();
+    assert_eq!(model.filtered().len(), 4);
+    model.query = "title:interlude".into();
+    assert_eq!(model.filtered().len(), 1);
+    model.query = "title:herron".into();
+    assert!(model.filtered().is_empty());
+}
+
+#[test]
 fn menus_isolate_keys_and_sort_keeps_selection_and_marks() {
     let mut model = Model::new(options());
     model.entries = vec![
@@ -256,7 +311,7 @@ fn menus_isolate_keys_and_sort_keeps_selection_and_marks() {
     model.update(key(KeyCode::Char('/')));
     model.update(key(KeyCode::Char('s')));
     assert_eq!(model.query, "s");
-    assert!(model.sort_author);
+    assert_eq!(model.sort, model::Sort::Author);
 }
 
 #[test]
@@ -646,6 +701,8 @@ fn an_untouched_selection_stays_at_the_top_while_books_stream_in() {
             .map(|title| crate::books::Book {
                 title: (*title).into(),
                 author: "Author".into(),
+                series: None,
+                series_index: None,
                 copies: vec![],
             })
             .collect(),
@@ -730,6 +787,8 @@ fn shelf(copies: Vec<crate::books::Copy>) -> Entry {
         Source::Book(Box::new(crate::books::Book {
             title: "Slough House".into(),
             author: "Mick Herron".into(),
+            series: None,
+            series_index: None,
             copies,
         })),
     )

@@ -93,7 +93,7 @@ fn chapters(blocks: &[Block]) -> Vec<Chapter> {
     chapters
 }
 
-pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
+pub(super) fn epub(title: &str, author: &str, blocks: &[Block]) -> Result<Vec<u8>> {
     let chapters = chapters(blocks);
     let name = |index: usize| format!("chapter{}.xhtml", index + 1);
     let mut contents = String::new();
@@ -118,6 +118,12 @@ pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
     // nothing here should depend on the clock.
     let identifier = format!("{:x}", Sha256::digest(body.as_bytes()));
     let title = escaped(title);
+    // A PDF that names nobody gets no creator at all, rather than one invented
+    // for it: the book is then filed by its title, which is honest.
+    let creator = match author.trim() {
+        "" => String::new(),
+        author => format!("<dc:creator>{}</dc:creator>\n", escaped(author)),
+    };
     let page = |inner: &str| {
         format!(
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
@@ -155,7 +161,7 @@ pub(super) fn epub(title: &str, blocks: &[Block]) -> Result<Vec<u8>> {
              unique-identifier=\"id\">\n\
              <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n\
              <dc:identifier id=\"id\">urn:sha256:{identifier}</dc:identifier>\n\
-             <dc:title>{title}</dc:title>\n<dc:language>en</dc:language>\n\
+             <dc:title>{title}</dc:title>\n{creator}<dc:language>en</dc:language>\n\
              <meta property=\"dcterms:modified\">1970-01-01T00:00:00Z</meta>\n\
              <meta name=\"crossload:source\" content=\"converted from PDF\"/>\n\
              </metadata>\n<manifest>\n\

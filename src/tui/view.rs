@@ -292,7 +292,25 @@ fn details(
                             .unwrap_or_default(),
                     ),
                 ]),
+                Line::from(match &book.series {
+                    Some(series) => vec![
+                        label("Series"),
+                        Span::raw(match book.series_index {
+                            // A whole number reads as one: book 2, not book 2.0.
+                            Some(index) if index.fract() == 0.0 => {
+                                format!("{series}, book {}", index as i64)
+                            }
+                            Some(index) => format!("{series}, book {index}"),
+                            None => series.clone(),
+                        }),
+                    ],
+                    None => vec![],
+                }),
             ]
+            .into_iter()
+            // A book in no series says nothing, rather than leaving a gap.
+            .filter(|line: &Line| !line.spans.is_empty())
+            .collect()
         }
         Source::Local(path) => vec![
             Line::from(vec![
@@ -362,11 +380,7 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
                 entries.len(),
                 model.entries.len()
             )));
-            spans.push(Span::raw(if model.sort_author {
-                " · author ↑"
-            } else {
-                " · title ↑"
-            }));
+            spans.push(Span::raw(model.sort.label()));
             if !model.marked.is_empty() {
                 spans.push(Span::styled(
                     format!("  ✓ {} marked", model.marked.len()),

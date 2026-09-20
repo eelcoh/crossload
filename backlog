@@ -287,13 +287,40 @@
     printed the number planned as the number copied, so a run where everything
     failed still claimed successes.
 
-22. [ ] Metadata beyond title and author
+22. [~] Metadata beyond title and author — implemented, series unexercised
     `Book` is title, author and copies, which is why sorting offers title and
     author and nothing else. `epub::metadata` already parses the OPF metadata
     block and discards everything but two fields. Carry series and index,
     language, publisher and date; sort by series; accept `author:` and
     `series:` prefixes in the search box. Series is the one that matters: a
     library of any size sorted by title interleaves every series it has.
+    A PDF says who wrote it and what it is called, in its information
+    dictionary, and all of it was being thrown away: every PDF was titled by its
+    filename, had no author, and so converted into a book filed under "Unknown
+    author" on the reader. That is now read, decoded from UTF-16 where a byte
+    order mark says so, and carried into the EPUB as dc:creator, which is where
+    the author folder comes from. Both files here now read as "Agentic AI /
+    Singhal, Abhi" and "Programming as Theory Building / Peter Naur, Alistair
+    Cockburn", and land in folders of those names. A conversion is also named
+    after the book rather than after the PDF's filename.
+    Series is read from both generations — Calibre's `calibre:series` and
+    `calibre:series_index`, and EPUB 3's `belongs-to-collection` refined by
+    `group-position` — and carried on the book through the cache, which moves to
+    version 6. `s` now cycles title, author and series rather than toggling two,
+    and a series sorts in its own order: the position is padded so 2 comes
+    before 10 and 1.5 sits between them, and a book in no series sorts after
+    every book in one. The details panel names the series and the number.
+    Search takes a field before a colon — `author:`, `title:`, `series:` —
+    which searches that field alone, so `author:herron` does not also match a
+    book written about him.
+    Not verified against real books: none of the ten EPUBs in this library
+    carries series metadata at all, so the sort and the search have only the
+    tests behind them. Unlike carrying pictures over, this is a documented
+    one-line field in the package document, and a fixture is exactly what a real
+    file holds, so the risk is in whether anyone's books use it rather than in
+    whether it is read correctly.
+    Deliberately left: language, publisher and date are parsed by nothing and
+    shown nowhere. They exist in these files, but nothing was asking for them.
 
 23. [ ] Free space before a copy
     Marking forty books and pressing Enter discovers a full card partway

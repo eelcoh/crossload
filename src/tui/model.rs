@@ -48,6 +48,29 @@ pub(super) enum Removal {
     Ready,
     Blocked(&'static str, String),
 }
+/// What the list is ordered by, cycled with one key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Sort {
+    Title,
+    Author,
+    Series,
+}
+impl Sort {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Title => " · title ↑",
+            Self::Author => " · author ↑",
+            Self::Series => " · series ↑",
+        }
+    }
+    fn next(self) -> Self {
+        match self {
+            Self::Title => Self::Author,
+            Self::Author => Self::Series,
+            Self::Series => Self::Title,
+        }
+    }
+}
 /// The questions worth asking of a library, in the order they are cycled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Filter {
@@ -110,7 +133,7 @@ pub(super) struct Model {
     pub help: bool,
     pub help_scroll: u16,
     pub filter_menu: Option<usize>,
-    pub sort_author: bool,
+    pub sort: Sort,
     pub options: Options,
     pub entries: Vec<Entry>,
     pub query: String,
@@ -163,7 +186,7 @@ impl Model {
             help: false,
             help_scroll: 0,
             filter_menu: None,
-            sort_author: false,
+            sort: Sort::Title,
             options,
             entries: vec![],
             query: String::new(),
@@ -195,20 +218,25 @@ impl Model {
         self.entries
             .iter()
             .filter(|e| self.filter.keeps(e))
-            .filter(|e| e.search.contains(&query))
+            .filter(|e| match query.split_once(':') {
+                // A field named before the colon searches only that field, so
+                // author:herron does not also match a book about him.
+                Some(("author", term)) => e.author_key.contains(term.trim_start()),
+                Some(("title", term)) => e.title_key.contains(term.trim_start()),
+                Some(("series", term)) => e.series_key.contains(term.trim_start()),
+                _ => e.search.contains(&query),
+            })
             .collect()
     }
     fn sort_entries(&mut self) {
-        let author = self.sort_author;
+        let sort = self.sort;
         self.entries.sort_by(|a, b| {
             (a.kind == "ACSM")
                 .cmp(&(b.kind == "ACSM"))
-                .then_with(|| {
-                    if author {
-                        a.author_key.cmp(&b.author_key)
-                    } else {
-                        a.title_key.cmp(&b.title_key)
-                    }
+                .then_with(|| match sort {
+                    Sort::Title => a.title_key.cmp(&b.title_key),
+                    Sort::Author => a.author_key.cmp(&b.author_key),
+                    Sort::Series => a.series_key.cmp(&b.series_key),
                 })
                 .then_with(|| a.title_key.cmp(&b.title_key))
         });
@@ -889,7 +917,7 @@ impl Model {
                     }
                     KeyCode::Char('s') => {
                         let selected = self.selected_entry();
-                        self.sort_author = !self.sort_author;
+                        self.sort = self.sort.next();
                         self.sort_entries();
                         self.selected = selected
                             .and_then(|old| {
@@ -955,16 +983,17 @@ pub(super) const HELP: &[&str] = &[
     "Space       Mark or unmark the highlighted book",
     "a           Mark or clear all books shown by the current filter",
     "/           Search titles and authors; arrows still navigate",
+    "            author: title: series: search one field on its own",
     "Esc/Enter   Leave search, keeping the query; / then backspace clears it",
     "f           Open filters; arrows + Enter or 1–6 select",
-    "s           Toggle sorting by title or author (ascending)",
+    "s           Sort by title, then author, then series (ascending)",
     "d           Inspect copies; 1–9 asks to delete one; y confirms",
     "r           Refresh connected locations",
     ",           Settings: folders, Kobo detection and reader test",
     "Esc         Stop copying after this book; close a dialog; otherwise quit",
     "q / Ctrl+C  Quit after active work finishes",
     "",
-    "L / K / X   Local / Kobo / CrossPoint",
+    "L / K / C   Local / Kobo / CrossPoint",
     "● original   ◐ optimized device copy   · absent   ✗ unreadable",
     "⇩ ACSM request: choose Local to fulfill it (activation required)",
     "Marked books stay marked when hidden by a filter or search.",

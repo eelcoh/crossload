@@ -58,10 +58,15 @@ pub(crate) fn copy(place: Place, path: &str, size: u64, locked: bool) -> Copy {
         variants: vec![],
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+// Not Eq: a series index is a number that may be 1.5, and books are compared
+// by their copies rather than looked up in a set.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Book {
     pub title: String,
     pub author: String,
+    /// The series this book belongs to, and its place in it, when it says.
+    pub series: Option<String>,
+    pub series_index: Option<f32>,
     pub copies: Vec<Copy>,
 }
 impl Book {
@@ -124,6 +129,8 @@ fn book(entry: cache::Source, place: Place, path: String) -> Book {
     Book {
         title: entry.title,
         author: entry.author,
+        series: entry.series,
+        series_index: entry.series_index,
         copies: vec![Copy {
             place,
             format: entry.format,
@@ -158,16 +165,28 @@ fn candidate(
 ) -> Result<Book> {
     let data = bytes(path)?;
     format::validate(format, &data)?;
-    let (title, author) = if format.rewritten() {
+    let (title, author, series, series_index) = if format.rewritten() {
         let metadata = epub::metadata(path)?.context("Missing EPUB metadata")?;
         (
             metadata.title.unwrap_or_else(|| "Untitled".into()),
             metadata.author,
+            metadata.series,
+            metadata.series_index,
         )
     } else {
-        // Nothing inside a PDF or CBZ is a title worth trusting, so what the
-        // file is called is the honest answer rather than a guess.
-        (format::name_title(&source), String::new())
+        // A PDF says who wrote it and what it is called, when it has been
+        // filled in at all. A CBZ says nothing, and neither does an empty
+        // field, so what the file is called is the honest answer instead.
+        let info = (format == Format::Pdf)
+            .then(|| crate::pdf::info(&data).ok())
+            .flatten()
+            .unwrap_or_default();
+        (
+            info.title.unwrap_or_else(|| format::name_title(&source)),
+            info.author.unwrap_or_default(),
+            None,
+            None,
+        )
     };
     let id = inventory::identity(&data);
     // Only an EPUB is ever rebuilt, so only an EPUB can be a device copy: a
@@ -205,6 +224,8 @@ fn candidate(
     let entry = cache::Source {
         title,
         author,
+        series,
+        series_index,
         format,
         verdict,
         size: data.len() as u64,
@@ -223,6 +244,8 @@ fn unreadable(place: Place, format: Format, path: String, title: String, reason:
     Book {
         title,
         author: format!("Unreadable: {reason}"),
+        series: None,
+        series_index: None,
         copies: vec![Copy {
             place,
             format,
@@ -915,9 +938,11 @@ pub fn transfer(
     let (path, converted) = if converting {
         progress("Converting to EPUB…");
         let (epub, _) = crate::pdf::convert(&bytes(&path)?)?;
+        // Name the conversion after the book, not after whatever the PDF's
+        // file happened to be called.
         let staged = staging.path().join(format!(
             "{}.epub",
-            prepare::component(&format::name_title(&source.path), "Untitled")
+            prepare::component(&book.title, "Untitled")
         ));
         fs::write(&staged, &epub)?;
         fs::create_dir_all(&options.output)?;

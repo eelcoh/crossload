@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 /// Bumped whenever a stored field changes meaning; older files are discarded.
-const VERSION: u32 = 5;
+const VERSION: u32 = 6;
 const MAX_ENTRIES: usize = 20_000;
 const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 /// What discovery would otherwise reread and rehash the whole book to learn.
@@ -23,6 +23,11 @@ pub struct Source {
     pub title: String,
     pub author: String,
     pub format: crate::format::Format,
+    /// The series the book belongs to, and where it sits in it.
+    #[serde(default)]
+    pub series: Option<String>,
+    #[serde(default)]
+    pub series_index: Option<f32>,
     /// For a PDF, what converting it to EPUB would be worth. Judged once, when
     /// the file is read, so nothing has to open a PDF to draw a dialog.
     #[serde(default)]

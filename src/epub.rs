@@ -12,6 +12,9 @@ pub struct Metadata {
     pub title: Option<String>,
     pub author: String,
     pub identifiers: Vec<String>,
+    /// The series this book belongs to, and where it sits in it.
+    pub series: Option<String>,
+    pub series_index: Option<f32>,
 }
 
 /// Identify EPUBs by their contents, including Calibre files without extensions.
@@ -65,10 +68,50 @@ pub fn metadata(path: &std::path::Path) -> Result<Option<Metadata>> {
             .map(str::to_owned)
             .collect::<Vec<_>>()
     };
+    // A series is written one way by EPUB 2 and another by EPUB 3, and a file
+    // may carry either. Calibre writes the first; the second refines a named
+    // collection with the position in it.
+    let metas: Vec<_> = package
+        .descendants()
+        .filter(|n| n.is_element() && n.tag_name().name() == "meta")
+        .collect();
+    let named = |name: &str| {
+        metas
+            .iter()
+            .find(|n| n.attribute("name") == Some(name))
+            .and_then(|n| n.attribute("content"))
+    };
+    let collection = metas
+        .iter()
+        .find(|n| n.attribute("property") == Some("belongs-to-collection"));
+    let text = |value: &str| {
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_owned())
+    };
+    let series = named("calibre:series")
+        .and_then(text)
+        .or_else(|| collection.and_then(|n| n.text()).and_then(text));
+    let series_index = named("calibre:series_index")
+        .and_then(|value| value.trim().parse().ok())
+        .or_else(|| {
+            let id = format!("#{}", collection?.attribute("id")?);
+            metas
+                .iter()
+                .find(|n| {
+                    n.attribute("refines") == Some(id.as_str())
+                        && n.attribute("property") == Some("group-position")
+                })?
+                .text()?
+                .trim()
+                .parse()
+                .ok()
+        });
     Ok(Some(Metadata {
         title: values("title").into_iter().next(),
         author: values("creator").join(", "),
         identifiers: values("identifier"),
+        series,
+        series_index,
     }))
 }
 

@@ -148,6 +148,53 @@ fn page_lines(document: &Document, pages: &[Vec<text::Piece>]) -> Vec<Vec<layout
         .collect()
 }
 
+/// What a PDF says about itself, when it says anything.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Info {
+    pub title: Option<String>,
+    pub author: Option<String>,
+}
+
+/// Read the document information dictionary. Strings there may be Latin-1 or
+/// UTF-16, and either may be absent; nothing here guesses at a missing one.
+pub fn info(data: &[u8]) -> Result<Info> {
+    let document = Document::load_mem(data).context("This file could not be read as a PDF")?;
+    Ok(from(&document))
+}
+fn from(document: &Document) -> Info {
+    let Some(dictionary) = document
+        .trailer
+        .get(b"Info")
+        .and_then(|info| document.dereference(info))
+        .ok()
+        .and_then(|(_, object)| object.as_dict().ok().cloned())
+    else {
+        return Info::default();
+    };
+    let text = |key: &[u8]| {
+        let bytes = dictionary.get(key).and_then(|value| value.as_str()).ok()?;
+        let decoded = match bytes {
+            // A text string may be UTF-16BE behind a byte order mark.
+            [0xFE, 0xFF, rest @ ..] => {
+                let units: Vec<u16> = rest
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| u16::from_be_bytes(*pair))
+                    .collect();
+                String::from_utf16(&units).ok()?
+            }
+            bytes => String::from_utf8_lossy(bytes).into_owned(),
+        };
+        let decoded = decoded.trim();
+        (!decoded.is_empty()).then(|| decoded.to_owned())
+    };
+    Info {
+        title: text(b"Title"),
+        author: text(b"Author"),
+    }
+}
+
 /// Convert a PDF into an EPUB, refusing one there is nothing to convert from.
 ///
 /// The verdict is returned with the book so a caller can say what it is getting
@@ -159,19 +206,7 @@ pub fn convert(data: &[u8]) -> Result<(Vec<u8>, Verdict)> {
         anyhow::bail!("Cannot convert this PDF: {}", concern.describe());
     }
     let document = Document::load_mem(data).context("This file could not be read as a PDF")?;
-    let named = document
-        .trailer
-        .get(b"Info")
-        .and_then(|info| document.dereference(info))
-        .ok()
-        .and_then(|(_, object)| object.as_dict().ok().cloned())
-        .and_then(|info| {
-            info.get(b"Title")
-                .and_then(|t| t.as_str())
-                .ok()
-                .map(Vec::from)
-        })
-        .and_then(|bytes| String::from_utf8(bytes).ok());
+    let info = from(&document);
     let pages: Vec<_> = document
         .get_pages()
         .values()
@@ -186,8 +221,9 @@ pub fn convert(data: &[u8]) -> Result<(Vec<u8>, Verdict)> {
             .any(|block| matches!(block, layout::Block::Paragraph(text) if text.len() > 40)),
         "Nothing readable came out of this PDF; it was not converted"
     );
-    let title = write::title(named, &blocks);
-    Ok((write::epub(&title, &blocks)?, report.verdict))
+    let title = write::title(info.title, &blocks);
+    let author = info.author.unwrap_or_default();
+    Ok((write::epub(&title, &author, &blocks)?, report.verdict))
 }
 
 pub fn inspect(data: &[u8]) -> Result<Report> {
