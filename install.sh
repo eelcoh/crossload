@@ -31,8 +31,9 @@ main() {
 
     say "Downloading crossload $version for $target"
     curl -fsSL --proto '=https' --tlsv1.2 -o "$work/$name.tar.gz" "$base/$name.tar.gz" ||
-        die "could not download $name.tar.gz; check the connection, or see
-https://github.com/$repo/releases for what exists"
+        die "release v$version has no archive for $target.
+Older releases do not carry every platform. Pick one that does with
+CROSSLOAD_VERSION, see https://github.com/$repo/releases, or build from source."
     curl -fsSL --proto '=https' --tlsv1.2 -o "$work/$name.sha256" "$base/$name.sha256"
 
     say "Checking the archive against its published checksum"
