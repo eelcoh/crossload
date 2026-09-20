@@ -43,6 +43,8 @@ pub fn default_state_dir() -> Result<PathBuf> {
             .map(PathBuf::from)
             .filter(|p| p.is_absolute())
             .unwrap_or_else(|| PathBuf::from(home).join(".local/share"));
+        // Frozen: this holds the ADEPT activation, and renaming it would
+        // orphan the activation of everyone who installed under the old name.
         Ok(base.join("xteink"))
     }
 }

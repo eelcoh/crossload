@@ -52,7 +52,7 @@ enum Command {
         #[command(flatten)]
         transfer: Transfer,
     },
-    /// List the unified Local, Kobo and Xteink catalog.
+    /// List the unified Local, Kobo and CrossPoint catalog.
     Books {
         #[command(flatten)]
         library: LibraryArgs,
@@ -206,14 +206,17 @@ impl Transfer {
 enum Location {
     Local,
     Kobo,
-    Xteink,
+    /// A reader running CrossPoint, whichever device it is. The old name still
+    /// works, as it does for the compatibility command.
+    #[value(name = "crosspoint", alias = "xteink")]
+    CrossPoint,
 }
 impl Location {
     fn place(self) -> crossload::books::Place {
         match self {
             Self::Local => crossload::books::Place::Local,
             Self::Kobo => crossload::books::Place::Kobo,
-            Self::Xteink => crossload::books::Place::Xteink,
+            Self::CrossPoint => crossload::books::Place::CrossPoint,
         }
     }
 }
@@ -867,7 +870,7 @@ fn places(book: &crossload::books::Book) -> String {
     [
         crossload::books::Place::Local,
         crossload::books::Place::Kobo,
-        crossload::books::Place::Xteink,
+        crossload::books::Place::CrossPoint,
     ]
     .iter()
     .filter(|place| book.has(**place))

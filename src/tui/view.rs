@@ -13,7 +13,7 @@ use ratatui::{
     },
     Frame,
 };
-const PLACES: [Place; 3] = [Place::Local, Place::Kobo, Place::Xteink];
+const PLACES: [Place; 3] = [Place::Local, Place::Kobo, Place::CrossPoint];
 /// Original copy, device/optimized copy, absent, unreadable.
 const PRESENT: &str = "●";
 const DEVICE: &str = "◐";
@@ -685,7 +685,7 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
     }
     // Columns are earned by width: presence and title always, then the author,
     // then the size of the copy a transfer would read from.
-    let mut headers = vec!["", "L K X", "TITLE"];
+    let mut headers = vec!["", "L K C", "TITLE"];
     let mut widths = vec![
         Constraint::Length(1),
         Constraint::Length(5),
@@ -864,7 +864,7 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
     for (key, place) in [
         ("1", Place::Local),
         ("2", Place::Kobo),
-        ("3", Place::Xteink),
+        ("3", Place::CrossPoint),
     ] {
         // For a set, the dialog counts what would actually be copied and why
         // the rest would not; the first reason stands for the remainder.

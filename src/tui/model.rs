@@ -71,8 +71,8 @@ impl Filter {
         Self::All,
         Self::Missing(Place::Local),
         Self::Missing(Place::Kobo),
-        Self::Missing(Place::Xteink),
-        Self::Only(Place::Xteink),
+        Self::Missing(Place::CrossPoint),
+        Self::Only(Place::CrossPoint),
         Self::Unreadable,
     ];
     fn keeps(self, entry: &Entry) -> bool {
@@ -316,7 +316,7 @@ impl Model {
                 if self.loading.is_some()
                     && book
                         .preferred()
-                        .is_some_and(|c| c.optimized || c.place == Place::Xteink)
+                        .is_some_and(|c| c.optimized || c.place == Place::CrossPoint)
                 {
                     return Destination::Blocked(
                         "wait for discovery",
@@ -326,7 +326,7 @@ impl Model {
                 }
                 // The reader stores anything but lists only EPUB, so copying
                 // a PDF there would leave a file nobody can open.
-                if target == Place::Xteink {
+                if target == Place::CrossPoint {
                     if let Some(copy) = book.preferred().filter(|c| !c.format.shown_on_reader()) {
                         use crate::{format::Format, pdf::Verdict};
                         return match (copy.format, &copy.verdict) {
@@ -360,7 +360,7 @@ impl Model {
                         };
                     }
                 }
-                Destination::Ready(if target == Place::Xteink {
+                Destination::Ready(if target == Place::CrossPoint {
                     "copy, optimized"
                 } else {
                     "copy"
@@ -399,7 +399,7 @@ impl Model {
                 "This copy could not be read, so it cannot be identified.".into(),
             );
         }
-        if copy.place == Place::Xteink && self.options.copy_to.is_none() {
+        if copy.place == Place::CrossPoint && self.options.copy_to.is_none() {
             return Removal::Blocked(
                 "needs the card",
                 "Deleting over Wi-Fi is not supported; mount the reader's card.".into(),
@@ -478,7 +478,7 @@ impl Model {
                 self.pending_catalog = None;
                 let id = self.id();
                 self.loading = Some(id);
-                self.status = "Discovering Local, Kobo and Xteink independently…".into();
+                self.status = "Discovering Local, Kobo and CrossPoint independently…".into();
                 return vec![Effect::Load {
                     id,
                     options: Box::new(self.options.clone()),
@@ -719,7 +719,7 @@ impl Model {
                         (Some(_), _) => return vec![],
                         (None, KeyCode::Char('1')) => Some(Place::Local),
                         (None, KeyCode::Char('2')) => Some(Place::Kobo),
-                        (None, KeyCode::Char('3')) => Some(Place::Xteink),
+                        (None, KeyCode::Char('3')) => Some(Place::CrossPoint),
                         (None, KeyCode::Esc | KeyCode::Char('q')) => {
                             self.action.clear();
                             return vec![];
@@ -964,7 +964,7 @@ pub(super) const HELP: &[&str] = &[
     "Esc         Stop copying after this book; close a dialog; otherwise quit",
     "q / Ctrl+C  Quit after active work finishes",
     "",
-    "L / K / X   Local / Kobo / Xteink",
+    "L / K / X   Local / Kobo / CrossPoint",
     "● original   ◐ optimized device copy   · absent   ✗ unreadable",
     "⇩ ACSM request: choose Local to fulfill it (activation required)",
     "Marked books stay marked when hidden by a filter or search.",

@@ -428,6 +428,31 @@
     with its own ADEPT implementation. Dropping that file in the import folder
     works today and needs no integration at all.
 
+29. [x] Call the reader's place CrossPoint — implemented
+    `Place::Xteink` named a location after one manufacturer while the protocol
+    module beside it was `crosspoint.rs`, and CrossPoint runs on more than the
+    X4: an M5Paper is the same reader as far as this tool is concerned.
+    Renamed to `Place::CrossPoint`, which also reads better than Reader, since a
+    Kobo is a reader too. The L K X column is now L K C. `--to xteink` still
+    works as an alias, as the `xteink` command does.
+    Three names are deliberately frozen, and say so where they are defined. The
+    `META-INF/xteink-device-profile.txt` marker is carried by every device copy
+    already on a reader or a card; renaming it would make those copies read as
+    originals, losing the ◐ and their grouping with the books they came from.
+    The `xteink-x4-images-v1:480x800:gray:jpeg85` profile names the X4's screen,
+    which is what the conversion targets whatever the device is called. The
+    private ADEPT state directory keeps its name so nobody's activation is
+    orphaned.
+    Two consequences. `crossload books --json` now reports `CrossPoint` where it
+    reported `Xteink`, which is a break for anything scripted against it. And
+    cache keys carry the place's label, so the reader's entries all missed once
+    and were read again — a single slow scan, not a lasting cost.
+    Found while doing it: the pseudo-terminal test saved `crosspoint.local` from
+    the setup screen's default and then scanned whatever reader was on the
+    network, which made it slow here and dependent on the room it ran in. It
+    now checks the default is offered, then points the address at a port
+    nothing answers on before saving.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest

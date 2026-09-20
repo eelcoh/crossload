@@ -103,6 +103,11 @@ pub fn prepare(book: &Path, optimize: bool, organized: bool) -> Result<Prepared>
 /// OPF, CSS, SVG and XHTML references remain intact. Never crop or remove content.
 fn optimize_images(data: &[u8]) -> Result<(Vec<u8>, usize)> {
     let mut archive = ZipArchive::new(Cursor::new(data))?;
+    // Both names are frozen. Every device copy already on a reader or a card
+    // carries this marker, and renaming it would make those copies read as
+    // originals: the ◐ would vanish and they would stop grouping with the books
+    // they came from. The profile names the X4's screen, which is what this
+    // conversion targets, whatever the reader running CrossPoint is called.
     const MARKER: &str = "META-INF/xteink-device-profile.txt";
     const PROFILE: &[u8] = b"xteink-x4-images-v1:480x800:gray:jpeg85";
     if let Ok(mut marker) = archive.by_name(MARKER) {

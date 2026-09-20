@@ -170,7 +170,7 @@ fn the_kobo_row_finds_its_own_mount_and_still_takes_a_typed_path() {
 fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() {
     use crate::pdf::{Concern, Verdict};
     let mut model = Model::new(options());
-    model.catalog.status = vec![(Place::Xteink, "Ready".into())];
+    model.catalog.status = vec![(Place::CrossPoint, "Ready".into())];
     let pdf = |verdict: Option<Verdict>| {
         let mut copy = crate::books::copy(Place::Local, "/books/paper.pdf", 100, false);
         copy.verdict = verdict;
@@ -186,7 +186,7 @@ fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() 
             Source::Book(Box::new(book)),
         )
     };
-    let ready = |model: &Model, entry| model.destination(entry, Place::Xteink);
+    let ready = |model: &Model, entry| model.destination(entry, Place::CrossPoint);
 
     // Nothing readable in it: refused outright, with the reason.
     let entry = pdf(Some(Verdict::Impossible(Concern::NoText)));
@@ -205,7 +205,7 @@ fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() 
     model.update(key(KeyCode::Enter));
     assert!(model.update(key(KeyCode::Char('3'))).is_empty());
     let asked = model.ask.clone().expect("should have asked first");
-    assert_eq!(asked.0, Place::Xteink);
+    assert_eq!(asked.0, Place::CrossPoint);
     assert!(asked.1.contains("no chapters"), "{}", asked.1);
     // Anything but a yes leaves the question standing or withdraws it.
     model.update(key(KeyCode::Esc));
@@ -214,7 +214,7 @@ fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() 
     assert!(matches!(
         model.update(key(KeyCode::Char('y'))).as_slice(),
         [Effect::Work {
-            target: Place::Xteink,
+            target: Place::CrossPoint,
             ..
         }]
     ));
@@ -545,7 +545,7 @@ fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
         model.update(key(KeyCode::Char('1'))).as_slice(),
         [Effect::Work { .. }]
     ));
-    for place in [Place::Local, Place::Kobo, Place::Xteink] {
+    for place in [Place::Local, Place::Kobo, Place::CrossPoint] {
         assert!(matches!(
             model.destination(&entry, place),
             Destination::Blocked("busy", _)
@@ -604,8 +604,8 @@ fn marking_filters_and_bulk_copies_act_on_the_set() {
         "All books",
         "Missing from Local",
         "Missing from Kobo",
-        "Missing from Xteink",
-        "Only on Xteink",
+        "Missing from CrossPoint",
+        "Only on CrossPoint",
         "Unreadable",
     ]
     .into_iter()

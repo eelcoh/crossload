@@ -13,14 +13,14 @@ use std::{
 pub enum Place {
     Local,
     Kobo,
-    Xteink,
+    CrossPoint,
 }
 impl Place {
     pub fn label(self) -> &'static str {
         match self {
             Self::Local => "Local",
             Self::Kobo => "Kobo",
-            Self::Xteink => "Xteink",
+            Self::CrossPoint => "CrossPoint",
         }
     }
 }
@@ -75,7 +75,7 @@ impl Book {
                 match c.place {
                     Place::Local => 0,
                     Place::Kobo => 1,
-                    Place::Xteink => 2,
+                    Place::CrossPoint => 2,
                 },
             )
         })
@@ -173,12 +173,12 @@ fn candidate(
     // Only an EPUB is ever rebuilt, so only an EPUB can be a device copy: a
     // PDF on the reader is the same bytes that left here.
     let optimized = format.rewritten()
-        && (place == Place::Xteink
+        && (place == Place::CrossPoint
             || zip::ZipArchive::new(std::io::Cursor::new(&data))?
                 .by_name("META-INF/xteink-device-profile.txt")
                 .is_ok());
     let mut variants = vec![(id.sha256.clone(), id.resources.clone())];
-    if format.rewritten() && place != Place::Xteink {
+    if format.rewritten() && place != Place::CrossPoint {
         // Identical bytes always optimize to the same copy, wherever they came
         // from, so this hit also spares Kobo books the image re-encoding.
         let key = cache::variant_key(&id.sha256, options.optimize, options.organized);
@@ -231,7 +231,7 @@ fn unreadable(place: Place, format: Format, path: String, title: String, reason:
             size: 0,
             sha: String::new(),
             resources: None,
-            optimized: format.rewritten() && place == Place::Xteink,
+            optimized: format.rewritten() && place == Place::CrossPoint,
             locked: false,
             variants: vec![],
         }],
@@ -553,7 +553,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                 ));
             }
         }
-        Place::Xteink => {
+        Place::CrossPoint => {
             let destination = destination(options)?;
             // Which reader or card this is: paths and sizes alone could
             // otherwise be shared by two different devices.
@@ -634,19 +634,19 @@ pub fn scan(options: &Options, mut progress: impl FnMut(Snapshot)) -> Snapshot {
         status: vec![
             (Place::Local, "Checking".into()),
             (Place::Kobo, "Checking".into()),
-            (Place::Xteink, "Checking".into()),
+            (Place::CrossPoint, "Checking".into()),
         ],
         ..Snapshot::default()
     };
     let mut counts = [
         (Place::Local, 0, 0),
         (Place::Kobo, 0, 0),
-        (Place::Xteink, 0, 0),
+        (Place::CrossPoint, 0, 0),
     ];
     let index = cache::Index::open(options.cache.clone());
     std::thread::scope(|scope| {
         let (tx, rx) = std::sync::mpsc::channel();
-        for place in [Place::Local, Place::Kobo, Place::Xteink] {
+        for place in [Place::Local, Place::Kobo, Place::CrossPoint] {
             let tx = tx.clone();
             let index = &index;
             let worker = move || {
@@ -815,7 +815,7 @@ pub fn remove(
                 size(copy.size)
             ))
         }
-        Place::Xteink => {
+        Place::CrossPoint => {
             let destination = destination(options)?;
             let file = inventory::FileEntry {
                 path: copy.path.clone(),
@@ -870,7 +870,7 @@ pub fn transfer(
     // The reader lists only EPUB. A PDF can earn its way there by being
     // converted, and the conversion is kept beside the original rather than
     // standing in for it.
-    let converting = target == Place::Xteink && !source.format.shown_on_reader();
+    let converting = target == Place::CrossPoint && !source.format.shown_on_reader();
     if converting {
         ensure!(
             source.format == Format::Pdf,
@@ -893,7 +893,7 @@ pub fn transfer(
         Place::Local => PathBuf::from(&source.path),
         Place::Kobo => kobo::Library::open(options.kobo.as_ref().context("No Kobo configured")?)?
             .import(&source.path, staging.path(), options.serial.as_deref())?,
-        Place::Xteink => {
+        Place::CrossPoint => {
             let data = destination(options)?.read(&inventory::FileEntry {
                 path: source.path.clone(),
                 size: source.size,
@@ -926,7 +926,7 @@ pub fn transfer(
     } else {
         (path, None)
     };
-    let prepared = prepare::prepare(&path, target == Place::Xteink && options.optimize, true)?;
+    let prepared = prepare::prepare(&path, target == Place::CrossPoint && options.optimize, true)?;
     progress(&format!("Copying to {} and verifying…", target.label()));
     let output = match target {
         Place::Local => {
@@ -950,7 +950,7 @@ pub fn transfer(
                 .display()
                 .to_string()
         }
-        Place::Xteink => match destination(options)? {
+        Place::CrossPoint => match destination(options)? {
             inventory::Destination::Reader(reader) => {
                 let reader = if options.organized {
                     reader.for_author(&prepared.author)?

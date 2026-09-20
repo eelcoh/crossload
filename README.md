@@ -1,7 +1,7 @@
 # Crossload
 
-Keep your books in sync between a Kobo, your computer, and an XTeink X4 or
-another CrossPoint reader.
+Keep your books in sync between a Kobo, your computer, and a reader running
+CrossPoint — an XTeink X4, an M5Paper, or another.
 
 Crossload shows one library across all three places and tells you which books
 are where, so you can copy what is missing in either direction. It fulfills
@@ -11,10 +11,10 @@ verifies every copy it makes. Nothing is ever overwritten or deleted.
 Python and Calibre are not needed to run it.
 
 ```
-Crossload · Books                            ● Local 7   ● Kobo 4   ● Xteink 3
+Crossload · Books                            ● Local 7   ● Kobo 4   ● CrossPoint 3
 All books  11 of 11  ✓ 2 marked
 ┌ Library · 11 ────────────────────────────● original  ◐ device copy  · none ┐
-│   L K X TITLE                             AUTHOR                           █
+│   L K C TITLE                             AUTHOR                           █
 │ ✓ · ● · De ontdekking van de hemel        Harry Mulisch                    █
 │   ● · · De wraak van Diponegoro           Martin Bossenbroek               █
 │ ✓ ● ● · Dune                              Frank Herbert                    █
@@ -149,7 +149,7 @@ a word broken across a line loses its hyphen.
 
 ## Reading the library
 
-The **L K X** column is Local, Kobo and Xteink: `●` an original, `◐` a copy that
+The **L K C** column is Local, Kobo and CrossPoint (your reader): `●` an original, `◐` a copy that
 went through the X4's image conversion, `·` not there, `✗` unreadable. So *Het
 bittere kruid* above is only on the Kobo, *The Left Hand of Darkness* only on the
 reader, and *Dune* is in both places but not on the reader yet. ACSM files
@@ -163,7 +163,7 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | Key | |
 | --- | --- |
 | `enter` | copy the highlighted book, or everything marked |
-| `1` `2` `3` | choose Local, Kobo or Xteink in the dialog |
+| `1` `2` `3` | choose Local, Kobo or CrossPoint in the dialog |
 | `space` `a` | mark one book, mark or clear everything shown |
 | `f` | open the filter menu; arrows and Enter, or `1`–`6`, select |
 | `s` | sort by author or title, keeping the highlighted book selected |

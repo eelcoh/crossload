@@ -108,16 +108,20 @@ fn books_reports_the_catalog_as_a_table_and_as_json() {
 #[test]
 fn sync_plans_before_it_copies_and_repeats_without_duplicating() {
     let f = Fixture::new();
+    // The old name still selects the same place, so saved scripts keep working.
     let plan = f.run(&["sync", "--from", "local", "--to", "xteink"]);
     assert!(plan.status.success(), "{}", text(&plan.stderr));
     let out = text(&plan.stdout);
     assert!(out.contains("Dune\tFrank Herbert\tLocal\tplanned"), "{out}");
-    assert!(out.contains("2 book(s) would be copied to Xteink"), "{out}");
+    assert!(
+        out.contains("2 book(s) would be copied to CrossPoint"),
+        "{out}"
+    );
     // A dry run is the default and writes nothing at all.
     assert_eq!(files(&f.card), 0);
-    let applied = f.run(&["sync", "--from", "local", "--to", "xteink", "--apply"]);
+    let applied = f.run(&["sync", "--from", "local", "--to", "crosspoint", "--apply"]);
     assert!(applied.status.success(), "{}", text(&applied.stderr));
-    assert!(text(&applied.stdout).contains("2 book(s) copied to Xteink"));
+    assert!(text(&applied.stdout).contains("2 book(s) copied to CrossPoint"));
     assert!(f.card.join("Frank Herbert/Dune.epub").is_file());
     assert!(f.card.join("Susanna Clarke/Piranesi.epub").is_file());
     // Copies already at the destination are recognized, not duplicated.

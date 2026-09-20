@@ -97,15 +97,20 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         t.expect(b'Local not scanned')
         t.expect(b'Required. Where your own books live')
         t.expect('\u2713 folder found'.encode())
-        # Edit the import folder using Ctrl+U, then save with Ctrl+S from
-        # anywhere rather than walking down to the last row.
+        # The reader address is offered ready to use.
+        t.expect(b'crosspoint.local')
+        # Edit the import folder using Ctrl+U, then point the reader at a port
+        # nothing answers on, so this test never reaches a reader that happens
+        # to be on the network. Then save with Ctrl+S from where we stand,
+        # rather than walking down to the last row.
         t.send(b'\t\r\x15' + str(root / 'setup-imports').encode() + b'\r')
+        t.send(b'\t\r\x15127.0.0.1:9\r')
         t.send(b'\x13')
         t.expect(b'Library ready.')
         saved = json.loads(setup_config.read_text())
         assert saved['browse'] == str(books)
         assert saved['output'] == str(root / 'setup-imports')
-        assert saved['reader'] == 'crosspoint.local'
+        assert saved['reader'] == '127.0.0.1:9'
         assert not (root / 'setup-imports').exists()
         t.send(b'?')
         t.expect(b'Toggle sorting')
@@ -114,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         t.send(b'f')
         t.expect(b'6  Unreadable')
         t.send(b'4')
-        t.expect(b'Missing from Xteink')
+        t.expect(b'Missing from CrossPoint')
         t.send(b's')
         t.expect('author ↑'.encode())
         t.send(b',')
@@ -150,7 +155,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
         assert source.read_bytes() == original
         t.send(b'r')
-        # Presence matrix: original on Local, absent on Kobo, device copy on Xteink.
+        # Presence matrix: original on Local, absent on Kobo, device copy on CrossPoint.
         t.expect('● · ◐'.encode())
         t.resize(3, 12)
         t.send(b'r')

@@ -255,7 +255,7 @@ multiple books; unknown IDs are rejected. Exclusions apply only to that command.
 
 ## Send to CrossPoint over Wi-Fi
 
-The transfer target is **Xteink X4 with CrossPoint 1.6.0**. EPUB reading has been
+The transfer target is **CrossPoint X4 with CrossPoint 1.6.0**. EPUB reading has been
 confirmed on that device with an imported book. Wireless transfer uses the
 [1.6.0 HTTP and WebSocket APIs](https://github.com/crosspoint-reader/crosspoint-reader/blob/1.6.0/docs/webserver-endpoints.md)
 and is tested against local protocol servers. A real transfer of the 3,054,220-byte
@@ -632,7 +632,7 @@ crossload tui --device /run/media/eelco/KOBOeReader \
 ```
 
 The TUI is a unified library. It scans `--browse` and `--output` recursively,
-plus the configured Kobo and Xteink (Wi-Fi or `--copy-to` mounted card).
+plus the configured Kobo and CrossPoint (Wi-Fi or `--copy-to` mounted card).
 Saved device settings are used for discovery even without transfer flags.
 Each location loads independently; disconnected devices appear as unavailable
 while books from other locations remain usable. This is a fresh inventory, not
@@ -660,8 +660,8 @@ scan finds its file, so this remains a fresh inventory rather than an offline
 history. Deleting the file only costs the next scan its work; a missing,
 unreadable or unwritable cache is never an error.
 
-Matching copies share a row, with an **L K X** column for Local, Kobo and
-Xteink: `●` an original copy, `◐` a device copy that went through optimization,
+Matching copies share a row, with an **L K C** column for Local, Kobo and
+CrossPoint: `●` an original copy, `◐` a device copy that went through optimization,
 `·` absent and `✗` a copy that could not be read. A `⇩` row is a local ACSM
 request. The location line above the library reports each place as ready with a
 count, checking, not configured, or unavailable with the reason. Matching
@@ -670,7 +670,7 @@ separate. Unreadable EPUBs remain visible with an explanation and cannot be used
 as a transfer source until verified. Previews remain hidden unless requested.
 Colour is never the only signal, and setting `NO_COLOR` turns it off.
 
-- **Enter** opens copy actions; **1** chooses Local, **2** Kobo, **3** Xteink.
+- **Enter** opens copy actions; **1** chooses Local, **2** Kobo, **3** CrossPoint.
   **Escape** cancels. Opening the menu does not transfer anything. The dialog
   marks each destination before you choose it: an allowed copy, or why it is
   not available (already there, device unavailable, or discovery still running).
@@ -680,7 +680,7 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   through cannot be undone. Device-copy actions wait for discovery to finish so an original
   can be selected when available.
 - Local copies go to `--output`. Kobo copies are ordinary sideloaded EPUBs in
-  author folders; eject the Kobo normally so it can index them. Xteink copies
+  author folders; eject the Kobo normally so it can index them. CrossPoint copies
   retain optimization and author/title organization. Existing files are never
   overwritten, and every copy is verified.
 - **Space** marks the highlighted book and **a** marks everything currently
@@ -708,7 +708,7 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
 - **Escape** during a copy stops it after the book in progress; books already
   copied are complete and verified, and the summary says where it stopped.
 - **f** opens a filter menu: all books, missing from Local,
-  missing from Kobo, missing from Xteink, only on Xteink, and unreadable. Every
+  missing from Kobo, missing from CrossPoint, only on CrossPoint, and unreadable. Every
   location can be the one a book is missing from, so the same key that finds
   what the reader lacks also finds what has never been copied back. Choose with
   arrows and Enter, or 1–6; Escape cancels without changing the filter. The filter
@@ -792,14 +792,14 @@ realtime.
 
 Discovery lists only EPUB on the reader, mirroring what the reader itself lists.
 A PDF or CBZ left on the device by other means is skipped rather than shown as a
-copy that has arrived, so the book still reads as missing from Xteink and can be
+copy that has arrived, so the book still reads as missing from CrossPoint and can be
 converted and sent properly. Such a file stays where it is; Crossload neither
 lists it nor removes it.
 
 The reader takes EPUB only. CrossPoint stores whatever is uploaded, but the X4's
 library lists nothing else: every entry its `/api/files` returns carries an
 `isEpub` flag that is false for anything but an EPUB, and a PDF left on the
-device is never shown by its reading app. Xteink is therefore refused as a
+device is never shown by its reading app. CrossPoint is therefore refused as a
 destination for a PDF or CBZ — in the copy dialog, in `crossload sync`, and in
 `crossload send` — and the reason is given in red rather than the copy being
 made and quietly wasted. A copy already on the reader in such a format is

@@ -81,10 +81,10 @@ fn disconnected_kobo_does_not_hide_local_or_reader_books_and_matches_are_conserv
     assert!(updates >= 3);
     assert!(!snapshot.ready(Place::Kobo));
     assert!(snapshot.ready(Place::Local));
-    assert!(snapshot.ready(Place::Xteink));
+    assert!(snapshot.ready(Place::CrossPoint));
     assert_eq!(snapshot.books.len(), 2);
     let shared = snapshot.books.iter().find(|b| b.has(Place::Local)).unwrap();
-    assert!(shared.has(Place::Xteink));
+    assert!(shared.has(Place::CrossPoint));
     assert_eq!(shared.preferred().unwrap().place, Place::Local);
     assert!(!o.output.exists());
 }
@@ -111,7 +111,7 @@ fn transfers_use_originals_and_sideload_kobo_without_overwriting() {
     assert!(books::transfer(&o, &from_kobo, Place::Local, &|_| {}).is_err());
     assert_eq!(fs::read(o.output.join("Book.epub")).unwrap(), b"existing");
     fs::write(o.local.join("source.epub"), b"changed").unwrap();
-    assert!(books::transfer(&o, book, Place::Xteink, &|_| {}).is_err());
+    assert!(books::transfer(&o, book, Place::CrossPoint, &|_| {}).is_err());
 }
 #[test]
 fn reader_only_books_can_be_recovered_to_local_or_kobo() {
@@ -122,7 +122,7 @@ fn reader_only_books_can_be_recovered_to_local_or_kobo() {
     fs::write(o.card.as_ref().unwrap().join("only.epub"), &bytes).unwrap();
     let snapshot = books::scan(&o, |_| {});
     let book = &snapshot.books[0];
-    assert_eq!(book.preferred().unwrap().place, Place::Xteink);
+    assert_eq!(book.preferred().unwrap().place, Place::CrossPoint);
     assert!(books::transfer(&o, book, Place::Local, &|_| {})
         .unwrap()
         .contains("device copy"));
@@ -174,7 +174,7 @@ fn optimized_reader_copy_groups_with_original_and_original_is_used_for_kobo() {
     let snapshot = books::scan(&o, |_| {});
     assert_eq!(snapshot.books.len(), 1);
     let book = &snapshot.books[0];
-    assert!(book.has(Place::Xteink));
+    assert!(book.has(Place::CrossPoint));
     assert_eq!(book.preferred().unwrap().place, Place::Local);
     books::transfer(&o, book, Place::Kobo, &|_| {}).unwrap();
     assert_eq!(
@@ -209,7 +209,7 @@ fn disconnected_card_and_browse_keep_output_books_and_unreadable_rows_visible() 
     let snapshot = books::scan(&o, |_| {});
     assert_eq!(snapshot.books.len(), 2);
     assert!(snapshot.ready(Place::Local));
-    assert!(!snapshot.ready(Place::Xteink));
+    assert!(!snapshot.ready(Place::CrossPoint));
     let broken = snapshot
         .books
         .iter()
@@ -422,7 +422,7 @@ fn a_reader_copy_is_removed_from_a_card_but_never_over_wifi() {
     let on_card = book
         .copies
         .iter()
-        .find(|c| c.place == Place::Xteink)
+        .find(|c| c.place == Place::CrossPoint)
         .unwrap()
         .path
         .clone();
@@ -432,14 +432,14 @@ fn a_reader_copy_is_removed_from_a_card_but_never_over_wifi() {
         reader: Some("127.0.0.1:1".into()),
         ..o.clone()
     };
-    let refused = books::remove(&wifi, &book, Place::Xteink, &on_card, &|_| {})
+    let refused = books::remove(&wifi, &book, Place::CrossPoint, &on_card, &|_| {})
         .unwrap_err()
         .to_string();
     assert!(refused.contains("Wi-Fi"), "{refused}");
     assert!(card.join("copy.epub").exists());
     // On a mounted card it is an ordinary file, and only that file goes.
     o.reader = None;
-    let removed = books::remove(&o, &book, Place::Xteink, &on_card, &|_| {}).unwrap();
+    let removed = books::remove(&o, &book, Place::CrossPoint, &on_card, &|_| {}).unwrap();
     assert!(removed.contains("card"), "{removed}");
     assert!(!card.join("copy.epub").exists());
     assert!(local.exists());
@@ -471,7 +471,7 @@ fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
         .iter()
         .find(|b| b.title == "Some Paper")
         .unwrap();
-    assert!(paper_book.has(Place::Local) && !paper_book.has(Place::Xteink));
+    assert!(paper_book.has(Place::Local) && !paper_book.has(Place::CrossPoint));
     assert_eq!(paper_book.copies.len(), 1);
     assert!(paper_book.copies.iter().all(|c| !c.optimized));
     // No metadata was invented: the file's own name is the whole of it.
@@ -492,7 +492,7 @@ fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
 
     // The reader stores anything but lists only EPUB, so it is not offered a
     // format it would never show: /api/files reports isEpub false for these.
-    let refused = books::transfer(&o, comic_book, Place::Xteink, &|_| {}).unwrap_err();
+    let refused = books::transfer(&o, comic_book, Place::CrossPoint, &|_| {}).unwrap_err();
     assert!(
         format!("{refused:#}").contains("only lists EPUB"),
         "{refused:#}"
