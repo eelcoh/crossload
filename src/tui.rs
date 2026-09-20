@@ -1,6 +1,7 @@
 //! Elm-style TUI using Tears, with blocking backend work isolated from update/view.
 mod backend;
 mod model;
+mod settings;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -13,6 +14,8 @@ use std::{
 use tears::{Application, Command, Subscription};
 #[derive(Clone)]
 pub struct Options {
+    pub config: PathBuf,
+    pub first_run: bool,
     pub show_previews: bool,
     pub device: Option<PathBuf>,
     pub browse: PathBuf,
@@ -39,11 +42,15 @@ struct Entry {
     /// Title and author folded once, so searching does not rebuild a string
     /// per book on every keystroke and every frame.
     search: String,
+    title_key: String,
+    author_key: String,
 }
 impl Entry {
     fn new(title: String, author: String, kind: &'static str, source: Source) -> Self {
         let search = format!("{title} {author}").to_lowercase();
         Self {
+            title_key: title.to_lowercase(),
+            author_key: author.to_lowercase(),
             title,
             author,
             kind,
@@ -61,7 +68,12 @@ impl Application for App {
     type Flags = Options;
     fn new(options: Options) -> (Self, Command<Message>) {
         let mut model = Model::new(options);
-        let effects = model.update(Message::Refresh);
+        let effects = if model.options.first_run {
+            model.open_settings(true);
+            vec![]
+        } else {
+            model.update(Message::Refresh)
+        };
         (Self { model }, commands(effects))
     }
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -87,6 +99,13 @@ impl Application for App {
 fn commands(effects: Vec<Effect>) -> Command<Message> {
     Command::batch(effects.into_iter().map(|effect| match effect {
         Effect::Quit => Command::effect(tears::Action::Quit),
+        Effect::Configure { id, task } => Command::stream(futures::stream::once(async move {
+            let result = blocking(move || settings::perform(task))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|result| result.map_err(|e| format!("{e:#}")));
+            Message::Configured(id, result)
+        })),
         Effect::Load { id, options, .. } => Command::stream(library_stream(id, *options)),
         Effect::Remove {
             id,

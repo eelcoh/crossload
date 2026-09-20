@@ -1,5 +1,5 @@
-//! Validated, atomic EPUB copies to an existing mounted-card directory.
-use crate::epub;
+//! Validated, atomic book copies to an existing mounted-card directory.
+use crate::{epub, format, format::Format};
 use anyhow::{ensure, Context, Result};
 use sha2::{Digest, Sha256};
 use std::{
@@ -25,19 +25,19 @@ pub fn copy(book: &Path, destination: &Path) -> Result<Copied> {
     let name = book
         .file_name()
         .and_then(|n| n.to_str())
-        .context("EPUB filename must be UTF-8")?;
+        .context("Book filename must be UTF-8")?;
+    let kind = Format::of(name);
     ensure!(
-        name.to_ascii_lowercase().ends_with(".epub")
+        kind.is_some()
             && !name.starts_with('.')
             && !name
                 .chars()
                 .any(|c| c.is_control() || "<>:\"/\\|?*".contains(c)),
-        "Choose an ordinary .epub filename suitable for the SD card"
+        "Choose an ordinary .epub, .pdf or .cbz filename suitable for the SD card"
     );
     let data = read(book)?;
-    epub::validate(&data).context("Book failed EPUB validation; nothing was copied")?;
-    epub::font_metadata(&data)
-        .context("Book still has unsupported encryption; nothing was copied")?;
+    format::validate(kind.unwrap_or_default(), &data)
+        .context("Book failed validation; nothing was copied")?;
     let target = destination.join(name);
     // Detect FAT-style case collisions even when tests run on a case-sensitive
     // filesystem. Do not follow an existing destination symlink.

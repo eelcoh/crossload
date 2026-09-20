@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use tungstenite::{protocol::WebSocketConfig, Message, WebSocket};
 use url::Url;
 
-use crate::epub;
+use crate::{epub, format, format::Format};
 
 const MAX_RESPONSE: usize = 4 * 1024 * 1024;
 
@@ -214,26 +214,23 @@ impl Reader {
         let name = book
             .file_name()
             .and_then(|s| s.to_str())
-            .context("EPUB filename must be UTF-8")?;
+            .context("Book filename must be UTF-8")?;
         valid_component(name)?;
+        let kind = Format::of(name).context("Send requires an .epub, .pdf or .cbz file")?;
         ensure!(
-            name.to_ascii_lowercase().ends_with(".epub"),
-            "Send requires an .epub file"
+            kind.shown_on_reader(),
+            "CrossPoint stores a {} but its library never lists one; nothing was sent",
+            kind.label()
         );
-        let file = File::open(book).context("Cannot open EPUB to send")?;
-        ensure!(
-            file.metadata()?.is_file(),
-            "Send requires a regular EPUB file"
-        );
+        let file = File::open(book).context("Cannot open the book to send")?;
+        ensure!(file.metadata()?.is_file(), "Send requires a regular file");
         let mut data = Vec::new();
         file.take(epub::MAX_BOOK_BYTES + 1).read_to_end(&mut data)?;
         ensure!(
             data.len() as u64 <= epub::MAX_BOOK_BYTES,
-            "EPUB exceeds the 128 MiB transfer limit"
+            "Book exceeds the 128 MiB transfer limit"
         );
-        epub::validate(&data).context("Book failed EPUB validation; nothing was sent")?;
-        epub::font_metadata(&data)
-            .context("Book still has unsupported encryption; nothing was sent")?;
+        format::validate(kind, &data).context("Book failed validation; nothing was sent")?;
         self.status().context(
             "Cannot reach CrossPoint; open File Transfer and use the address shown on the reader",
         )?;

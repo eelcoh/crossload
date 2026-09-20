@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Default, Deserialize, Serialize, clap::Args)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, clap::Args)]
 #[serde(default, deny_unknown_fields)]
 pub struct Defaults {
     #[arg(long)]

@@ -4,6 +4,8 @@ fn source(sha: &str) -> Source {
     Source {
         title: "Book".into(),
         author: "Author".into(),
+        format: crossload::format::Format::Epub,
+        verdict: None,
         size: 42,
         sha: sha.into(),
         resources: None,

@@ -84,6 +84,10 @@ pub(super) fn shorten(text: &str, limit: usize) -> String {
     result.push('…');
     result
 }
+fn width(text: &str) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    text.width()
+}
 /// Keep the end of a path: a file is identified by its name, not by the
 /// directories above it.
 fn tail(path: &str, limit: usize) -> String {
@@ -134,6 +138,15 @@ fn pill(model: &Model, place: Place) -> Vec<Span<'static>> {
         return spans;
     }
     if status.starts_with("Checking") {
+        // Setup holds discovery back, so nothing is being checked yet: a
+        // spinner that cannot finish is worse than saying so.
+        if model.options.first_run {
+            return vec![
+                Span::styled(format!("{ABSENT} "), plain()),
+                Span::styled(name, plain()),
+                Span::styled(" not scanned", plain()),
+            ];
+        }
         return vec![
             Span::styled("◌ ", fg(Color::Cyan)),
             Span::styled(name, bold()),
@@ -248,16 +261,20 @@ fn details(
     let lines = match &entry.source {
         Source::Book(book) => {
             let copy = book.preferred();
-            vec![
+            let mut lines = vec![
                 Line::from(vec![
                     label("Source"),
                     match copy {
-                        Some(c) if c.optimized || c.place == Place::Xteink => Span::styled(
-                            format!("{} · device copy, images may be optimized", c.place.label()),
+                        Some(c) if c.optimized => Span::styled(
+                            format!(
+                                "{} · {} · device copy, images may be optimized",
+                                c.place.label(),
+                                c.format.label()
+                            ),
                             fg(Color::Yellow),
                         ),
                         Some(c) => Span::styled(
-                            format!("{} · original", c.place.label()),
+                            format!("{} · {} · original", c.place.label(), c.format.label()),
                             fg(Color::Green),
                         ),
                         None => Span::styled("No usable copy", fg(Color::Red)),
@@ -275,7 +292,26 @@ fn details(
                             .unwrap_or_default(),
                     ),
                 ]),
-            ]
+            ];
+            // A file the reader stores but never lists is on the device
+            // without being in its library; say so where the copy is named.
+            if let Some(stranded) = book
+                .copies
+                .iter()
+                .find(|c| c.place == Place::Xteink && !c.format.shown_on_reader())
+            {
+                lines.push(Line::from(vec![
+                    label("Reader"),
+                    Span::styled(
+                        format!(
+                            "holds this {} but lists only EPUB, so it is not in its library",
+                            stranded.format.label()
+                        ),
+                        fg(Color::Red),
+                    ),
+                ]));
+            }
+            lines
         }
         Source::Local(path) => vec![
             Line::from(vec![
@@ -314,17 +350,20 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     }
     model.width.set(area.width);
     let header = header(model, area.width);
+    let entries = model.filtered();
+    let detail = (area.height >= 18)
+        .then(|| details(model, &entries, area.width as usize))
+        .flatten();
     let areas = Layout::vertical([
         Constraint::Length(header.len() as u16),
         Constraint::Length(1),
         Constraint::Min(5),
-        Constraint::Length(if area.height >= 18 { 4 } else { 0 }),
+        Constraint::Length(detail.as_ref().map_or(0, |(_, l)| l.len() as u16 + 2)),
         Constraint::Length(1),
         Constraint::Length(if area.height >= 24 { 3 } else { 2 }),
     ])
     .split(area);
     frame.render_widget(Paragraph::new(header), areas[0]);
-    let entries = model.filtered();
     frame.render_widget(
         Paragraph::new(if model.search {
             Line::from(vec![
@@ -342,6 +381,11 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
                 entries.len(),
                 model.entries.len()
             )));
+            spans.push(Span::raw(if model.sort_author {
+                " · author ↑"
+            } else {
+                " · title ↑"
+            }));
             if !model.marked.is_empty() {
                 spans.push(Span::styled(
                     format!("  ✓ {} marked", model.marked.len()),
@@ -359,15 +403,15 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
     if let Some(entry) = &model.copies {
         draw_copies(model, frame, areas[2], entry);
     }
-    if areas[3].height > 0 {
-        if let Some((title, lines)) = details(model, &entries, areas[3].width as usize) {
-            let block = frame_block(title);
-            let inner = block.inner(areas[3]);
-            frame.render_widget(block, areas[3]);
-            frame.render_widget(Paragraph::new(lines), inner);
-        }
+    if let Some((title, lines)) = detail.filter(|_| areas[3].height > 0) {
+        let block = frame_block(title);
+        let inner = block.inner(areas[3]);
+        frame.render_widget(block, areas[3]);
+        frame.render_widget(Paragraph::new(lines), inner);
     }
-    let keys: &[(&str, &str)] = if model.confirm.is_some() {
+    let keys: &[(&str, &str)] = if model.ask.is_some() {
+        &[("y", "convert and copy"), ("esc", "cancel")]
+    } else if model.confirm.is_some() {
         &[("y", "delete"), ("esc", "keep")]
     } else if model.copies.is_some() {
         &[("1-9", "delete a copy"), ("esc", "close")]
@@ -377,10 +421,12 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         &[("esc", "stop after this book"), ("q", "quit when finished")]
     } else {
         &[
+            ("?", "help"),
             ("enter", "copy"),
             ("space", "mark"),
-            ("a", "mark all"),
             ("f", "filter"),
+            ("s", "sort"),
+            (",", "settings"),
             ("d", "copies"),
             ("/", "search"),
             ("r", "refresh"),
@@ -408,6 +454,197 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         Paragraph::new(status_lines(model)).wrap(Wrap { trim: false }),
         areas[5],
     );
+    if model.help {
+        let area = overlay(frame, " Help · ↑/↓ scroll · ?/Esc close ", 86, 23);
+        frame.render_widget(
+            Paragraph::new(super::model::HELP[model.help_scroll as usize..].join("\n"))
+                .wrap(Wrap { trim: false }),
+            area,
+        );
+    }
+    if let Some(selected) = model.filter_menu {
+        let area = overlay(frame, " Filter · ↑/↓ Enter · Esc cancel ", 52, 9);
+        let lines: Vec<_> = super::model::Filter::CYCLE
+            .iter()
+            .enumerate()
+            .map(|(i, filter)| {
+                Line::styled(
+                    format!(
+                        "{}  {}{}",
+                        i + 1,
+                        filter.label(),
+                        if *filter == model.filter { " ✓" } else { "" }
+                    ),
+                    if selected == i {
+                        Style::default().add_modifier(Modifier::REVERSED)
+                    } else {
+                        plain()
+                    },
+                )
+            })
+            .collect();
+        let scroll = selected.saturating_sub(area.height.saturating_sub(1) as usize) as u16;
+        frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), area);
+    }
+    if let Some(panel) = &model.settings {
+        draw_settings(panel, model.configuring.is_some(), frame);
+    }
+}
+fn overlay(frame: &mut Frame<'_>, title: &str, width: u16, height: u16) -> Rect {
+    let bounds = frame.area();
+    let width = width.min(bounds.width);
+    let height = height.min(bounds.height);
+    let area = Rect::new(
+        bounds.x + (bounds.width - width) / 2,
+        bounds.y + (bounds.height - height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, area);
+    let block = frame_block(title.to_owned());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    inner
+}
+/// How far a value sits inside the label above it.
+const VALUE: usize = 4;
+fn draw_settings(panel: &super::settings::Panel, working: bool, frame: &mut Frame<'_>) {
+    let area = overlay(
+        frame,
+        if panel.first_run {
+            " Welcome to Crossload · Setup "
+        } else {
+            " Settings "
+        },
+        88,
+        if panel.first_run { 25 } else { 22 },
+    );
+    let parts = Layout::vertical([
+        Constraint::Length(if panel.first_run { 3 } else { 0 }),
+        Constraint::Min(1),
+        Constraint::Length(2),
+        Constraint::Length(2),
+    ])
+    .split(area);
+    if panel.first_run {
+        // Nobody arrives here knowing what an import folder is; say what the
+        // program does before asking where its things are.
+        frame.render_widget(
+            Paragraph::new(
+                "Crossload copies books between this computer, a Kobo and your reader. \
+                 Tell it where they live. Nothing is saved until you choose Save and rescan, \
+                 and you can change all of it later with , in the library.",
+            )
+            .wrap(Wrap { trim: false }),
+            parts[0],
+        );
+    }
+    let list = parts[1];
+    let selected = panel.device_selected.unwrap_or(panel.selected);
+    let lines: Vec<Line<'static>> = if panel.device_selected.is_some() {
+        panel
+            .devices
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                Line::styled(
+                    shorten(&path.display().to_string(), list.width as usize),
+                    if selected == i {
+                        Style::default().add_modifier(Modifier::REVERSED)
+                    } else {
+                        plain()
+                    },
+                )
+            })
+            .collect()
+    } else {
+        super::settings::LABELS
+            .iter()
+            .enumerate()
+            .flat_map(|(i, label)| {
+                let selected = i == panel.selected;
+                // A row is a heading and the thing it names, so the name keeps
+                // the weight and the value keeps the indent: which is which
+                // stays visible when the selection is somewhere else.
+                let mut lines = vec![Line::styled(
+                    format!("{} {label}", if selected { "›" } else { " " }),
+                    if selected { accent() } else { bold() },
+                )];
+                if let Some(value) = panel.values.get(i) {
+                    let editing = selected && panel.edit.is_some();
+                    // A value being typed owns the whole row: its mark is about
+                    // to change anyway, and the cursor must stay in view.
+                    let (glyph, word) = if editing {
+                        ("", "")
+                    } else {
+                        panel.marks[i].parts()
+                    };
+                    let reserved = if word.is_empty() {
+                        0
+                    } else {
+                        width(word) + width(glyph) + 3
+                    };
+                    let room = (list.width as usize).saturating_sub(VALUE + reserved);
+                    let text = if value.is_empty() {
+                        "(not configured)".to_owned()
+                    } else if let (true, Some((_, cursor))) = (editing, &panel.edit) {
+                        // Keep the cursor visible even when a path is wider than the dialog.
+                        let prefix = tail(&value[..*cursor], room.saturating_sub(1));
+                        format!("{prefix}▏{}", &value[*cursor..])
+                    } else if i == 3 || i == 5 {
+                        shorten(value, room)
+                    } else {
+                        // Paths differ at their end, so that is the end to keep.
+                        tail(value, room)
+                    };
+                    let mut spans = vec![Span::styled(
+                        format!("{:VALUE$}{text}", ""),
+                        if selected {
+                            Style::default().add_modifier(Modifier::REVERSED)
+                        } else {
+                            plain()
+                        },
+                    )];
+                    if !word.is_empty() {
+                        spans.push(Span::styled(
+                            format!("  {glyph} {word}"),
+                            match panel.marks[i] {
+                                super::settings::Mark::Good(_) => fg(Color::Green),
+                                super::settings::Mark::Warn(_) => fg(Color::Yellow),
+                                super::settings::Mark::Bad(_) => fg(Color::Red),
+                                _ => plain(),
+                            },
+                        ));
+                    }
+                    lines.push(Line::from(spans));
+                }
+                lines
+            })
+            .collect()
+    };
+    let selected_line = if panel.device_selected.is_some() {
+        selected
+    } else {
+        selected + selected.min(6) + usize::from(selected < 6)
+    };
+    let scroll = selected_line.saturating_sub(list.height.saturating_sub(1) as usize);
+    frame.render_widget(Paragraph::new(lines).scroll((scroll as u16, 0)), list);
+    frame.render_widget(
+        Paragraph::new(clean(&panel.hint())).wrap(Wrap { trim: false }),
+        parts[2],
+    );
+    let keys = if working {
+        "Working… Ctrl+C quits after completion"
+    } else if panel.device_selected.is_some() {
+        "↑/↓ choose · Enter select · Esc cancel"
+    } else if panel.edit.is_some() {
+        "←/→ Home/End move · Ctrl+U clear · Enter accept · Ctrl+S save · Esc undo"
+    } else if panel.first_run {
+        "↑/↓ Tab select · Enter edit/run · Ctrl+S save · Esc skip setup for now"
+    } else {
+        "↑/↓ Tab select · Enter edit/run · Ctrl+S save · Esc discard and close"
+    };
+    frame.render_widget(Paragraph::new(keys).wrap(Wrap { trim: false }), parts[3]);
 }
 fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry]) {
     let total = model.entries.len();
@@ -453,6 +690,10 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
         frame.render_widget(
             Paragraph::new(if model.loading.is_some() {
                 "Discovering books; available locations appear as they finish…"
+            } else if model.options.first_run {
+                "Setup is open. Choose your folders, or press Esc to browse without saving."
+            } else if model.skipped {
+                "No books found. Press , to tell Crossload where your books live."
             } else {
                 "No books found. Check location status above or edit the search."
             })
@@ -568,7 +809,60 @@ fn draw_list(model: &Model, frame: &mut Frame<'_>, area: Rect, entries: &[&Entry
 }
 /// Copy destinations as a dialog over the list: availability is decided before
 /// the keypress, by the same rules the model enforces afterwards.
+/// Break text into lines that fit, on word boundaries where it can.
+fn wrapped(text: &str, limit: usize) -> Vec<String> {
+    let limit = limit.max(8);
+    let mut lines = vec![];
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if line.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{line} {word}")
+        };
+        if width(&candidate) > limit && !line.is_empty() {
+            lines.push(std::mem::take(&mut line));
+            line = word.to_owned();
+        } else {
+            line = candidate;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
 fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
+    if let Some((place, reason)) = &model.ask {
+        let width = area.width.min(52);
+        let mut lines: Vec<Line<'static>> =
+            wrapped(&clean(reason), width.saturating_sub(2) as usize)
+                .into_iter()
+                .map(|line| Line::styled(line, fg(Color::Yellow)))
+                .collect();
+        lines.push(Line::default());
+        lines.push(Line::from(vec![
+            Span::styled("y", accent()),
+            Span::styled(format!(" convert and copy to {}", place.label()), plain()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("esc", accent()),
+            Span::styled(" cancel", plain()),
+        ]));
+        let height = (lines.len() as u16 + 2).min(area.height);
+        let popup = Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let block = frame_block(" Convert? ".to_owned()).border_style(fg(Color::Yellow));
+        let inner = block.inner(popup);
+        frame.render_widget(Clear, popup);
+        frame.render_widget(block, popup);
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
+    }
     let entries = &model.action;
     let single = entries.len() == 1;
     let mut lines = vec![Line::from(match entries.first().map(|e| &e.source) {
@@ -594,12 +888,21 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
         // For a set, the dialog counts what would actually be copied and why
         // the rest would not; the first reason stands for the remainder.
         let mut ready = 0;
+        let mut asking = false;
         let mut hint = String::new();
         let mut blocked = String::new();
         for entry in entries {
             match model.destination(entry, place) {
                 Destination::Ready(reason) => {
                     ready += 1;
+                    if hint.is_empty() {
+                        hint = reason.to_owned();
+                    }
+                }
+                // Offered, but it will ask before it does anything.
+                Destination::Ask(reason, _) => {
+                    ready += 1;
+                    asking = true;
                     if hint.is_empty() {
                         hint = reason.to_owned();
                     }
@@ -623,13 +926,20 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
             (
                 Span::styled(key, accent()),
                 bold(),
-                Span::styled(text, fg(Color::Green)),
+                Span::styled(
+                    text,
+                    if asking {
+                        fg(Color::Yellow)
+                    } else {
+                        fg(Color::Green)
+                    },
+                ),
             )
         } else {
             (
                 Span::styled(key, plain()),
                 plain(),
-                Span::styled(text, plain()),
+                Span::styled(text, fg(Color::Red)),
             )
         };
         lines.push(Line::from(vec![

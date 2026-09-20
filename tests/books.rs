@@ -15,6 +15,23 @@ fn epub(text: &str, compression: CompressionMethod) -> Vec<u8> {
     zip.finish().unwrap().into_inner()
 }
 
+fn pdf(text: &str) -> Vec<u8> {
+    format!("%PDF-1.7\n1 0 obj<</Type/Catalog>>endobj\n{text}\ntrailer\n%%EOF\n").into_bytes()
+}
+
+fn cbz(pages: &[&str]) -> Vec<u8> {
+    let mut zip = ZipWriter::new(Cursor::new(vec![]));
+    for name in pages {
+        zip.start_file(
+            *name,
+            SimpleFileOptions::default().compression_method(CompressionMethod::Stored),
+        )
+        .unwrap();
+        zip.write_all(name.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
 fn options(root: &std::path::Path) -> Options {
     let local = root.join("local");
     fs::create_dir(&local).unwrap();
@@ -426,4 +443,66 @@ fn a_reader_copy_is_removed_from_a_card_but_never_over_wifi() {
     assert!(removed.contains("card"), "{removed}");
     assert!(!card.join("copy.epub").exists());
     assert!(local.exists());
+}
+
+#[test]
+fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
+    let tmp = tempfile::tempdir().unwrap();
+    let o = options(tmp.path());
+    let card = o.card.clone().unwrap();
+    let paper = pdf("a paper");
+    let comic = cbz(&["001.jpg", "002.jpg"]);
+    fs::write(o.local.join("Some Paper.pdf"), &paper).unwrap();
+    fs::write(o.local.join("Vol 1.cbz"), &comic).unwrap();
+    // The same PDF already on the reader is the same book, and nothing about
+    // being there makes it a lesser copy: nobody rewrote it.
+    fs::write(card.join("Some Paper.pdf"), &paper).unwrap();
+    // A format Crossload does not carry stays out of the library, and a file
+    // that lies about its format is a warning rather than a book.
+    fs::write(o.local.join("Vol 2.cbr"), &comic).unwrap();
+    fs::write(o.local.join("Broken.pdf"), b"not a PDF at all").unwrap();
+
+    let snapshot = books::scan(&o, |_| {});
+    let titles: Vec<_> = snapshot.books.iter().map(|b| b.title.as_str()).collect();
+    assert!(!titles.contains(&"Vol 2"), "{titles:?}");
+
+    let paper_book = snapshot
+        .books
+        .iter()
+        .find(|b| b.title == "Some Paper")
+        .unwrap();
+    assert!(paper_book.has(Place::Local) && paper_book.has(Place::Xteink));
+    assert_eq!(paper_book.preferred().unwrap().place, Place::Local);
+    assert!(paper_book.copies.iter().all(|c| !c.optimized));
+    // No metadata was invented: the file's own name is the whole of it.
+    assert_eq!(paper_book.author, "");
+
+    let comic_book = snapshot.books.iter().find(|b| b.title == "Vol 1").unwrap();
+    assert_eq!(comic_book.copies.len(), 1);
+    let broken = snapshot
+        .books
+        .iter()
+        .find(|b| b.title == "Broken.pdf")
+        .unwrap();
+    assert!(
+        broken.author.starts_with("Unreadable:"),
+        "{}",
+        broken.author
+    );
+
+    // The reader stores anything but lists only EPUB, so it is not offered a
+    // format it would never show: /api/files reports isEpub false for these.
+    let refused = books::transfer(&o, comic_book, Place::Xteink, &|_| {}).unwrap_err();
+    assert!(
+        format!("{refused:#}").contains("only lists EPUB"),
+        "{refused:#}"
+    );
+    assert!(!card.join("Unknown author").exists());
+
+    // A destination that does take it gets the bytes that were found, with
+    // nothing rewritten on the way.
+    kobo(o.kobo.as_ref().unwrap());
+    books::transfer(&o, comic_book, Place::Kobo, &|_| {}).unwrap();
+    let carried = fs::read(o.kobo.as_ref().unwrap().join("Unknown author/Vol 1.cbz")).unwrap();
+    assert_eq!(carried, comic);
 }

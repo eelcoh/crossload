@@ -1,5 +1,6 @@
 //! Device copies: bounded image decoding, stable EPUB resources and safe names.
-use crate::epub;
+//! A format Crossload does not rewrite is named and carried through untouched.
+use crate::{epub, format, format::Format};
 use anyhow::{ensure, Context, Result};
 use image::{imageops::FilterType, ImageFormat, ImageReader};
 use std::{
@@ -43,35 +44,44 @@ pub fn component(value: &str, fallback: &str) -> String {
 }
 
 pub fn prepare(book: &Path, optimize: bool, organized: bool) -> Result<Prepared> {
+    let kind = Format::of_path(book).unwrap_or_default();
     let file = fs::File::open(book)?;
-    ensure!(file.metadata()?.is_file(), "Expected a regular EPUB file");
+    ensure!(file.metadata()?.is_file(), "Expected a regular book file");
     let mut data = Vec::new();
     file.take(epub::MAX_BOOK_BYTES + 1).read_to_end(&mut data)?;
     ensure!(
         data.len() as u64 <= epub::MAX_BOOK_BYTES,
-        "EPUB exceeds 128 MiB"
+        "Book exceeds 128 MiB"
     );
-    epub::validate(&data)?;
-    epub::font_metadata(&data)?;
-    let metadata = epub::metadata(book)?.context("Missing EPUB metadata")?;
-    let author = component(&metadata.author, "Unknown author");
+    format::validate(kind, &data)?;
+    let metadata = if kind.rewritten() {
+        Some(epub::metadata(book)?.context("Missing EPUB metadata")?)
+    } else {
+        None
+    };
+    let author = component(
+        metadata.as_ref().map_or("", |m| m.author.as_str()),
+        "Unknown author",
+    );
     let stem = book
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled");
     let name = if organized {
-        format!(
-            "{}.epub",
-            component(metadata.title.as_deref().unwrap_or(stem), "Untitled")
-        )
+        let title = metadata
+            .as_ref()
+            .and_then(|m| m.title.as_deref())
+            .unwrap_or(stem);
+        format!("{}.{}", component(title, "Untitled"), kind.extension())
     } else {
         book.file_name()
             .and_then(|s| s.to_str())
-            .context("Invalid EPUB filename")?
+            .context("Invalid book filename")?
             .to_owned()
     };
     let original_bytes = data.len();
-    let (data, images) = if optimize {
+    // Optimization is an EPUB rewrite; there is nothing to rewrite otherwise.
+    let (data, images) = if optimize && kind.rewritten() {
         optimize_images(&data)?
     } else {
         (data, 0)

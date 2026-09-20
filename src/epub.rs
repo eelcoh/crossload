@@ -73,29 +73,33 @@ pub fn metadata(path: &std::path::Path) -> Result<Option<Metadata>> {
 }
 
 /// Check archive limits and CRCs before handing bytes to the upstream decoder.
+/// Shared by EPUB and CBZ: the hardening is about ZIP, not about either one.
 pub fn inspect(data: &[u8]) -> Result<()> {
     let mut archive = ZipArchive::new(Cursor::new(data)).context("Book is not a ZIP/EPUB")?;
-    ensure!(archive.len() <= 20_000, "EPUB has too many entries");
+    ensure!(archive.len() <= 20_000, "Archive has too many entries");
     let mut names = HashSet::new();
     let mut total = 0_u64;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         ensure!(
             names.insert(file.name().to_owned()),
-            "Duplicate EPUB entry: {}",
+            "Duplicate archive entry: {}",
             file.name()
         );
-        ensure!(file.enclosed_name().is_some(), "Invalid EPUB entry path");
-        ensure!(!file.name().contains('\\'), "Invalid EPUB entry path");
+        ensure!(file.enclosed_name().is_some(), "Invalid archive entry path");
+        ensure!(!file.name().contains('\\'), "Invalid archive entry path");
         total = total
             .checked_add(file.size())
-            .context("EPUB size overflow")?;
-        ensure!(total <= MAX_EXPANDED_BYTES, "Expanded EPUB exceeds 256 MiB");
+            .context("Archive size overflow")?;
+        ensure!(
+            total <= MAX_EXPANDED_BYTES,
+            "Expanded archive exceeds 256 MiB"
+        );
         let actual = std::io::copy(
             &mut file.by_ref().take(MAX_EXPANDED_BYTES + 1),
             &mut std::io::sink(),
         )?;
-        ensure!(actual == file.size(), "EPUB entry size mismatch");
+        ensure!(actual == file.size(), "Archive entry size mismatch");
     }
     Ok(())
 }

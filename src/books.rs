@@ -1,5 +1,7 @@
 //! A content-based library across local storage, Kobo and CrossPoint.
-use crate::{cache, copy, crosspoint::Reader, epub, inventory, kobo, prepare};
+use crate::{
+    cache, copy, crosspoint::Reader, epub, format, format::Format, inventory, kobo, prepare,
+};
 use anyhow::{ensure, Context, Result};
 use std::{
     fs,
@@ -25,6 +27,9 @@ impl Place {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Copy {
     pub place: Place,
+    pub format: Format,
+    /// For a PDF, what converting it to EPUB would be worth.
+    pub verdict: Option<crate::pdf::Verdict>,
     pub path: String,
     pub size: u64,
     pub sha: String,
@@ -42,6 +47,8 @@ pub struct Copy {
 pub(crate) fn copy(place: Place, path: &str, size: u64, locked: bool) -> Copy {
     Copy {
         place,
+        format: Format::of(path).unwrap_or_default(),
+        verdict: None,
         path: path.to_owned(),
         size,
         sha: format!("sha-of-{path}"),
@@ -60,6 +67,14 @@ pub struct Book {
 impl Book {
     pub fn has(&self, place: Place) -> bool {
         self.copies.iter().any(|c| c.place == place)
+    }
+    /// Whether the book is readable at a place, which is not the same as being
+    /// there: a PDF sits on the reader's storage without ever being listed by
+    /// it, so as far as reading goes the book has not arrived.
+    pub fn readable_at(&self, place: Place) -> bool {
+        self.copies
+            .iter()
+            .any(|c| c.place == place && (place != Place::Xteink || c.format.shown_on_reader()))
     }
     pub fn preferred(&self) -> Option<&Copy> {
         self.copies.iter().min_by_key(|c| {
@@ -119,6 +134,8 @@ fn book(entry: cache::Source, place: Place, path: String) -> Book {
         author: entry.author,
         copies: vec![Copy {
             place,
+            format: entry.format,
+            verdict: entry.verdict.clone(),
             path,
             size: entry.size,
             sha: entry.sha,
@@ -140,6 +157,7 @@ fn stored(index: &cache::Index, key: Option<&String>, place: Place, source: &str
 fn candidate(
     path: &Path,
     place: Place,
+    format: Format,
     source: String,
     options: &Options,
     index: &cache::Index,
@@ -147,15 +165,28 @@ fn candidate(
     locked: bool,
 ) -> Result<Book> {
     let data = bytes(path)?;
-    epub::validate(&data)?;
-    let metadata = epub::metadata(path)?.context("Missing EPUB metadata")?;
+    format::validate(format, &data)?;
+    let (title, author) = if format.rewritten() {
+        let metadata = epub::metadata(path)?.context("Missing EPUB metadata")?;
+        (
+            metadata.title.unwrap_or_else(|| "Untitled".into()),
+            metadata.author,
+        )
+    } else {
+        // Nothing inside a PDF or CBZ is a title worth trusting, so what the
+        // file is called is the honest answer rather than a guess.
+        (format::name_title(&source), String::new())
+    };
     let id = inventory::identity(&data);
-    let optimized = place == Place::Xteink
-        || zip::ZipArchive::new(std::io::Cursor::new(&data))?
-            .by_name("META-INF/xteink-device-profile.txt")
-            .is_ok();
+    // Only an EPUB is ever rebuilt, so only an EPUB can be a device copy: a
+    // PDF on the reader is the same bytes that left here.
+    let optimized = format.rewritten()
+        && (place == Place::Xteink
+            || zip::ZipArchive::new(std::io::Cursor::new(&data))?
+                .by_name("META-INF/xteink-device-profile.txt")
+                .is_ok());
     let mut variants = vec![(id.sha256.clone(), id.resources.clone())];
-    if place != Place::Xteink {
+    if format.rewritten() && place != Place::Xteink {
         // Identical bytes always optimize to the same copy, wherever they came
         // from, so this hit also spares Kobo books the image re-encoding.
         let key = cache::variant_key(&id.sha256, options.optimize, options.organized);
@@ -174,9 +205,16 @@ fn candidate(
         };
         variants.push((variant.sha, variant.resources));
     }
+    // Judging a PDF costs only CPU on bytes already in hand, and the answer is
+    // cached with everything else about the file.
+    let verdict = (format == Format::Pdf)
+        .then(|| crate::pdf::inspect(&data).map(|report| report.verdict).ok())
+        .flatten();
     let entry = cache::Source {
-        title: metadata.title.unwrap_or_else(|| "Untitled".into()),
-        author: metadata.author,
+        title,
+        author,
+        format,
+        verdict,
         size: data.len() as u64,
         sha: id.sha256,
         resources: id.resources,
@@ -189,17 +227,19 @@ fn candidate(
     }
     Ok(book(entry, place, source))
 }
-fn unreadable(place: Place, path: String, title: String, reason: String) -> Book {
+fn unreadable(place: Place, format: Format, path: String, title: String, reason: String) -> Book {
     Book {
         title,
         author: format!("Unreadable: {reason}"),
         copies: vec![Copy {
             place,
+            format,
+            verdict: None,
             path,
             size: 0,
             sha: String::new(),
             resources: None,
-            optimized: place == Place::Xteink,
+            optimized: format.rewritten() && place == Place::Xteink,
             locked: false,
             variants: vec![],
         }],
@@ -373,7 +413,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                             }
                             continue;
                         }
-                        if ext == "epub" {
+                        if Format::ALL.iter().any(|f| f.extension() == ext) {
                             books.push(path);
                         }
                     }
@@ -406,6 +446,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                                     options.organized,
                                 )
                             });
+                            let format = Format::of_path(path).unwrap_or_default();
                             let book = match stored(index, key.as_ref(), place, &source) {
                                 // A cached identity costs nothing to hold.
                                 Some(book) => Ok(book),
@@ -415,6 +456,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                                     candidate(
                                         path,
                                         place,
+                                        format,
                                         source.clone(),
                                         options,
                                         index,
@@ -426,6 +468,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                             .unwrap_or_else(|e| {
                                 unreadable(
                                     place,
+                                    format,
                                     source,
                                     path.file_name()
                                         .unwrap_or_default()
@@ -458,6 +501,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                         place,
                         Box::new(unreadable(
                             place,
+                            Format::Epub,
                             book.id,
                             format!("[Preview] {}", book.title),
                             "Download the full book on Kobo first".into(),
@@ -493,16 +537,26 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     continue;
                 }
                 let store = matches!(book.source, kobo::Source::KoboStore);
+                let format = book.format;
                 let temp = tempfile::tempdir()?;
                 let result = library
                     .import(&book.id, temp.path(), options.serial.as_deref())
                     .and_then(|p| {
-                        candidate(&p, place, book.id.clone(), options, index, key, store)
+                        candidate(
+                            &p,
+                            place,
+                            format,
+                            book.id.clone(),
+                            options,
+                            index,
+                            key,
+                            store,
+                        )
                     });
                 let _ = tx.send(book_update(
                     place,
                     result.unwrap_or_else(|e| {
-                        unreadable(place, book.id, book.title, format!("{e:#}"))
+                        unreadable(place, format, book.id, book.title, format!("{e:#}"))
                     }),
                 ));
             }
@@ -525,7 +579,7 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
             for file in destination
                 .files()?
                 .into_iter()
-                .filter(|f| !f.directory && f.path.to_lowercase().ends_with(".epub"))
+                .filter(|f| !f.directory && Format::of(&f.path).is_some())
             {
                 // The reader's listing offers a size and nothing else; a
                 // replacement of exactly the same size is not detected.
@@ -540,23 +594,34 @@ fn discover(options: &Options, place: Place, index: &cache::Index, tx: &Reports)
                     let _ = tx.send(book_update(place, book));
                     continue;
                 }
+                let format = Format::of(&file.path).unwrap_or_default();
                 let result = (|| -> Result<Book> {
                     let data = destination.read(&file)?;
                     let temp = tempfile::tempdir()?;
-                    let path = temp.path().join("book.epub");
+                    let path = temp.path().join(format!("book.{}", format.extension()));
                     fs::write(&path, data)?;
-                    candidate(&path, place, file.path.clone(), options, index, key, false)
+                    candidate(
+                        &path,
+                        place,
+                        format,
+                        file.path.clone(),
+                        options,
+                        index,
+                        key,
+                        false,
+                    )
                 })();
                 let _ = tx.send(book_update(
                     place,
                     result.unwrap_or_else(|e| {
                         unreadable(
                             place,
+                            format,
                             file.path.clone(),
                             file.path
                                 .rsplit('/')
                                 .next()
-                                .unwrap_or("Unreadable EPUB")
+                                .unwrap_or("Unreadable book")
                                 .to_owned(),
                             format!("{e:#}"),
                         )
@@ -809,6 +874,26 @@ pub fn transfer(
         source.place != target,
         "Preferred copy is already at this location"
     );
+    // The reader lists only EPUB. A PDF can earn its way there by being
+    // converted, and the conversion is kept beside the original rather than
+    // standing in for it.
+    let converting = target == Place::Xteink && !source.format.shown_on_reader();
+    if converting {
+        ensure!(
+            source.format == Format::Pdf,
+            "The reader's library only lists EPUB, and a {} cannot be converted into one",
+            source.format.label()
+        );
+        ensure!(
+            !matches!(source.verdict, Some(crate::pdf::Verdict::Impossible(_))),
+            "This PDF cannot be converted: {}",
+            source
+                .verdict
+                .as_ref()
+                .map(|verdict| verdict.because())
+                .unwrap_or_default()
+        );
+    }
     progress(&format!("Reading {} copy…", source.place.label()));
     let staging = tempfile::tempdir()?;
     let path = match source.place {
@@ -821,7 +906,9 @@ pub fn transfer(
                 size: source.size,
                 directory: false,
             })?;
-            let path = staging.path().join("book.epub");
+            let path = staging
+                .path()
+                .join(format!("book.{}", source.format.extension()));
             fs::write(&path, data)?;
             path
         }
@@ -830,6 +917,22 @@ pub fn transfer(
         inventory::identity(&bytes(&path)?).sha256 == source.sha,
         "Source changed since discovery; refresh before copying"
     );
+    // Converting publishes the EPUB locally first: it is a book in its own
+    // right, and one nobody should have to take on trust unread.
+    let (path, converted) = if converting {
+        progress("Converting to EPUB…");
+        let (epub, _) = crate::pdf::convert(&bytes(&path)?)?;
+        let staged = staging.path().join(format!(
+            "{}.epub",
+            prepare::component(&format::name_title(&source.path), "Untitled")
+        ));
+        fs::write(&staged, &epub)?;
+        fs::create_dir_all(&options.output)?;
+        let published = copy::copy(&staged, &options.output)?.path;
+        (published.clone(), Some(published))
+    } else {
+        (path, None)
+    };
     let prepared = prepare::prepare(&path, target == Place::Xteink && options.optimize, true)?;
     progress(&format!("Copying to {} and verifying…", target.label()));
     let output = match target {
@@ -876,9 +979,15 @@ pub fn transfer(
             }
         },
     };
+    if let Some(published) = converted {
+        return Ok(format!(
+            "Converted to {} and copied to {output} (verified). The PDF is untouched.",
+            published.display()
+        ));
+    }
     Ok(format!(
         "Copied to {output} (verified).{}",
-        if source.optimized || source.place == Place::Xteink {
+        if source.optimized {
             " Source is a device copy; any image optimization in it cannot be undone."
         } else {
             ""

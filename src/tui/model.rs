@@ -13,8 +13,13 @@ pub(super) enum Message {
     /// Books finished and books in the running job.
     Step(u64, usize, usize),
     Finished(u64, Result<String, String>),
+    Configured(u64, Result<super::settings::Outcome, String>),
 }
 pub(super) enum Effect {
+    Configure {
+        id: u64,
+        task: super::settings::Task,
+    },
     Load {
         id: u64,
         options: Box<Options>,
@@ -62,7 +67,7 @@ impl Filter {
     }
     /// Every location can be the one a book is missing from: books come back
     /// from a device as readily as they go to one.
-    const CYCLE: [Self; 6] = [
+    pub const CYCLE: [Self; 6] = [
         Self::All,
         Self::Missing(Place::Local),
         Self::Missing(Place::Kobo),
@@ -70,15 +75,6 @@ impl Filter {
         Self::Only(Place::Xteink),
         Self::Unreadable,
     ];
-    fn step(self, forward: bool) -> Self {
-        let at = Self::CYCLE.iter().position(|f| *f == self).unwrap_or(0);
-        let len = Self::CYCLE.len();
-        Self::CYCLE[if forward {
-            (at + 1) % len
-        } else {
-            (at + len - 1) % len
-        }]
-    }
     fn keeps(self, entry: &Entry) -> bool {
         let Source::Book(book) = &entry.source else {
             // An ACSM is a pending import, not a book that is somewhere.
@@ -98,10 +94,23 @@ impl Filter {
 pub(super) enum Destination {
     /// Short hint for an allowed copy.
     Ready(&'static str),
+    /// Possible, but the result will be poor. Say so and wait for a yes.
+    Ask(&'static str, String),
     /// Short dialog label and the full explanation for the status line.
     Blocked(&'static str, String),
 }
 pub(super) struct Model {
+    /// A destination that wants a yes first, and why.
+    pub ask: Option<(Place, String)>,
+    pub settings: Option<super::settings::Panel>,
+    /// Setup was dismissed without saving, so an empty library is a question
+    /// about folders rather than a fact about books.
+    pub skipped: bool,
+    pub configuring: Option<u64>,
+    pub help: bool,
+    pub help_scroll: u16,
+    pub filter_menu: Option<usize>,
+    pub sort_author: bool,
     pub options: Options,
     pub entries: Vec<Entry>,
     pub query: String,
@@ -139,7 +148,22 @@ pub(super) struct Model {
 }
 impl Model {
     pub fn new(options: Options) -> Self {
+        // Discovery waits for setup on a first run; the status line must not
+        // claim work that is not happening.
+        let status = if options.first_run {
+            "Finish setup to scan your library, or press Esc to skip it."
+        } else {
+            "Discovering books…"
+        };
         Self {
+            ask: None,
+            settings: None,
+            skipped: false,
+            configuring: None,
+            help: false,
+            help_scroll: 0,
+            filter_menu: None,
+            sort_author: false,
             options,
             entries: vec![],
             query: String::new(),
@@ -148,7 +172,7 @@ impl Model {
             busy: None,
             loading: None,
             pending_quit: false,
-            status: "Discovering books…".into(),
+            status: status.into(),
             tick: 0,
             step: None,
             catalog: Snapshot::default(),
@@ -173,6 +197,24 @@ impl Model {
             .filter(|e| self.filter.keeps(e))
             .filter(|e| e.search.contains(&query))
             .collect()
+    }
+    fn sort_entries(&mut self) {
+        let author = self.sort_author;
+        self.entries.sort_by(|a, b| {
+            (a.kind == "ACSM")
+                .cmp(&(b.kind == "ACSM"))
+                .then_with(|| {
+                    if author {
+                        a.author_key.cmp(&b.author_key)
+                    } else {
+                        a.title_key.cmp(&b.title_key)
+                    }
+                })
+                .then_with(|| a.title_key.cmp(&b.title_key))
+        });
+    }
+    pub fn open_settings(&mut self, first_run: bool) {
+        self.settings = Some(super::settings::Panel::new(&self.options, first_run));
     }
     /// A book is marked when it still holds a copy that was marked earlier, so
     /// a refresh that adds or removes copies does not lose the set.
@@ -265,7 +307,7 @@ impl Model {
             Source::Local(_) => Destination::Ready("fulfil ACSM"),
             Source::Book(book) => {
                 let book = self.current(book);
-                if book.has(target) {
+                if book.readable_at(target) {
                     return Destination::Blocked(
                         "already here",
                         format!("A copy is already in {}.", target.label()),
@@ -281,6 +323,42 @@ impl Model {
                         "Wait for discovery to finish so an available original can be preferred."
                             .into(),
                     );
+                }
+                // The reader stores anything but lists only EPUB, so copying
+                // a PDF there would leave a file nobody can open.
+                if target == Place::Xteink {
+                    if let Some(copy) = book.preferred().filter(|c| !c.format.shown_on_reader()) {
+                        use crate::{format::Format, pdf::Verdict};
+                        return match (copy.format, &copy.verdict) {
+                            (Format::Pdf, Some(Verdict::Good)) => {
+                                Destination::Ready("convert to EPUB, copy")
+                            }
+                            (Format::Pdf, Some(verdict @ Verdict::Poor(_))) => Destination::Ask(
+                                "converts poorly",
+                                format!(
+                                    "{} can become an EPUB, but {}. The PDF is kept either way.",
+                                    entry.title,
+                                    verdict.because()
+                                ),
+                            ),
+                            (Format::Pdf, Some(verdict)) => Destination::Blocked(
+                                "cannot be converted",
+                                format!("This PDF cannot become an EPUB: {}.", verdict.because()),
+                            ),
+                            (Format::Pdf, None) => Destination::Blocked(
+                                "not read yet",
+                                "This PDF has not been read yet; refresh and try again.".into(),
+                            ),
+                            (format, _) => Destination::Blocked(
+                                "reader shows only EPUB",
+                                format!(
+                                    "The reader stores a {} but never lists one, and a {} cannot become an EPUB.",
+                                    format.label(),
+                                    format.label()
+                                ),
+                            ),
+                        };
+                    }
                 }
                 Destination::Ready(if target == Place::Xteink {
                     "copy, optimized"
@@ -337,7 +415,7 @@ impl Model {
         self.next_id
     }
     fn quit(&mut self) -> Vec<Effect> {
-        if self.busy.is_some() || self.loading.is_some() {
+        if self.busy.is_some() || self.loading.is_some() || self.configuring.is_some() {
             self.pending_quit = true;
             self.status = "Finishing current work before quitting…".into();
             vec![]
@@ -347,6 +425,47 @@ impl Model {
     }
     pub fn update(&mut self, message: Message) -> Vec<Effect> {
         match message {
+            Message::Configured(id, result) if self.configuring == Some(id) => {
+                self.configuring = None;
+                match result {
+                    Ok(super::settings::Outcome::Saved(defaults)) => {
+                        self.options.browse = defaults
+                            .browse
+                            .unwrap_or_else(|| self.options.browse.clone());
+                        self.options.output = defaults
+                            .output
+                            .unwrap_or_else(|| self.options.output.clone());
+                        self.options.device = defaults.device;
+                        self.options.send_to = defaults.reader;
+                        self.options.copy_to = defaults.copy_to;
+                        self.options.folder = defaults.folder.unwrap_or_else(|| "/".into());
+                        self.options.first_run = false;
+                        self.skipped = false;
+                        self.settings = None;
+                        // A changed location must not retain old, actionable copies.
+                        self.entries.clear();
+                        self.catalog = Snapshot::default();
+                        self.marked.clear();
+                        self.selected = 0;
+                        self.scroll.set(0);
+                        if !self.pending_quit {
+                            return self.update(Message::Refresh);
+                        }
+                    }
+                    result => {
+                        if let Some(panel) = &mut self.settings {
+                            match result {
+                                Ok(super::settings::Outcome::Detected(devices)) => {
+                                    panel.detected(devices)
+                                }
+                                Ok(super::settings::Outcome::Tested(text)) => panel.message = text,
+                                Err(e) => panel.message = e,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
             Message::Refresh if !self.pending_quit => {
                 if self.loading.is_some() || self.busy.is_some() {
                     self.status = "Wait for current work before refreshing.".into();
@@ -378,7 +497,7 @@ impl Model {
                         Entry::new(
                             b.title.clone(),
                             b.author.clone(),
-                            "EPUB",
+                            b.preferred().map_or("EPUB", |c| c.format.label()),
                             Source::Book(Box::new(b.clone())),
                         )
                     })
@@ -394,6 +513,7 @@ impl Model {
                         Source::Local(p.clone()),
                     )
                 }));
+                self.sort_entries();
                 self.catalog = snapshot;
                 self.selected = selected
                     .and_then(|old| {
@@ -447,6 +567,82 @@ impl Model {
                     return self.quit();
                 }
                 if self.pending_quit {
+                    return vec![];
+                }
+                if let Some(panel) = &mut self.settings {
+                    if self.configuring.is_some() {
+                        return vec![];
+                    }
+                    match panel.input(key) {
+                        super::settings::Action::Close => {
+                            let first_run = panel.first_run;
+                            self.settings = None;
+                            if first_run {
+                                self.options.first_run = false;
+                                self.skipped = true;
+                                let effects = self.update(Message::Refresh);
+                                self.status =
+                                    "Setup skipped; nothing was saved. Press , to set it up later."
+                                        .into();
+                                return effects;
+                            }
+                        }
+                        super::settings::Action::Run(task) => {
+                            panel.message = match &task {
+                                super::settings::Task::Save { .. } => "Saving settings…",
+                                super::settings::Task::Detect => "Looking for mounted Kobos…",
+                                super::settings::Task::Test { .. } => "Testing reader connection…",
+                            }
+                            .into();
+                            let id = self.id();
+                            self.configuring = Some(id);
+                            return vec![Effect::Configure { id, task }];
+                        }
+                        super::settings::Action::None => {}
+                    }
+                    return vec![];
+                }
+                if self.help {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => self.help = false,
+                        KeyCode::Down | KeyCode::PageDown => {
+                            self.help_scroll =
+                                (self.help_scroll + 1).min(HELP.len().saturating_sub(1) as u16)
+                        }
+                        KeyCode::Up | KeyCode::PageUp => {
+                            self.help_scroll = self.help_scroll.saturating_sub(1)
+                        }
+                        _ => {}
+                    }
+                    return vec![];
+                }
+                if let Some(selected) = &mut self.filter_menu {
+                    let chosen = match key.code {
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            *selected = (*selected + 1) % Filter::CYCLE.len();
+                            None
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            *selected = (*selected + Filter::CYCLE.len() - 1) % Filter::CYCLE.len();
+                            None
+                        }
+                        KeyCode::Enter => Some(*selected),
+                        KeyCode::Char(c) if ('1'..='6').contains(&c) => {
+                            Some(c as usize - '1' as usize)
+                        }
+                        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('f') => {
+                            self.filter_menu = None;
+                            None
+                        }
+                        _ => None,
+                    };
+                    if let Some(index) = chosen {
+                        self.filter = Filter::CYCLE[index];
+                        self.filter_menu = None;
+                        self.selected = 0;
+                        self.touched = false;
+                        self.scroll.set(0);
+                    }
                     return vec![];
                 }
                 if let Some(entry) = self.copies.clone() {
@@ -511,19 +707,42 @@ impl Model {
                     return vec![];
                 }
                 if !self.action.is_empty() {
-                    let target = match key.code {
-                        KeyCode::Char('1') => Some(Place::Local),
-                        KeyCode::Char('2') => Some(Place::Kobo),
-                        KeyCode::Char('3') => Some(Place::Xteink),
-                        KeyCode::Esc | KeyCode::Char('q') => {
+                    // While a destination waits for a yes, it is the only thing
+                    // the dialog answers to.
+                    let asked = self.ask.clone();
+                    let target = match (&asked, key.code) {
+                        (Some((target, _)), KeyCode::Char('y')) => Some(*target),
+                        (Some(_), KeyCode::Esc | KeyCode::Char('q')) => {
+                            self.ask = None;
+                            return vec![];
+                        }
+                        (Some(_), _) => return vec![],
+                        (None, KeyCode::Char('1')) => Some(Place::Local),
+                        (None, KeyCode::Char('2')) => Some(Place::Kobo),
+                        (None, KeyCode::Char('3')) => Some(Place::Xteink),
+                        (None, KeyCode::Esc | KeyCode::Char('q')) => {
                             self.action.clear();
                             return vec![];
                         }
-                        _ => None,
+                        (None, _) => None,
                     };
                     let Some(target) = target else {
                         return vec![];
                     };
+                    if asked.is_none() {
+                        // One question covers the set, not one per book.
+                        let question = self.action.iter().find_map(|entry| {
+                            match self.destination(entry, target) {
+                                Destination::Ask(_, reason) => Some(reason),
+                                _ => None,
+                            }
+                        });
+                        if let Some(reason) = question {
+                            self.ask = Some((target, reason));
+                            return vec![];
+                        }
+                    }
+                    self.ask = None;
                     // Books that cannot be copied are left behind with their
                     // reason; a set is never refused as a whole for one of them.
                     let mut blocked = None;
@@ -532,7 +751,7 @@ impl Model {
                         .clone()
                         .into_iter()
                         .filter(|entry| match self.destination(entry, target) {
-                            Destination::Ready(_) => true,
+                            Destination::Ready(_) | Destination::Ask(_, _) => true,
                             Destination::Blocked(_, reason) => {
                                 blocked.get_or_insert(reason);
                                 false
@@ -657,6 +876,29 @@ impl Model {
                     }
                     KeyCode::PageUp => self.selected = self.selected.saturating_sub(10),
                     KeyCode::Char('/') => self.search = true,
+                    KeyCode::Char('?') => {
+                        self.help = true;
+                        self.help_scroll = 0;
+                    }
+                    KeyCode::Char(',') => {
+                        if self.busy.is_none() && self.loading.is_none() {
+                            self.open_settings(false);
+                        } else {
+                            self.status = "Wait for current work before changing settings.".into();
+                        }
+                    }
+                    KeyCode::Char('s') => {
+                        let selected = self.selected_entry();
+                        self.sort_author = !self.sort_author;
+                        self.sort_entries();
+                        self.selected = selected
+                            .and_then(|old| {
+                                self.filtered().iter().position(|e| e.source == old.source)
+                            })
+                            .unwrap_or(0);
+                        self.touched = true;
+                        self.scroll.set(0);
+                    }
                     KeyCode::Char('r') => return self.update(Message::Refresh),
                     KeyCode::Char(' ') => {
                         if let Some(entry) = self.selected_entry() {
@@ -681,10 +923,12 @@ impl Model {
                         }
                     }
                     KeyCode::Char('f') | KeyCode::Char('F') => {
-                        self.filter = self.filter.step(key.code == KeyCode::Char('f'));
-                        self.selected = 0;
-                        self.touched = false;
-                        self.scroll.set(0);
+                        self.filter_menu = Some(
+                            Filter::CYCLE
+                                .iter()
+                                .position(|f| *f == self.filter)
+                                .unwrap_or(0),
+                        );
                     }
                     KeyCode::Enter if self.busy.is_none() => {
                         self.action = self.chosen();
@@ -694,9 +938,34 @@ impl Model {
             }
             _ => {}
         }
-        if self.pending_quit && self.busy.is_none() && self.loading.is_none() {
+        if self.pending_quit
+            && self.busy.is_none()
+            && self.loading.is_none()
+            && self.configuring.is_none()
+        {
             return vec![Effect::Quit];
         }
         vec![]
     }
 }
+
+pub(super) const HELP: &[&str] = &[
+    "Navigate: arrows or j/k; Home/End; Page Up/Down",
+    "Enter       Choose where to copy the selected or marked books",
+    "Space       Mark or unmark the highlighted book",
+    "a           Mark or clear all books shown by the current filter",
+    "/           Search titles and authors; arrows still navigate",
+    "Esc/Enter   Leave search, keeping the query; / then backspace clears it",
+    "f           Open filters; arrows + Enter or 1–6 select",
+    "s           Toggle sorting by title or author (ascending)",
+    "d           Inspect copies; 1–9 asks to delete one; y confirms",
+    "r           Refresh connected locations",
+    ",           Settings: folders, Kobo detection and reader test",
+    "Esc         Stop copying after this book; close a dialog; otherwise quit",
+    "q / Ctrl+C  Quit after active work finishes",
+    "",
+    "L / K / X   Local / Kobo / Xteink",
+    "● original   ◐ optimized device copy   · absent   ✗ unreadable",
+    "⇩ ACSM request: choose Local to fulfill it (activation required)",
+    "Marked books stay marked when hidden by a filter or search.",
+];

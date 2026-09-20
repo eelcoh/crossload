@@ -616,6 +616,30 @@ fn lists_sideloaded_metadata_and_extensionless_epubs_but_skips_other_files() {
 }
 
 #[test]
+fn sideloaded_pdfs_are_listed_and_imported_untouched() {
+    let device = Device::new(false, false, false);
+    let paper = b"%PDF-1.7\n1 0 obj<</Type/Catalog>>endobj\ntrailer\n%%EOF\n".to_vec();
+    fs::create_dir_all(device.path().join("Papers")).unwrap();
+    fs::write(device.path().join("Papers/Some Paper.pdf"), &paper).unwrap();
+    // A file whose name promises nothing we carry is still skipped.
+    fs::write(device.path().join("Papers/notes.txt"), b"nothing").unwrap();
+
+    let library = Library::open(device.path()).unwrap();
+    let books = library.books().unwrap();
+    let paper_book = books.iter().find(|b| b.title == "Some Paper").unwrap();
+    assert_eq!(paper_book.format, crossload::format::Format::Pdf);
+    assert_eq!(paper_book.author, "");
+    assert!(!paper_book.encrypted);
+    assert_eq!(books.iter().filter(|b| b.title == "notes").count(), 0);
+
+    // Import carries the bytes over and names the copy by its own format.
+    let output = tempfile::tempdir().unwrap();
+    let imported = library.import(&paper_book.id, output.path(), None).unwrap();
+    assert_eq!(imported.extension().unwrap(), "pdf");
+    assert_eq!(fs::read(&imported).unwrap(), paper);
+}
+
+#[test]
 fn imports_sideloaded_copies_without_keys_and_keeps_same_title_store_preview_separate() {
     let device = Device::new(false, false, false);
     mark_preview(&device);

@@ -239,6 +239,189 @@
     the two most dangerous ideas in the tool. `Copy` gained a `locked` flag for
     Kobo store books, so the cache format moved to version 3.
 
+21. [x] Formats other than EPUB — implemented
+    `.epub` is the whole world: local discovery filters on it (`books.rs`), and
+    so does the reader listing, so a PDF or CBZ in the books folder or already
+    on the X4 is not unreadable but invisible. The catalog claims to show one
+    library across three places and does not. Discover, group, verify and copy
+    PDF and CBZ as ordinary books: skip `prepare`, skip EPUB metadata, fall back
+    to the filename, keep content hashing and verification unchanged. Identity
+    is content-based, so grouping and sync need no change. Unblocks item 27.
+    Implemented in `src/format.rs`: a `Format` of EPUB, PDF or CBZ, claimed by a
+    file's name and confirmed by its contents. EPUB keeps the structural
+    validation it had, because it is about to be taken apart; a PDF needs a
+    header and an end-of-file marker, which is how a half-finished download
+    gives itself away, and a CBZ needs the shared ZIP hardening plus at least
+    one image. `epub::inspect` is now worded for archives rather than EPUBs,
+    since CBZ leans on the same checks.
+    All three locations carry all three formats. `candidate` takes the format it
+    is reading and only asks an EPUB for metadata; the others are titled by
+    their filename and have no author. Only an EPUB can be a device copy, so a
+    PDF on the reader shows as an original and `◐` cannot appear for it, and
+    only an EPUB has an optimized variant computed. `prepare` names and carries
+    a format it does not rewrite, `copy` and `send` accept and check all three,
+    and the reader's inventory matches on all three. On the Kobo, sideloaded
+    PDFs and CBZs are listed and imported untouched; store books remain EPUB by
+    definition. `crossload optimize` refuses anything else rather than handing
+    back an unchanged file called a device copy.
+    A file whose name claims a format its contents do not match is unreadable
+    rather than skipped, so it stays visible; a format not carried, such as CBR,
+    is not listed. `Copy` and the cache entry gained a format, so the cache is
+    version 4 and older indexes are discarded. The 128 MiB ceiling applies
+    unchanged to every format, which a long comic can exceed; lifting it needs
+    streaming hashing and is not part of this.
+    Verified against real files: a PDF and a CBZ discovered locally and on a
+    card, grouped by content across both, and a comic synced to the card byte
+    for byte.
+    Corrected after testing on the device: the X4 stores a PDF but its library
+    never lists one, so the first version of this shipped a path that left dead
+    files on the reader. CrossPoint says so itself — every `/api/files` entry
+    carries an `isEpub` flag, false for anything else — and the listing was
+    discarding it. Xteink is now refused as a destination for a format the
+    reader will not show, in `books::transfer` (which the TUI, `sync` and
+    `kobo sync` all reach) and again in `crosspoint::send`; the copy dialog
+    gives the reason, and every blocked destination now reads in red rather
+    than in passing. A copy already on the reader in such a format is labelled
+    in the details panel, which is now sized by what it has to say so a warning
+    is never the line clipped off the bottom. Fixed alongside: the sync summary
+    printed the number planned as the number copied, so a run where everything
+    failed still claimed successes.
+
+22. [ ] Metadata beyond title and author
+    `Book` is title, author and copies, which is why sorting offers title and
+    author and nothing else. `epub::metadata` already parses the OPF metadata
+    block and discards everything but two fields. Carry series and index,
+    language, publisher and date; sort by series; accept `author:` and
+    `series:` prefixes in the search box. Series is the one that matters: a
+    library of any size sorted by title interleaves every series it has.
+
+23. [ ] Free space before a copy
+    Marking forty books and pressing Enter discovers a full card partway
+    through. For a mounted card or a Kobo this is one statvfs and a line in the
+    copy dialog: the size of the set against the room left. `Status` is version
+    and device only, so Wi-Fi has no free-space endpoint to ask; that path must
+    say unknown rather than guess, as location states already do.
+
+24. [ ] A record of what was copied
+    Every copy is verified and nothing is ever overwritten, but nothing
+    remembers any of it. An append-only journal — what went where, when,
+    verified or failed — and `crossload history` to read it, with the last few
+    entries in the TUI. Completes the trust the rest of the tool has already
+    paid for, and is the precondition for ever undoing a sync.
+
+25. [ ] Kobo annotations and collections
+    `kobo.rs` opens KoboReader.sqlite and reads only the `content` table. The
+    same database holds `Bookmark` (highlights and notes) and `Shelf` /
+    `ShelfContent` (collections). Export highlights per book as Markdown:
+    read-only, risks nothing, reuses a connection that is already open. Books
+    are not the only thing trapped on a closed device, which is the same reason
+    the ADEPT work exists. Collections follow: shelves are a better basis for
+    `--organized` than author names.
+
+26. [ ] kepub for the Kobo
+    A sideloaded EPUB on a Kobo loses the store reading experience: no reliable
+    progress, no stats. Converting to .kepub.epub on transfer is what Calibre
+    users do for this. `prepare.rs` already unpacks, rewrites and repacks EPUB
+    containers, so the machinery is adjacent. Narrow, but it is the difference
+    between the book being on the Kobo and the book working on it.
+
+27. [ ] PDF to EPUB — the only way a PDF reaches the reader
+    Many PDFs have no reason to be PDFs. Many others cannot survive the trip,
+    and a bad conversion is a book you do not find out is unreadable until you
+    are away from your computer. So the feature is the triage, not the
+    converter: classify before offering. Convertible is born-digital, one text
+    column, an embedded outline, consistent margins. Poor is multi-column,
+    footnote-heavy or full of tables — offer with a warning. Refuse page images
+    with no text layer; OCR is a different project. Every signal is cheap from
+    the page objects: text layer present, x-position clustering of text blocks,
+    strings repeating at a fixed y (running headers to strip), an outline to
+    become chapters.
+    MIT licensing rules out MuPDF (AGPL) and Poppler (GPL). Pure Rust (lopdf,
+    pdf) or pdfium (BSD-3, but a Chromium-scale C++ build). The output half
+    already exists: zip, roxmltree and image are dependencies and `prepare`
+    already writes EPUB containers. What is missing is PDF parsing plus reflow —
+    paragraph joining from line gaps, dehyphenation, headings from font size.
+    Convert alongside the PDF, never over it; keep both, show both, and let the
+    result be read before it is sent anywhere. Depends on item 21.
+    Classifier spiked in `src/pdf.rs` on lopdf 0.45 (MIT, pure Rust, no C++
+    toolchain; its tree adds nom, indexmap, weezl and the like). It reads page
+    structure only — where text sits, never what it says — and reports pages,
+    pages carrying text, image-only pages, pages whose text starts in two
+    separated bands, and whether an outline exists. A page is two-column when a
+    left margin and a second margin past the middle both carry text and the
+    gutter between them is quiet.
+    Two things had to be right before the numbers meant anything, and neither
+    was obvious. MediaBox is usually an indirect reference, so a page's width
+    has to be dereferenced or every band is measured against the wrong scale.
+    More importantly, Td and TD move in text space: their offsets are in units
+    of the text matrix's own scale, so a jump of 20 at a scale of 11 is 220
+    points. Added raw, the jump to the next column collapses to 20 and every
+    page looks like one column. Both are covered by tests.
+    Measured on real files: a 40-page two-column collection reported 35 of 38
+    text pages as two-column once the scaling was right, against 13 before, and
+    an 8-page single-column report came back convertible with an outline. Both
+    verdicts match what pdftotext -layout shows.
+    Conversion implemented on top of it: `pdf::convert` returns EPUB bytes and
+    the verdict that went with them. `text.rs` is one walk of the content stream
+    serving both judging and converting, so the two can never disagree about a
+    page; `layout.rs` rebuilds prose from placed text; `write.rs` writes an
+    EPUB 3 with an anchor per heading and a stable identifier, so converting the
+    same PDF twice gives the same book. Text is decoded through the font's own
+    encoding and ToUnicode CMap, bounded against decompression bombs.
+    Three more things had to be right, each found by reading real output rather
+    than by reasoning. Advance widths must come from the font: simple fonts
+    carry `Widths` from `FirstChar`, composite fonts carry `W` on their
+    descendant, and a composite font codes two bytes per glyph, so a byte count
+    puts every run at twice its width. A space drawn as its own run must be kept
+    rather than discarded as whitespace, because the words either side are
+    otherwise left to be separated by the gap the space was holding open. And
+    the short-line rule only means something in justified text: in ragged text
+    every line ends somewhere different, so it is applied only when most lines
+    end near the margin.
+    Columns are read one at a time and the second is slid onto the first's
+    margin, so indent and line-ending tests see one column. Reading a
+    two-column page straight across weaves the columns together, which is the
+    single worst thing a conversion can do; that is now a test. Because columns
+    are handled, being in columns is no longer a concern on its own — only
+    changing between columned and not, page to page, where the split is least
+    certain.
+    Measured on real files: a 40-page two-column collection converts to prose
+    that reads correctly, and an 8-page report converts cleanly with its
+    outline. Both pass Crossload's own EPUB validation and appear as ordinary
+    books in the catalog, titled from the PDF's own metadata.
+    Known imperfections: a word broken across a line loses its hyphen, so a
+    genuine compound like real-time becomes realtime; images and tables are
+    dropped, since only text is read; and the whole document is one XHTML file
+    with anchors rather than a file per chapter.
+    Wired in. Every PDF is judged during discovery, on bytes already in hand,
+    and the verdict is stored on the copy and in the cache (version 5), so the
+    dialog never opens a file to draw itself. Xteink offers `convert to EPUB,
+    copy` for a good one, asks for a y over a yellow prompt for a poor one
+    naming what is wrong, and refuses an impossible one in red; `sync` applies
+    the same rules without the question. `books::transfer` converts, publishes
+    the EPUB into the import folder with the usual never-overwrite copy, and
+    sends that, reporting both paths and that the PDF is untouched.
+    Found while testing on the device: a copy the reader stores but will not
+    list was counting as the book having arrived, so the two stranded PDFs made
+    their books look present on Xteink and no conversion was ever offered.
+    `Book::readable_at` now separates being somewhere from being readable there,
+    and both the dialog and the sync planner use it.
+    Verified against the real X4: a PDF converted, kept locally, sent over
+    Wi-Fi, and listed by the device — /api/files reports isEpub true for it.
+
+28. [-] Google Books — dropped
+    Nothing on offer was actually sync. Uploading your own library to Play
+    Books has no public API, only the web UI, so the round trip can never close:
+    what remained was volume search for metadata and a read-only list of
+    shelved titles. Neither justifies an OAuth flow, a client secret inside the
+    binary, and a network call about books that are sitting on your own disk.
+    Item 22 covers metadata from the files themselves, which is where it should
+    come from.
+    Worth remembering: where a publisher allows it, Play Books offers a
+    purchased title as an ACSM download, and Crossload already fulfills ACSM
+    with its own ADEPT implementation. Dropping that file in the import folder
+    works today and needs no integration at all.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest

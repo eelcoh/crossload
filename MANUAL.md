@@ -707,15 +707,102 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   normally.
 - **Escape** during a copy stops it after the book in progress; books already
   copied are complete and verified, and the summary says where it stopped.
-- **f** cycles filters and **F** cycles back: all books, missing from Local,
+- **f** opens a filter menu: all books, missing from Local,
   missing from Kobo, missing from Xteink, only on Xteink, and unreadable. Every
   location can be the one a book is missing from, so the same key that finds
-  what the reader lacks also finds what has never been copied back. The filter
+  what the reader lacks also finds what has never been copied back. Choose with
+  arrows and Enter, or 1–6; Escape cancels without changing the filter. The filter
   and search apply together, and the line above the library shows which filter
   is active and how many books it matches.
 - **/** searches; arrows and page-navigation keys still move through matches.
   Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
   Page Up/Page Down navigate. **q** quits, waiting for active work.
+- **s** toggles ascending title/author sorting, keeping the highlighted book
+  selected and preserving marks. ACSM requests remain after the books.
+- **?** opens keyboard help and the presence legend; arrows scroll and Escape
+  closes it.
+- **,** opens settings when discovery and copying are idle. Edit books/import
+  folders, Kobo mount, reader address, mounted reader card, and remote base folder.
+  Arrows or Tab select a field/action; Enter edits or runs it. Within a field,
+  arrows and Home/End move the cursor, Ctrl+U clears it, Enter accepts, and Escape
+  undoes the edit. Escape outside an edit discards the draft. The connection test
+  reads CrossPoint status without copying. A configured card takes priority over
+  Wi-Fi; clear its field to switch back.
+
+Enter does whatever the selected row is for, and **e** always edits it instead.
+The Kobo mount is the one value Crossload can find by itself, so Enter on that
+row searches the conventional Linux and macOS mount locations rather than asking
+for a path: a single match fills the row in, several offer a choice, and none
+says to connect the reader in USB mode and try again. Nothing is detected behind
+your back, and **e** types a mount path in by hand at any point.
+
+Each row is its name in bold with its value indented beneath it, so which line
+is which stays clear when the selection is elsewhere. The line under the fields
+explains whichever row is selected, until an action reports a result there; moving to another row brings its explanation back. The
+two folders a save needs carry a star in their label. Each path says what it
+currently points at — `✓ folder found`, `✓ Kobo found`, `· created on first
+import`, `⚠ no Kobo database here`, `✗ not found` — and that judgement is made
+again after every keystroke, so a typo is visible where it is made. Paths inside
+the home directory are shown and may be entered as `~/…`; they are saved
+expanded. **Ctrl+S** saves from any row, including from inside an edit. A save
+that cannot go through moves the selection to the row responsible and says why,
+and nothing is written.
+
+When no import folder is supplied or saved, the TUI opens setup before scanning.
+Books and import folders initially use the browsing directory (the current
+directory by default), and the reader address starts at `crosspoint.local`,
+the name CrossPoint announces itself under. While setup is open nothing is being
+scanned, and the location pills say `not scanned` rather than showing progress.
+Setup can be skipped with Escape; the library then browses the current directory
+and, when it holds no books, says to press **,**. **Save and rescan** validates
+the draft, saves it to the active configuration file (including `--config`), and
+scans the new locations. Settings initially show the effective values, including
+CLI overrides; saving makes those displayed values the defaults. No configuration
+is written when setup or settings is cancelled. A new import directory is created
+only when a book is imported.
+
+Crossload carries EPUB, PDF and CBZ, in every location and in both directions.
+EPUB is the only format it rewrites: its title and author come from the file,
+its images are optimized for the X4, and it is filed under its author. A PDF or
+CBZ is discovered, hashed, copied and verified exactly like an EPUB but never
+rebuilt, so it is titled by its filename, has no author, and is never marked as
+a device copy. A file whose name claims a format its contents do not match is
+listed as unreadable rather than skipped; a format Crossload does not carry,
+such as CBR, is not listed at all. `crossload optimize` refuses anything but an
+EPUB, since there is nothing in the others for it to rebuild. The 128 MiB limit
+on a book applies to every format.
+
+A PDF reaches the reader by being converted. Crossload judges every PDF as it
+reads it — structure only, never the words — and stores that judgement with the
+book, so the copy dialog never has to open a file to draw itself. A PDF of
+ordinary single-column text is offered as `convert to EPUB, copy`. One that will
+convert badly is offered in yellow and asks for a **y** first, naming what is
+wrong with it. One with nothing to convert, because its pages are scanned images
+or because it is password protected, is refused in red. `crossload sync` applies
+the same rules without the question.
+
+Converting writes the EPUB into the import folder and sends that; the PDF is not
+touched, moved or replaced, so both remain and the result can be read before it
+is trusted. Paragraphs are rebuilt from where lines sit on the page, a page's
+columns are read one at a time rather than straight across, running heads and
+page numbers are dropped, and headings become the table of contents. Images,
+tables and footnotes are not carried over, and a word broken across a line
+break loses its hyphen, so a compound such as real-time can come back as
+realtime.
+
+A copy that the reader stores but cannot list does not count as the book having
+arrived: a PDF sitting on the device leaves the book still missing from Xteink,
+so it can be converted and sent properly.
+
+The reader takes EPUB only. CrossPoint stores whatever is uploaded, but the X4's
+library lists nothing else: every entry its `/api/files` returns carries an
+`isEpub` flag that is false for anything but an EPUB, and a PDF left on the
+device is never shown by its reading app. Xteink is therefore refused as a
+destination for a PDF or CBZ — in the copy dialog, in `crossload sync`, and in
+`crossload send` — and the reason is given in red rather than the copy being
+made and quietly wasted. A copy already on the reader in such a format is
+labelled in the details panel as held but not listed. Kobo and local folders
+accept every format Crossload carries.
 
 ACSM files appear as local import requests. Choose Local first to fulfill them,
 then refresh to copy the resulting EPUB. A fulfilled request is moved into an

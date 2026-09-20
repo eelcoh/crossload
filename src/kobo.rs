@@ -10,7 +10,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
-use crate::epub;
+use crate::{epub, format, format::Format};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,6 +24,9 @@ pub struct Book {
     pub id: String,
     pub title: String,
     pub author: String,
+    /// Store books are always EPUB; a sideloaded file is whatever was put there.
+    #[serde(default)]
+    pub format: Format,
     pub encrypted: bool,
     pub preview: bool,
     pub source: Source,
@@ -106,6 +109,7 @@ impl Library {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 author: row.get(2)?,
+                format: Format::Epub,
                 encrypted: row.get(3)?,
                 preview: row.get(4)?,
                 source: Source::KoboStore,
@@ -183,6 +187,12 @@ impl Library {
             data.len() as u64 <= epub::MAX_BOOK_BYTES,
             "Book exceeds 128 MiB"
         );
+        if !book.format.rewritten() {
+            // Nothing on a Kobo encrypts a sideloaded PDF or CBZ, and nothing
+            // here rewrites one: it travels exactly as it sits on the device.
+            format::validate(book.format, &data)?;
+            return self.publish(&book, output, &data, reuse);
+        }
         epub::inspect(&data)?;
         let fonts = epub::font_metadata(&data)?;
         let data = if book.encrypted {
@@ -210,8 +220,13 @@ impl Library {
         };
         epub::validate(&data)
             .context("Imported book failed EPUB validation; no output was written")?;
+        self.publish(&book, output, &data, reuse)
+    }
+
+    /// Write an imported book out, never over an existing file.
+    fn publish(&self, book: &Book, output: &Path, data: &[u8], reuse: bool) -> Result<PathBuf> {
         let output = output_directory(output, &self.root)?;
-        let target = output.join(output_name(&book));
+        let target = output.join(output_name(book));
         if reuse {
             match fs::symlink_metadata(&target) {
                 Ok(meta) => {
@@ -224,7 +239,7 @@ impl Library {
             }
         }
         let mut temporary = NamedTempFile::new_in(&output)?;
-        temporary.write_all(&data)?;
+        temporary.write_all(data)?;
         temporary.as_file().sync_all()?;
         temporary.persist_noclobber(&target).with_context(|| {
             format!(
@@ -253,23 +268,39 @@ impl Library {
             if kind.is_dir() {
                 self.sideloaded_books(&path, books)?;
             } else if kind.is_file() {
-                let Some(metadata) = epub::metadata(&path).with_context(|| {
+                let metadata = epub::metadata(&path).with_context(|| {
                     format!("Cannot read sideloaded book metadata: {}", path.display())
-                })?
-                else {
-                    continue;
+                })?;
+                // An EPUB is recognized by its contents, so Calibre files
+                // without an extension still count; the others have only their
+                // name to go on.
+                let book_format = match &metadata {
+                    Some(_) => Format::Epub,
+                    None => match Format::of_path(&path) {
+                        Some(found) if found != Format::Epub => found,
+                        _ => continue,
+                    },
                 };
                 let relative = path.strip_prefix(&self.root)?;
                 let stable_path = relative.to_str().context("Book filename is not UTF-8")?;
                 let hash = format!("{:x}", Sha256::digest(stable_path.as_bytes()));
-                let kobo_volume_id =
-                    self.match_encrypted_store_copy(&path, &metadata.identifiers)?;
+                let kobo_volume_id = match &metadata {
+                    Some(metadata) => {
+                        self.match_encrypted_store_copy(&path, &metadata.identifiers)?
+                    }
+                    None => None,
+                };
                 books.push(Book {
                     id: format!("file:{}", &hash[..24]),
                     title: metadata
-                        .title
-                        .unwrap_or_else(|| name.to_string_lossy().into_owned()),
-                    author: metadata.author,
+                        .as_ref()
+                        .and_then(|m| m.title.clone())
+                        .unwrap_or_else(|| format::name_title(&name.to_string_lossy())),
+                    author: metadata
+                        .as_ref()
+                        .map(|m| m.author.clone())
+                        .unwrap_or_default(),
+                    format: book_format,
                     encrypted: kobo_volume_id.is_some(),
                     preview: false,
                     source: Source::Sideloaded,
@@ -463,5 +494,5 @@ fn output_name(book: &Book) -> String {
     let title = title.trim_matches([' ', '.']);
     let title = if title.is_empty() { "Book" } else { title };
     let hash = format!("{:x}", Sha256::digest(book.id.as_bytes()));
-    format!("{} [{}].epub", title, &hash[..12])
+    format!("{} [{}].{}", title, &hash[..12], book.format.extension())
 }

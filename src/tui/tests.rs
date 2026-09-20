@@ -1,10 +1,12 @@
 use super::*;
 use crate::books::Place;
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use model::Destination;
 use std::sync::{Arc, Mutex};
 fn options() -> Options {
     Options {
+        config: "/unused/config.json".into(),
+        first_run: false,
         show_previews: false,
         device: None,
         browse: "/books".into(),
@@ -20,6 +22,261 @@ fn options() -> Options {
 }
 fn key(code: KeyCode) -> Message {
     Message::Input(Event::Key(KeyEvent::from(code)))
+}
+
+#[test]
+fn settings_save_is_atomic_for_the_model_and_uses_the_selected_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut opts = options();
+    opts.config = dir.path().join("custom/config.json");
+    opts.browse = dir.path().into();
+    let original_output = opts.output.clone();
+    let mut model = Model::new(opts);
+    model.update(key(KeyCode::Char(',')));
+    let panel = model.settings.as_mut().unwrap();
+    panel.values[1] = dir.path().join("imports").display().to_string();
+    panel.selected = 7;
+    let mut effects = model.update(key(KeyCode::Enter));
+    assert_eq!(model.options.output, original_output);
+    let Effect::Configure { id, task } = effects.remove(0) else {
+        panic!("expected save")
+    };
+    assert!(model.update(key(KeyCode::Esc)).is_empty());
+    assert!(model.settings.is_some());
+    model.update(Message::Configured(id + 1, Err("stale".into())));
+    assert_eq!(model.configuring, Some(id));
+    let result = settings::perform(task).unwrap();
+    let saved = crate::config::load(&model.options.config).unwrap();
+    assert_eq!(saved.output, Some(dir.path().join("imports")));
+    let effects = model.update(Message::Configured(id, Ok(result)));
+    assert!(matches!(effects.as_slice(), [Effect::Load { .. }]));
+    assert!(model.settings.is_none());
+    assert_eq!(model.options.output, dir.path().join("imports"));
+
+    let mut model = Model::new(options());
+    model.open_settings(false);
+    model.configuring = Some(1);
+    model.update(Message::Configured(1, Err("Permission denied".into())));
+    assert!(model
+        .settings
+        .as_ref()
+        .unwrap()
+        .message
+        .contains("Permission denied"));
+    assert_eq!(model.options.output, original_output);
+    model.update(key(KeyCode::Esc));
+    assert!(model.settings.is_none());
+}
+
+#[test]
+fn first_run_can_be_skipped_and_settings_editing_handles_unicode() {
+    let mut opts = options();
+    opts.first_run = true;
+    let (mut app, _) = App::new(opts);
+    assert!(app.model.settings.as_ref().unwrap().first_run);
+    assert!(app.model.loading.is_none());
+    assert!(matches!(
+        app.model.update(key(KeyCode::Esc)).as_slice(),
+        [Effect::Load { .. }]
+    ));
+
+    let mut panel = settings::Panel::new(&options(), false);
+    panel.values[0] = "/书📚".into();
+    panel.input(KeyEvent::from(KeyCode::Enter));
+    panel.input(KeyEvent::from(KeyCode::Left));
+    panel.input(KeyEvent::from(KeyCode::Backspace));
+    panel.input(KeyEvent::from(KeyCode::Char('é')));
+    assert_eq!(panel.values[0], "/é📚");
+    panel.input(KeyEvent::from(KeyCode::Esc));
+    assert_eq!(panel.values[0], "/书📚");
+    assert!(panel.edit.is_none());
+    panel.values[0] = "relative".into();
+    assert!(panel.defaults().is_err());
+}
+
+#[test]
+fn setup_explains_each_row_and_refuses_a_books_folder_that_is_not_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut opts = options();
+    opts.browse = dir.path().into();
+    opts.output = dir.path().join("imports");
+    opts.first_run = true;
+    let (mut app, _) = App::new(opts);
+    // Setup holds discovery back, so nothing may claim to be scanning.
+    assert!(app.model.loading.is_none());
+    assert!(app.model.status.contains("Finish setup"));
+    let panel = app.model.settings.as_ref().unwrap();
+    assert_eq!(panel.values[3], settings::READER);
+    assert_eq!(panel.marks[0], settings::Mark::Good("folder found"));
+    assert_eq!(
+        panel.marks[1],
+        settings::Mark::Note("created on first import")
+    );
+    assert!(panel.hint().starts_with("Required."));
+
+    // Ctrl+S saves from any row, and a books folder that is not there sends
+    // the user back to the row that stopped the save.
+    let panel = app.model.settings.as_mut().unwrap();
+    panel.selected = 5;
+    panel.values[0] = dir.path().join("gone").display().to_string();
+    let save = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    assert!(app
+        .model
+        .update(Message::Input(Event::Key(save)))
+        .is_empty());
+    let panel = app.model.settings.as_ref().unwrap();
+    assert_eq!(panel.selected, 0);
+    assert_eq!(panel.marks[0], settings::Mark::Bad("not found"));
+    assert_eq!(panel.hint(), "Books folder: not found");
+
+    // Skipping writes nothing and leaves the library saying where to look.
+    let effects = app.model.update(key(KeyCode::Esc));
+    assert!(matches!(effects.as_slice(), [Effect::Load { .. }]));
+    assert!(app.model.skipped && !app.model.options.first_run);
+    assert!(app.model.settings.is_none());
+    assert!(!dir.path().join("config.json").exists());
+}
+
+#[test]
+fn the_kobo_row_finds_its_own_mount_and_still_takes_a_typed_path() {
+    let mut panel = settings::Panel::new(&options(), false);
+    panel.selected = 2;
+    // Enter on the Kobo row asks for a search instead of a path.
+    assert!(matches!(
+        panel.input(KeyEvent::from(KeyCode::Enter)),
+        settings::Action::Run(settings::Task::Detect)
+    ));
+    panel.detected(vec![]);
+    assert!(panel.message.contains("No mounted Kobo found"));
+    assert!(panel.values[2].is_empty());
+    // One match answers the row; several ask which, back on the same row.
+    panel.detected(vec!["/media/kobo".into()]);
+    assert_eq!(panel.values[2], "/media/kobo");
+    assert_eq!((panel.selected, panel.device_selected), (2, None));
+    panel.detected(vec!["/media/a".into(), "/media/b".into()]);
+    assert_eq!(panel.device_selected, Some(0));
+    panel.input(KeyEvent::from(KeyCode::Down));
+    panel.input(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(panel.values[2], "/media/b");
+    // e types a mount in by hand without detecting anything.
+    assert!(matches!(
+        panel.input(KeyEvent::from(KeyCode::Char('e'))),
+        settings::Action::None
+    ));
+    assert!(panel.edit.is_some() && panel.selected == 2);
+}
+
+#[test]
+fn a_pdf_reaches_the_reader_only_by_converting_and_only_when_that_is_worth_it() {
+    use crate::pdf::{Concern, Verdict};
+    let mut model = Model::new(options());
+    model.catalog.status = vec![(Place::Xteink, "Ready".into())];
+    let pdf = |verdict: Option<Verdict>| {
+        let mut copy = crate::books::copy(Place::Local, "/books/paper.pdf", 100, false);
+        copy.verdict = verdict;
+        let book = crate::books::Book {
+            title: "Paper".into(),
+            author: String::new(),
+            copies: vec![copy],
+        };
+        Entry::new(
+            "Paper".into(),
+            String::new(),
+            "PDF",
+            Source::Book(Box::new(book)),
+        )
+    };
+    let ready = |model: &Model, entry| model.destination(entry, Place::Xteink);
+
+    // Nothing readable in it: refused outright, with the reason.
+    let entry = pdf(Some(Verdict::Impossible(Concern::NoText)));
+    assert!(matches!(
+        ready(&model, &entry),
+        Destination::Blocked("cannot be converted", _)
+    ));
+    // Clean text: offered, and it says what it will do.
+    let entry = pdf(Some(Verdict::Good));
+    assert!(matches!(ready(&model, &entry), Destination::Ready(_)));
+
+    // Poor: offered, but the first press asks rather than starting work.
+    let entry = pdf(Some(Verdict::Poor(vec![Concern::NoChapters])));
+    assert!(matches!(ready(&model, &entry), Destination::Ask(_, _)));
+    model.entries = vec![entry];
+    model.update(key(KeyCode::Enter));
+    assert!(model.update(key(KeyCode::Char('3'))).is_empty());
+    let asked = model.ask.clone().expect("should have asked first");
+    assert_eq!(asked.0, Place::Xteink);
+    assert!(asked.1.contains("no chapters"), "{}", asked.1);
+    // Anything but a yes leaves the question standing or withdraws it.
+    model.update(key(KeyCode::Esc));
+    assert!(model.ask.is_none() && !model.action.is_empty());
+    model.update(key(KeyCode::Char('3')));
+    assert!(matches!(
+        model.update(key(KeyCode::Char('y'))).as_slice(),
+        [Effect::Work {
+            target: Place::Xteink,
+            ..
+        }]
+    ));
+    assert!(model.ask.is_none());
+}
+
+#[test]
+fn menus_isolate_keys_and_sort_keeps_selection_and_marks() {
+    let mut model = Model::new(options());
+    model.entries = vec![
+        Entry::new(
+            "Alpha".into(),
+            "Zed".into(),
+            "EPUB",
+            Source::Local("/a".into()),
+        ),
+        Entry::new(
+            "Beta".into(),
+            "Amy".into(),
+            "EPUB",
+            Source::Local("/b".into()),
+        ),
+    ];
+    model.update(key(KeyCode::Char(' ')));
+    model.update(key(KeyCode::Char('s')));
+    assert_eq!(model.filtered()[0].title, "Beta");
+    assert_eq!(model.filtered()[model.selected].title, "Alpha");
+    assert!(model.is_marked(model.filtered()[model.selected]));
+    model.update(key(KeyCode::Char('?')));
+    model.update(key(KeyCode::Enter));
+    assert!(model.action.is_empty());
+    model.update(key(KeyCode::Char('q')));
+    assert!(!model.help);
+    model.update(key(KeyCode::Char('f')));
+    model.update(key(KeyCode::Down));
+    model.update(key(KeyCode::Esc));
+    assert_eq!(model.filter, model::Filter::All);
+    assert!(model.filter_menu.is_none());
+    model.update(key(KeyCode::Char('/')));
+    model.update(key(KeyCode::Char('s')));
+    assert_eq!(model.query, "s");
+    assert!(model.sort_author);
+}
+
+#[test]
+fn settings_help_and_filters_render_in_small_terminals() {
+    for (w, h) in [(1, 1), (25, 10), (52, 20), (80, 24)] {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        let mut model = Model::new(options());
+        model.help = true;
+        terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+        model.help = false;
+        model.filter_menu = Some(5);
+        terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+        model.filter_menu = None;
+        model.open_settings(false);
+        for selected in 0..8 {
+            model.settings.as_mut().unwrap().selected = selected;
+            terminal.draw(|frame| view::draw(&model, frame)).unwrap();
+        }
+    }
 }
 struct Proof {
     log: Arc<Mutex<Vec<String>>>,
@@ -275,7 +532,7 @@ fn destination_rules_are_shared_by_the_dialog_and_the_key_handler() {
     // What the dialog dims, the key handler refuses, with the same explanation.
     let reason = match model.destination(&entry, Place::Kobo) {
         Destination::Blocked(_, reason) => reason,
-        Destination::Ready(_) => unreachable!(),
+        other => unreachable!("{other:?}"),
     };
     model.entries = vec![entry.clone()];
     model.update(key(KeyCode::Enter));
@@ -335,28 +592,31 @@ fn marking_filters_and_bulk_copies_act_on_the_set() {
     model.update(Message::Finished(job, Ok("Copied 1 of 2".into())));
     // A filter narrows the same list; an ACSM is only ever an import request.
     model.update(key(KeyCode::Char('f')));
+    assert_eq!(model.filter.label(), "All books");
+    model.update(key(KeyCode::Down));
+    model.update(key(KeyCode::Enter));
     assert_eq!(model.filter.label(), "Missing from Local");
     assert!(model.filtered().is_empty());
     model.update(key(KeyCode::Char('a')));
     assert!(model.marked.is_empty());
-    // Shift-F walks back, so overshooting costs one key rather than a lap.
-    model.update(key(KeyCode::Char('F')));
-    assert_eq!(model.filter.label(), "All books");
-    model.update(key(KeyCode::Char('F')));
-    assert_eq!(model.filter.label(), "Unreadable");
-    // A full lap forward, in order, ending where it started.
-    for expected in [
+    // The menu supports direct selection, without cycling through filters.
+    for (index, expected) in [
         "All books",
         "Missing from Local",
         "Missing from Kobo",
         "Missing from Xteink",
         "Only on Xteink",
         "Unreadable",
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         model.update(key(KeyCode::Char('f')));
+        model.update(key(KeyCode::Char(char::from(b'1' + index as u8))));
         assert_eq!(model.filter.label(), expected);
     }
     model.update(key(KeyCode::Char('f')));
+    model.update(key(KeyCode::Char('1')));
     assert_eq!(model.filter.label(), "All books");
     // Mark-all covers everything shown, and repeating it clears the set.
     model.update(key(KeyCode::Char('a')));

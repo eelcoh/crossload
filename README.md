@@ -79,7 +79,26 @@ passes its tests on every change.
 
 ## Start here
 
-Save where your things live, once:
+Open the library:
+
+```sh
+crossload tui
+```
+
+Without a saved import folder, Crossload opens setup first. Choose your books
+and import folders — the two rows marked with a star — optionally test the
+reader address, which starts at `crosspoint.local`, then save with **Ctrl+S** or
+the **Save and rescan** row. Use arrows or Tab to select a row and Enter to edit
+it; Enter accepts an edit and Esc undoes it. On the Kobo row Enter searches for a
+mounted Kobo instead of asking for a path, and **e** types one in by hand. The
+line under the fields says what the selected row is for, and each path says
+whether it is there. Nothing is written until you save, and a save that cannot
+go through takes you to the row that stopped it. You can skip setup with Esc and
+browse the current directory. Press **,** in the library to set this up later.
+If a reader card mount is configured, copies use the card instead of Wi-Fi;
+clear that field to use the reader address.
+
+You can also save where your things live from the command line:
 
 ```sh
 crossload config set \
@@ -103,6 +122,29 @@ connecting or disconnecting something.
 
 Scanning only reads. Nothing is copied, changed or removed until you ask for it.
 
+Crossload carries **EPUB**, **PDF** and **CBZ**. EPUB is the format it works on:
+it reads the title and author out of the file, optimizes images for the X4's
+screen, and files the book under its author. A PDF or CBZ travels byte for byte
+— found, identified, copied and verified like any other book, but never
+rewritten, so it is titled by its filename and has no author. Books of any
+format are capped at 128 MiB, which a long comic can exceed.
+
+The reader is the exception: **the X4's library lists only EPUB.** It will store
+a PDF happily — its own file listing marks every entry `isEpub`, and says false
+for anything else — but its reading app never shows one. So a PDF reaches the
+reader by being **converted to EPUB**, and a CBZ, which cannot be, is refused
+with the reason given. Kobo and your computer take every format as it is.
+
+Crossload judges a PDF when it reads it, and the copy dialog acts on that
+judgement: a PDF of ordinary text says `convert to EPUB, copy` and goes; one
+that will convert badly says so and waits for a **y**; one with nothing to
+convert — pages that are scanned images, or a PDF under a password — is refused
+in red. Converting writes the EPUB into your import folder and leaves the PDF
+exactly as it was, so you keep both and can read the result before trusting it.
+Text is rebuilt into paragraphs, columns are read one at a time, and headings
+become the EPUB's table of contents; images and tables are not carried over, and
+a word broken across a line loses its hyphen.
+
 ## Reading the library
 
 The **L K X** column is Local, Kobo and Xteink: `●` an original, `◐` a copy that
@@ -121,7 +163,10 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | `enter` | copy the highlighted book, or everything marked |
 | `1` `2` `3` | choose Local, Kobo or Xteink in the dialog |
 | `space` `a` | mark one book, mark or clear everything shown |
-| `f` `F` | filter, forwards or back: missing from Local, from Kobo, from Xteink, only on the reader, unreadable |
+| `f` | open the filter menu; arrows and Enter, or `1`–`6`, select |
+| `s` | sort by author or title, keeping the highlighted book selected |
+| `,` | edit saved folders and devices, find a mounted Kobo, test the reader connection |
+| `?` | open keyboard help and the presence legend |
 | `d` | list every copy of a book, and delete one of them |
 | `/` | search by title or author |
 | `r` | rescan |
@@ -138,11 +183,13 @@ Copying ████████████████░░░░░░░░
 ⠹ Sending to CrossPoint and verifying contents…
 ```
 
-Copying to Kobo produces an ordinary sideloaded EPUB; eject the Kobo normally so
-it indexes them. Copying to the reader converts images for the X4 screen and
-files the book under its author. When a book exists in several places, the
-original is always preferred over a device copy, because the conversion is
-lossy and cannot be undone.
+Copying to Kobo produces an ordinary sideloaded file; eject the Kobo normally so
+it indexes them. Copying an EPUB to the reader converts its images for the X4
+screen and files the book under its author. When a book exists in several
+places, the original is always preferred over a device copy, because the
+conversion is lossy and cannot be undone. A PDF or CBZ is never converted, so no
+copy of one is ever the lesser one — `◐` cannot appear for them — and the reader
+is not offered as a destination for one at all.
 
 **d** lists every copy of a book with its size and path — the only place a
 duplicate shows itself, since two files of the same book share one row. Pressing

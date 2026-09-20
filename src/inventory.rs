@@ -1,5 +1,5 @@
 //! Read-only reader snapshots shared by sync and future TUI inventory views.
-use crate::{crosspoint::Reader, epub};
+use crate::{crosspoint::Reader, epub, format::Format};
 use anyhow::{ensure, Context, Result};
 use sha2::{Digest, Sha256};
 use std::{
@@ -217,7 +217,7 @@ impl Inventory {
                 "Case-colliding entries in destination: {}",
                 file.path
             );
-            let identity = if !file.directory && file.path.to_lowercase().ends_with(".epub") {
+            let identity = if !file.directory && Format::of(&file.path).is_some() {
                 progress(&file.path);
                 Some(identity(&destination.read(&file)?))
             } else {

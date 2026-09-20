@@ -17,6 +17,7 @@ struct Cli {
     #[arg(long, global = true)]
     state_dir: Option<PathBuf>,
     /// Preserve the original EPUB bytes instead of optimizing images for the X4.
+    /// PDF and CBZ are never rewritten either way.
     #[arg(long, global = true)]
     no_optimize: bool,
     /// Keep the local filename directly in the destination, without author folders.
@@ -33,7 +34,7 @@ enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
-    /// Browse local EPUB/ACSM files and Kobo books interactively.
+    /// Browse local books, ACSM requests and Kobo books interactively.
     Tui {
         /// Include Kobo previews in the browser.
         #[arg(long)]
@@ -83,7 +84,7 @@ enum Command {
         #[arg(long)]
         output: Option<PathBuf>,
     },
-    /// Copy a validated EPUB to an existing directory on a mounted SD card.
+    /// Copy a validated book to an existing directory on a mounted SD card.
     Copy {
         book: PathBuf,
         #[arg(long)]
@@ -97,7 +98,7 @@ enum Command {
         #[command(flatten)]
         transfer: Transfer,
     },
-    /// Send a validated EPUB to CrossPoint over Wi-Fi and verify its contents.
+    /// Send a validated book to CrossPoint over Wi-Fi and verify its contents.
     Send {
         book: PathBuf,
         /// Reader IP or HTTP URL shown in File Transfer mode.
@@ -377,13 +378,19 @@ fn run() -> Result<()> {
         } => {
             let transfer = transfer.resolve(&defaults)?;
             let explicit_reader = transfer.send_to.is_some();
+            let first_run = output.is_none() && defaults.output.is_none();
+            let browse = browse
+                .or(defaults.browse.clone())
+                .unwrap_or(std::env::current_dir()?);
             crossload::tui::run(crossload::tui::Options {
+                config: config_path.clone(),
+                first_run,
                 show_previews,
                 device: device.or(defaults.device.clone()),
-                browse: browse
-                    .or(defaults.browse.clone())
-                    .unwrap_or_else(|| PathBuf::from(".")),
-                output: required(output, defaults.output.clone(), "--output")?,
+                output: output
+                    .or(defaults.output.clone())
+                    .unwrap_or_else(|| browse.clone()),
+                browse,
                 serial,
                 state: cli.state_dir.clone(),
                 send_to: transfer.send_to.or(defaults.reader.clone()),
@@ -436,7 +443,7 @@ fn run() -> Result<()> {
             let planned: Vec<_> = snapshot
                 .books
                 .iter()
-                .filter(|book| book.has(from) && !book.has(to))
+                .filter(|book| book.has(from) && !book.readable_at(to))
                 .filter(|book| book.preferred().is_some_and(|c| !c.sha.is_empty()))
                 .collect();
             let mut done = Vec::new();
@@ -484,6 +491,13 @@ fn run() -> Result<()> {
             anyhow::ensure!(failures == 0, "{failures} of {} copies failed", done.len());
         }
         Command::Optimize { book, output } => {
+            // Optimizing means rebuilding an EPUB. Handing back an untouched
+            // PDF under the name "device copy" would be a misleading success.
+            anyhow::ensure!(
+                crossload::format::Format::of_path(&book)
+                    .is_none_or(|format| format.rewritten()),
+                "Only EPUB is optimized for the reader; copy a PDF or CBZ as it is with crossload copy"
+            );
             let output = required(output, defaults.output.clone(), "--output")?;
             let prepared = prepare(&book, !cli.no_optimize, !cli.flat)?;
             std::fs::create_dir_all(&output)?;
@@ -960,7 +974,7 @@ fn print_plan(planned: &[Planned<'_>], to: crossload::books::Place, apply: bool)
     let failures = planned.iter().filter(|(_, _, r)| r.is_err()).count();
     println!(
         "\n{} book(s) {} to {}{}",
-        planned.len(),
+        planned.len() - failures,
         if apply { "copied" } else { "would be copied" },
         to.label(),
         if failures > 0 {
