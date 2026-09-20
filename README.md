@@ -58,13 +58,22 @@ ebook libraries to install — and needs a distribution from 2024 or later
 
 ```sh
 VERSION=0.2.0
-NAME=crossload-$VERSION-aarch64-apple-darwin   # x86_64-apple-darwin on Intel
+ARCH=$([ "$(uname -m)" = arm64 ] && echo aarch64 || echo x86_64)
+NAME=crossload-$VERSION-$ARCH-apple-darwin
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.tar.gz
 curl -fLO https://github.com/eelcoh/crossload/releases/download/v$VERSION/$NAME.sha256
 shasum -a 256 --ignore-missing -c $NAME.sha256
 tar -xzf $NAME.tar.gz
+mkdir -p ~/.local/bin
 install -m 755 $NAME/crossload ~/.local/bin/crossload
 crossload --version
+```
+
+If that last line says `command not found`, `~/.local/bin` is not on your
+`PATH` — it is not there by default on macOS:
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
 ```
 
 Fetch it with `curl` rather than through a browser. macOS quarantines what a
