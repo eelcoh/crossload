@@ -325,7 +325,7 @@
     containers, so the machinery is adjacent. Narrow, but it is the difference
     between the book being on the Kobo and the book working on it.
 
-27. [ ] PDF to EPUB — the only way a PDF reaches the reader
+27. [~] PDF to EPUB — classifier, conversion and dialog done
     Many PDFs have no reason to be PDFs. Many others cannot survive the trip,
     and a bad conversion is a book you do not find out is unreadable until you
     are away from your computer. So the feature is the triage, not the
