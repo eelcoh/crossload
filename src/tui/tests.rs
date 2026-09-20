@@ -277,6 +277,55 @@ fn a_series_sorts_in_its_own_order_and_a_field_can_be_searched_alone() {
 }
 
 #[test]
+fn the_copy_dialog_says_what_room_is_left_and_when_a_set_will_not_fit() {
+    let mut model = Model::new(options());
+    model.catalog.status = vec![
+        (Place::Kobo, "Ready".into()),
+        (Place::CrossPoint, "Ready".into()),
+    ];
+    let book = crate::books::Book {
+        title: "Dune".into(),
+        author: "Frank Herbert".into(),
+        series: None,
+        series_index: None,
+        copies: vec![crate::books::copy(
+            Place::Local,
+            "/books/dune.epub",
+            900,
+            false,
+        )],
+    };
+    model.action = vec![Entry::new(
+        "Dune".into(),
+        "Frank Herbert".into(),
+        "EPUB",
+        Source::Book(Box::new(book)),
+    )];
+    let draw = |model: &Model| {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
+        terminal.draw(|frame| view::draw(model, frame)).unwrap();
+        format!("{:?}", terminal.backend().buffer())
+    };
+
+    // A Kobo with room says so; a reader over Wi-Fi cannot be measured at all,
+    // and says that rather than leaving room to be assumed.
+    model.room = vec![
+        (Place::Kobo, Some(4096)),
+        (Place::CrossPoint, None),
+        (Place::Local, None),
+    ];
+    let rendered = draw(&model);
+    assert!(rendered.contains("4.0 KiB free"), "{rendered}");
+    assert!(rendered.contains("free unknown"), "{rendered}");
+
+    // A destination with less room than the set weighs is marked, not hidden.
+    model.room = vec![(Place::Kobo, Some(100)), (Place::CrossPoint, None)];
+    let rendered = draw(&model);
+    assert!(rendered.contains("✗ 100 B free"), "{rendered}");
+}
+
+#[test]
 fn menus_isolate_keys_and_sort_keeps_selection_and_marks() {
     let mut model = Model::new(options());
     model.entries = vec![

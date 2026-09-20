@@ -674,6 +674,13 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   **Escape** cancels. Opening the menu does not transfer anything. The dialog
   marks each destination before you choose it: an allowed copy, or why it is
   not available (already there, device unavailable, or discovery still running).
+  It also says how much room each destination has left, and marks one in red
+  when the books weigh more than that. A set's weight is taken from its sources,
+  which is the most it could need, since optimizing and converting only ever
+  make a book smaller. A reader reached over Wi-Fi says `free unknown` rather
+  than a number: CrossPoint reports its free memory, which is not its storage,
+  and offers no endpoint for the card, so only a mounted card, a Kobo or a local
+  folder is measured. The room is read once, when the dialog opens.
 - Copies already found at the destination are reported instead of duplicated.
 - Original Local/Kobo copies are preferred over optimized/device copies.
   A reader-only copy can be recovered, but any image optimization it went

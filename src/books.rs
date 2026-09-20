@@ -863,8 +863,28 @@ pub fn remove(
         }
     }
 }
+/// How much room a place has left, in bytes.
+///
+/// A reader reached over Wi-Fi cannot say. CrossPoint's status reports its free
+/// heap, which is memory rather than storage, and it has no endpoint for the
+/// card; admitting that is better than reporting a number that means something
+/// else. A mounted card, a Kobo and a local folder all answer honestly.
+pub fn room(path: Option<&Path>) -> Option<u64> {
+    // A folder yet to be made has the room of the filesystem it will sit on.
+    let existing = path?.ancestors().find(|parent| parent.exists())?;
+    fs2::available_space(existing).ok()
+}
+/// Where each place writes, for asking it how much room is left.
+pub fn destination_path(options: &Options, place: Place) -> Option<&Path> {
+    match place {
+        Place::Local => Some(&options.output),
+        Place::Kobo => options.kobo.as_deref(),
+        Place::CrossPoint => options.card.as_deref(),
+    }
+}
+
 /// Human-readable bytes, matching what the interface shows.
-fn size(bytes: u64) -> String {
+pub fn size(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
     let mut value = bytes as f64;
     let mut unit = 0;

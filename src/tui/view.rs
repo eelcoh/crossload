@@ -827,6 +827,17 @@ fn wrapped(text: &str, limit: usize) -> Vec<String> {
     }
     lines
 }
+/// The most a set of books could take at its destination: what its sources
+/// weigh. Optimizing and converting only ever make a book smaller.
+fn wanted(entries: &[Entry]) -> u64 {
+    entries
+        .iter()
+        .filter_map(|entry| match &entry.source {
+            Source::Book(book) => book.preferred().map(|copy| copy.size),
+            Source::Local(_) => None,
+        })
+        .sum()
+}
 fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
     if let Some((place, reason)) = &model.ask {
         let width = area.width.min(52);
@@ -870,7 +881,11 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
         },
         Some(Source::Local(_)) if single => Span::styled("from a local ACSM request", plain()),
         _ => Span::styled(
-            format!("{} marked", crate::books::books(entries.len())),
+            format!(
+                "{} marked · {}",
+                crate::books::books(entries.len()),
+                size(wanted(entries))
+            ),
             plain(),
         ),
     })];
@@ -917,6 +932,25 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
         } else {
             format!("copy {ready} of {}, rest {blocked}", entries.len())
         };
+        // What the destination has left, and whether the set would fit in it.
+        // A conversion shrinks a PDF a long way, so the source size is the most
+        // that could be needed rather than what will be.
+        let room = model
+            .room
+            .iter()
+            .find(|(p, _)| *p == place)
+            .map(|(_, room)| *room);
+        let space = match (ready, room) {
+            (0, _) => Span::raw(String::new()),
+            (_, Some(Some(free))) if free < wanted(entries) => {
+                Span::styled(format!("  ✗ {} free", size(free)), fg(Color::Red))
+            }
+            (_, Some(Some(free))) => Span::styled(format!("  {} free", size(free)), plain()),
+            // Only a mounted card can be measured; CrossPoint reports its free
+            // memory, which is not its storage, so nothing here pretends.
+            (_, Some(None)) => Span::styled("  free unknown", plain()),
+            (_, None) => Span::raw(String::new()),
+        };
         let (label, style, detail) = if ready > 0 {
             (
                 Span::styled(key, accent()),
@@ -940,8 +974,9 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
         lines.push(Line::from(vec![
             label,
             Span::raw("  "),
-            Span::styled(format!("{:<8}", place.label()), style),
+            Span::styled(format!("{:<11}", place.label()), style),
             detail,
+            space,
         ]));
     }
     lines.push(Line::default());
@@ -951,7 +986,7 @@ fn draw_action(model: &Model, frame: &mut Frame<'_>, area: Rect) {
     ]));
     // Never wider or taller than the list it covers, so a small terminal clips
     // the dialog's own content instead of drawing outside the frame.
-    let width = area.width.min(48);
+    let width = area.width.min(56);
     let height = (lines.len() as u16 + 2).min(area.height);
     let popup = Rect {
         x: area.x + area.width.saturating_sub(width) / 2,

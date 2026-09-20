@@ -322,12 +322,27 @@
     Deliberately left: language, publisher and date are parsed by nothing and
     shown nowhere. They exist in these files, but nothing was asking for them.
 
-23. [ ] Free space before a copy
+23. [x] Free space before a copy — implemented
     Marking forty books and pressing Enter discovers a full card partway
     through. For a mounted card or a Kobo this is one statvfs and a line in the
     copy dialog: the size of the set against the room left. `Status` is version
     and device only, so Wi-Fi has no free-space endpoint to ask; that path must
     say unknown rather than guess, as location states already do.
+    Implemented with fs2, already a dependency, so nothing new was added.
+    `books::room` takes the path a place writes to and walks up to the nearest
+    existing parent, so a folder yet to be made reports the disk it will sit on.
+    The dialog reads all three places once when it opens rather than on every
+    frame it is drawn for, and shows the room beside each destination. A set
+    weighing more than the room left is marked in red rather than refused: the
+    weight is taken from the sources, which is the most it could need, since
+    optimizing and converting only ever make a book smaller.
+    Confirmed rather than assumed: CrossPoint has no endpoint for storage.
+    /api/status carries a free heap, which is memory, and info, storage, disk,
+    system, free, space, fs and device all answer Not Found. So a reader over
+    Wi-Fi says free unknown, and only a mounted card, a Kobo or a local folder
+    is measured. Verified against a real card at 6.5 GiB free; the unknown path
+    has only a render test behind it, because the reader left the network while
+    it was being checked.
 
 24. [ ] A record of what was copied
     Every copy is verified and nothing is ever overwritten, but nothing

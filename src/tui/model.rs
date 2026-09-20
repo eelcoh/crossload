@@ -123,6 +123,10 @@ pub(super) enum Destination {
     Blocked(&'static str, String),
 }
 pub(super) struct Model {
+    /// Room left at each place, read once when the copy dialog opens. A place
+    /// that cannot say has None, which the dialog shows as unknown rather than
+    /// leaving the reader to assume there is room.
+    pub room: Vec<(Place, Option<u64>)>,
     /// A destination that wants a yes first, and why.
     pub ask: Option<(Place, String)>,
     pub settings: Option<super::settings::Panel>,
@@ -179,6 +183,7 @@ impl Model {
             "Discovering books…"
         };
         Self {
+            room: vec![],
             ask: None,
             settings: None,
             skipped: false,
@@ -960,6 +965,20 @@ impl Model {
                     }
                     KeyCode::Enter if self.busy.is_none() => {
                         self.action = self.chosen();
+                        // Asked once, when the dialog opens, rather than on
+                        // every frame it is drawn for.
+                        self.room = [Place::Local, Place::Kobo, Place::CrossPoint]
+                            .map(|place| {
+                                let path = match place {
+                                    Place::Local => Some(self.options.output.as_path()),
+                                    Place::Kobo => self.options.device.as_deref(),
+                                    // Only a mounted card can be measured; a
+                                    // reader over Wi-Fi has nothing to ask.
+                                    Place::CrossPoint => self.options.copy_to.as_deref(),
+                                };
+                                (place, crate::books::room(path))
+                            })
+                            .to_vec();
                     }
                     _ => {}
                 }

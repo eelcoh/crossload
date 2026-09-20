@@ -506,3 +506,16 @@ fn pdfs_and_comics_are_carried_whole_and_are_never_device_copies() {
     let carried = fs::read(o.kobo.as_ref().unwrap().join("Unknown author/Vol 1.cbz")).unwrap();
     assert_eq!(carried, comic);
 }
+
+#[test]
+fn room_is_measured_where_a_place_writes_and_admitted_where_it_cannot_be() {
+    let tmp = tempfile::tempdir().unwrap();
+    // A folder that does not exist yet has the room of the disk it will sit on.
+    let unmade = tmp.path().join("not/made/yet");
+    assert!(books::room(Some(&unmade)).is_some_and(|free| free > 0));
+    assert!(books::room(Some(tmp.path())).is_some_and(|free| free > 0));
+    // Which is the same answer as for the disk it will be made on.
+    assert_eq!(books::room(Some(&unmade)), books::room(Some(tmp.path())));
+    // A reader reached over Wi-Fi has no path to ask at all, and says so.
+    assert_eq!(books::room(None), None);
+}
