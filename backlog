@@ -366,7 +366,7 @@
     Verified by copying real books and reading the record back, including a CBZ
     refused by the reader, which the record keeps with its reason.
 
-25. [ ] Kobo annotations and collections
+25. [~] Kobo annotations and collections — annotations done
     `kobo.rs` opens KoboReader.sqlite and reads only the `content` table. The
     same database holds `Bookmark` (highlights and notes) and `Shelf` /
     `ShelfContent` (collections). Export highlights per book as Markdown:
@@ -374,6 +374,20 @@
     are not the only thing trapped on a closed device, which is the same reason
     the ADEPT work exists. Collections follow: shelves are a better basis for
     `--organized` than author names.
+    `Library::annotations` reads Bookmark joined to content, so a mark arrives
+    with the book it was made in. Hidden marks are left where they are, and so
+    are dog-ears: a dog-ear marks a page and says nothing, so there is nothing
+    in it to carry off. A database without the table at all is a device with no
+    marks rather than an error. `crossload kobo notes` prints Markdown grouped
+    by book, `--output DIR` writes one file each and never overwrites one,
+    `--json` gives it as data. The book's words are quoted and the reader's are
+    not. Read-only throughout: a Kobo's database is the device's, not ours.
+    Verified against the real Kobo here — 13 highlights across four books, with
+    its 14 dog-ears correctly left behind.
+    Shelves are still untouched. This library has seven of them over 75 books,
+    so there is real data to build against when it is wanted, but using them for
+    `--organized` changes the folder layout on a device, which deserves its own
+    decision rather than being folded in here.
 
 26. [ ] kepub for the Kobo
     A sideloaded EPUB on a Kobo loses the store reading experience: no reliable

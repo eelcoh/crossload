@@ -37,6 +37,60 @@ pub struct Book {
     kobo_volume_id: Option<String>,
 }
 
+/// Something the reader marked while reading.
+#[derive(Clone, Debug, Serialize)]
+pub struct Annotation {
+    pub title: String,
+    pub author: String,
+    /// The passage highlighted, which a note on its own leaves empty.
+    pub text: String,
+    /// What was written about it, if anything.
+    pub note: String,
+    pub created: String,
+    /// How far into the chapter it sits, from 0 to 1.
+    pub progress: f64,
+}
+
+impl Annotation {
+    /// Which book this belongs to, for gathering a reader's marks together.
+    pub fn book(&self) -> (&str, &str) {
+        (&self.title, &self.author)
+    }
+}
+
+/// A reader's marks on one book, as Markdown.
+///
+/// Quoted rather than reproduced as body text, so it stays clear on the page
+/// which words are the book's and which are the reader's.
+pub fn as_markdown(title: &str, author: &str, notes: &[&Annotation]) -> String {
+    let mut out = format!("# {title}\n");
+    if !author.is_empty() {
+        out.push_str(&format!("\n*{author}*\n"));
+    }
+    for note in notes {
+        out.push('\n');
+        if !note.text.is_empty() {
+            for line in note.text.lines() {
+                out.push_str(&format!("> {}\n", line.trim()));
+            }
+        }
+        if !note.note.is_empty() {
+            if !note.text.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format!("{}\n", note.note));
+        }
+        // The date the device recorded, trimmed to the day it happened on.
+        let day = note.created.split('T').next().unwrap_or("").trim();
+        let at = (note.progress * 100.0).round() as i64;
+        out.push_str(&match (day.is_empty(), at) {
+            (true, _) => format!("\n— {at}% in\n"),
+            (false, _) => format!("\n— {at}% in, {day}\n"),
+        });
+    }
+    out
+}
+
 pub struct Library {
     root: PathBuf,
     book_dir: PathBuf,
@@ -80,6 +134,52 @@ impl Library {
             db,
             db_bytes,
         })
+    }
+
+    /// A highlight or a note, with the book it was taken from.
+    ///
+    /// Read-only, and nothing about it is written back: a Kobo's database is
+    /// the device's, not ours.
+    pub fn annotations(&self) -> Result<Vec<Annotation>> {
+        // A minimal or older database may not have the table at all, which is
+        // an empty record rather than a failure.
+        let present: bool = self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Bookmark')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !present {
+            return Ok(vec![]);
+        }
+        let mut query = self
+            .db
+            .prepare(
+                "SELECT COALESCE(c.Title, b.VolumeID), COALESCE(c.Attribution, ''),
+                 COALESCE(b.Text, ''), COALESCE(b.Annotation, ''),
+                 COALESCE(b.DateCreated, ''), COALESCE(b.ChapterProgress, 0)
+                 FROM Bookmark b LEFT JOIN content c ON c.ContentID = b.VolumeID
+                 WHERE COALESCE(b.Hidden, 'false') NOT IN ('true', '1')
+                 ORDER BY COALESCE(c.Title, b.VolumeID) COLLATE NOCASE,
+                 COALESCE(b.ChapterProgress, 0)",
+            )
+            .context("Unsupported Kobo database schema")?;
+        let rows = query.query_map([], |row| {
+            Ok(Annotation {
+                title: row.get(0)?,
+                author: row.get(1)?,
+                text: row.get::<_, String>(2)?.trim().to_owned(),
+                note: row.get::<_, String>(3)?.trim().to_owned(),
+                created: row.get(4)?,
+                progress: row.get(5)?,
+            })
+        })?;
+        Ok(rows
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            // A dog-ear marks a page and says nothing; there is nothing in it
+            // to carry off the device.
+            .filter(|note| !note.text.is_empty() || !note.note.is_empty())
+            .collect())
     }
 
     pub fn books(&self) -> Result<Vec<Book>> {

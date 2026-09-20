@@ -98,6 +98,13 @@ browse the current directory. Press **,** in the library to set this up later.
 If a reader card mount is configured, copies use the card instead of Wi-Fi;
 clear that field to use the reader address.
 
+Your highlights come off the Kobo too:
+
+```sh
+crossload kobo notes                     # as Markdown, grouped by book
+crossload kobo notes --output ~/Notes    # one file per book
+```
+
 You can also save where your things live from the command line:
 
 ```sh

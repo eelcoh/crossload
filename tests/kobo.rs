@@ -616,6 +616,95 @@ fn lists_sideloaded_metadata_and_extensionless_epubs_but_skips_other_files() {
 }
 
 #[test]
+fn highlights_and_notes_come_off_the_device_and_dog_ears_stay_behind() {
+    let device = Device::new(false, false, false);
+    let db = Connection::open(device.path().join(".kobo/KoboReader.sqlite")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE Bookmark (VolumeID TEXT, Text TEXT, Annotation TEXT,
+         DateCreated TEXT, ChapterProgress REAL, Hidden TEXT, Type TEXT);",
+    )
+    .unwrap();
+    let rows: [(&str, &str, &str, &str, f64, &str, &str); 4] = [
+        (
+            ID,
+            "  a passage worth keeping  ",
+            "",
+            "2025-09-02T11:12:54.000",
+            0.216,
+            "false",
+            "highlight",
+        ),
+        (
+            ID,
+            "",
+            "a thought with no passage",
+            "2025-09-03T08:00:00.000",
+            0.5,
+            "false",
+            "note",
+        ),
+        // A dog-ear marks a page and says nothing, and a hidden mark was
+        // taken back; neither has anything to carry off the device.
+        (
+            ID,
+            "",
+            "",
+            "2025-09-04T08:00:00.000",
+            0.9,
+            "false",
+            "dogear",
+        ),
+        (
+            ID,
+            "deleted highlight",
+            "",
+            "2025-09-05T08:00:00.000",
+            0.1,
+            "true",
+            "highlight",
+        ),
+    ];
+    for row in rows {
+        db.execute(
+            "INSERT INTO Bookmark VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![row.0, row.1, row.2, row.3, row.4, row.5, row.6],
+        )
+        .unwrap();
+    }
+    drop(db);
+
+    let notes = Library::open(device.path()).unwrap().annotations().unwrap();
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    assert_eq!(notes[0].text, "a passage worth keeping");
+    assert_eq!(notes[0].title, "Test / book");
+    assert_eq!(notes[0].author, "Test Author");
+    assert_eq!(notes[1].note, "a thought with no passage");
+
+    let marks: Vec<_> = notes.iter().collect();
+    let markdown = crossload::kobo::as_markdown("Test / book", "Test Author", &marks);
+    assert!(
+        markdown.starts_with("# Test / book\n\n*Test Author*\n"),
+        "{markdown}"
+    );
+    // The book's words are quoted; the reader's are not, so which is which
+    // survives the trip.
+    assert!(markdown.contains("> a passage worth keeping"), "{markdown}");
+    assert!(
+        markdown.contains("\na thought with no passage\n"),
+        "{markdown}"
+    );
+    assert!(markdown.contains("— 22% in, 2025-09-02"), "{markdown}");
+
+    // A device without the table at all is a device with no marks on it.
+    let bare = Device::new(false, false, false);
+    assert!(Library::open(bare.path())
+        .unwrap()
+        .annotations()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn sideloaded_pdfs_are_listed_and_imported_untouched() {
     let device = Device::new(false, false, false);
     let paper = b"%PDF-1.7\n1 0 obj<</Type/Catalog>>endobj\ntrailer\n%%EOF\n".to_vec();

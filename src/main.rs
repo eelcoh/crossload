@@ -320,6 +320,17 @@ enum KoboCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Print the highlights and notes made on the Kobo, as Markdown.
+    Notes {
+        #[command(flatten)]
+        device: Device,
+        /// Write one file per book here instead of printing them.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Print structured JSON instead of Markdown.
+        #[arg(long)]
+        json: bool,
+    },
     /// List Kobo store books, previews, and sideloaded EPUBs with their IDs.
     List {
         /// Include previews (hidden by default).
@@ -733,6 +744,61 @@ fn run() -> Result<()> {
                 }
             }
 
+            KoboCommand::Notes {
+                device,
+                output,
+                json,
+            } => {
+                let library = Library::open(&required(
+                    device.device,
+                    defaults.device.clone(),
+                    "--device",
+                )?)?;
+                let notes = library.annotations()?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&notes)?);
+                } else if notes.is_empty() {
+                    eprintln!("No highlights or notes on this Kobo.");
+                } else {
+                    // Grouped by book, in the order the query returned them.
+                    let mut books: Vec<(&str, &str)> = vec![];
+                    for note in &notes {
+                        if !books.contains(&note.book()) {
+                            books.push(note.book());
+                        }
+                    }
+                    for (title, author) in books {
+                        let marks: Vec<_> = notes
+                            .iter()
+                            .filter(|note| note.book() == (title, author))
+                            .collect();
+                        let text = crossload::kobo::as_markdown(title, author, &marks);
+                        match &output {
+                            None => println!("{text}"),
+                            Some(directory) => {
+                                std::fs::create_dir_all(directory)?;
+                                let name = crossload::prepare::component(title, "Untitled");
+                                let path = directory.join(format!("{name}.md"));
+                                // A reader's own notes are not ours to
+                                // overwrite either.
+                                let mut file = std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .create_new(true)
+                                    .open(&path)
+                                    .map_err(|e| {
+                                        anyhow::anyhow!(
+                                            "Cannot write {}: {e}; existing files are never overwritten",
+                                            path.display()
+                                        )
+                                    })?;
+                                use std::io::Write;
+                                file.write_all(text.as_bytes())?;
+                                eprintln!("{}", printable(&path.display().to_string()));
+                            }
+                        }
+                    }
+                }
+            }
             KoboCommand::List {
                 device,
                 json,

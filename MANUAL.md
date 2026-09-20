@@ -813,6 +813,15 @@ made and quietly wasted. A copy already on the reader in such a format is
 labelled in the details panel as held but not listed. Kobo and local folders
 accept every format Crossload carries.
 
+`crossload kobo notes` prints the highlights and notes made on a Kobo as
+Markdown, grouped by book, each with how far into the book it sits and the day
+it was made. `--output DIR` writes one file per book instead of printing, and
+never overwrites one that is already there; `--json` gives the same as data.
+The book's own words are quoted and the reader's are not, so which is which
+survives the trip. A dog-ear marks a page and says nothing, so there is nothing
+in it to carry off; a mark that was taken back stays taken back. Nothing is
+written to the device: its database is read, and only read.
+
 Every copy is written down. `crossload history` shows the most recent, with
 `-n` for how many, `--failed` for only the ones that did not arrive, and `--json`
 for the record as data. **h** shows the same in the library, newest first.
