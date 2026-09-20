@@ -49,6 +49,7 @@ fn options(root: &std::path::Path) -> Options {
         optimize: true,
         organized: true,
         cache: Some(root.join("index.json")),
+        history: Some(root.join("history.jsonl")),
     }
 }
 fn kobo(root: &std::path::Path) {

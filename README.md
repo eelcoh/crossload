@@ -168,6 +168,7 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | `f` | open the filter menu; arrows and Enter, or `1`–`6`, select |
 | `s` | sort by author or title, keeping the highlighted book selected |
 | `,` | edit saved folders and devices, find a mounted Kobo, test the reader connection |
+| `h` | what was copied lately, and whether it arrived |
 | `?` | open keyboard help and the presence legend |
 | `d` | list every copy of a book, and delete one of them |
 | `/` | search by title or author |

@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum Place {
     Local,
     Kobo,
@@ -100,6 +100,8 @@ pub struct Options {
     pub organized: bool,
     /// Identity cache file; None uses the default cache location.
     pub cache: Option<PathBuf>,
+    /// Record of what was copied; None uses the default state location.
+    pub history: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -899,6 +901,34 @@ pub fn size(bytes: u64) -> String {
     }
 }
 pub fn transfer(
+    options: &Options,
+    book: &Book,
+    target: Place,
+    progress: &dyn Fn(&str),
+) -> Result<String> {
+    let outcome = transferred(options, book, target, progress);
+    // Every copy comes through here, so this is where it is remembered. The
+    // record is a courtesy: a copy that happened is never reported as failed
+    // because a line about it could not be written.
+    crate::history::record(
+        options.history.clone(),
+        &crate::history::Entry {
+            at: crate::history::now(),
+            title: book.title.clone(),
+            author: book.author.clone(),
+            from: book.preferred().map_or(target, |copy| copy.place),
+            to: target,
+            bytes: book.preferred().map_or(0, |copy| copy.size),
+            ok: outcome.is_ok(),
+            detail: match &outcome {
+                Ok(message) => message.clone(),
+                Err(e) => format!("{e:#}"),
+            },
+        },
+    );
+    outcome
+}
+fn transferred(
     options: &Options,
     book: &Book,
     target: Place,

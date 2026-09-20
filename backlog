@@ -344,12 +344,27 @@
     has only a render test behind it, because the reader left the network while
     it was being checked.
 
-24. [ ] A record of what was copied
+24. [x] A record of what was copied — implemented
     Every copy is verified and nothing is ever overwritten, but nothing
     remembers any of it. An append-only journal — what went where, when,
     verified or failed — and `crossload history` to read it, with the last few
     entries in the TUI. Completes the trust the rest of the tool has already
     paid for, and is the precondition for ever undoing a sync.
+    Implemented in `src/history.rs` as JSON lines in the state directory, which
+    is where something that is not disposable belongs — the cache is next door
+    and is. `books::transfer` is the one road every copy takes, so the record is
+    kept there, around a renamed inner function, and it covers the TUI, `sync`
+    and `kobo sync` at once. Writing is a courtesy: a copy that happened is
+    never reported as failed because its line could not be written, an
+    unparseable line is skipped rather than spoiling the record around it, and
+    the file is trimmed to its last 5000 entries only once it has grown past
+    them. `crossload history` takes -n, --failed and --json; h shows the same
+    in the library, newest first, with failures in red.
+    The only date arithmetic in the program is here, written out rather than
+    pulled in: days from the civil epoch by Hinnant's algorithm, tested against
+    a leap day and against 2000, which is a leap year where 1900 was not.
+    Verified by copying real books and reading the record back, including a CBZ
+    refused by the reader, which the record keeps with its reason.
 
 25. [ ] Kobo annotations and collections
     `kobo.rs` opens KoboReader.sqlite and reads only the `content` table. The

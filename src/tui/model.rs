@@ -136,6 +136,8 @@ pub(super) struct Model {
     pub configuring: Option<u64>,
     pub help: bool,
     pub help_scroll: u16,
+    /// Recent copies, read when the record is opened rather than kept live.
+    pub history: Option<Vec<crate::history::Entry>>,
     pub filter_menu: Option<usize>,
     pub sort: Sort,
     pub options: Options,
@@ -190,6 +192,7 @@ impl Model {
             configuring: None,
             help: false,
             help_scroll: 0,
+            history: None,
             filter_menu: None,
             sort: Sort::Title,
             options,
@@ -635,6 +638,12 @@ impl Model {
                     }
                     return vec![];
                 }
+                if self.history.is_some() {
+                    if matches!(key.code, KeyCode::Esc | KeyCode::Char('h' | 'q')) {
+                        self.history = None;
+                    }
+                    return vec![];
+                }
                 if self.help {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => self.help = false,
@@ -913,6 +922,11 @@ impl Model {
                         self.help = true;
                         self.help_scroll = 0;
                     }
+                    KeyCode::Char('h') => {
+                        // Read when asked for: a record that is not being
+                        // looked at does not need to be held.
+                        self.history = Some(crate::history::read(None, 200));
+                    }
                     KeyCode::Char(',') => {
                         if self.busy.is_none() && self.loading.is_none() {
                             self.open_settings(false);
@@ -1007,6 +1021,7 @@ pub(super) const HELP: &[&str] = &[
     "f           Open filters; arrows + Enter or 1–6 select",
     "s           Sort by title, then author, then series (ascending)",
     "d           Inspect copies; 1–9 asks to delete one; y confirms",
+    "h           What was copied lately, and whether it arrived",
     "r           Refresh connected locations",
     ",           Settings: folders, Kobo detection and reader test",
     "Esc         Stop copying after this book; close a dialog; otherwise quit",

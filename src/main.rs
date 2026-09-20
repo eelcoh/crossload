@@ -52,6 +52,18 @@ enum Command {
         #[command(flatten)]
         transfer: Transfer,
     },
+    /// Show what was copied, when, and whether it arrived.
+    History {
+        /// How many of the most recent copies to show.
+        #[arg(long, short = 'n', default_value_t = 20)]
+        count: usize,
+        /// Show only the copies that failed.
+        #[arg(long)]
+        failed: bool,
+        /// Print structured JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// List the unified Local, Kobo and CrossPoint catalog.
     Books {
         #[command(flatten)]
@@ -272,6 +284,7 @@ impl LibraryArgs {
             optimize,
             organized,
             cache: None,
+            history: None,
         })
     }
 }
@@ -411,6 +424,61 @@ fn run() -> Result<()> {
                 optimize: !cli.no_optimize,
                 organized: !cli.flat,
             })?;
+        }
+        Command::History {
+            count,
+            failed,
+            json,
+        } => {
+            // Ask for more than wanted when filtering, so a run of successes
+            // does not hide the failures behind them.
+            let asked = if failed {
+                count.saturating_mul(50)
+            } else {
+                count
+            };
+            let mut entries = crossload::history::read(None, asked.max(count));
+            if failed {
+                entries.retain(|entry| !entry.ok);
+            }
+            let entries = &entries[entries.len().saturating_sub(count)..];
+            if json {
+                println!("{}", serde_json::to_string_pretty(entries)?);
+            } else if entries.is_empty() {
+                println!("Nothing copied yet, or the record has not been kept.");
+            } else {
+                let mut table = Table::new();
+                table
+                    .load_style(NOTHING)
+                    .set_content_arrangement(ContentArrangement::Dynamic)
+                    .set_header(["WHEN", "TITLE", "AUTHOR", "FROM", "TO", "RESULT"]);
+                let interactive = std::io::stdout().is_terminal();
+                if !interactive {
+                    println!("WHEN\tTITLE\tAUTHOR\tFROM\tTO\tRESULT");
+                }
+                for entry in entries {
+                    let row = [
+                        crossload::history::stamp(entry.at),
+                        printable(&entry.title),
+                        printable(&entry.author),
+                        entry.from.label().to_owned(),
+                        entry.to.label().to_owned(),
+                        if entry.ok {
+                            "copied".to_owned()
+                        } else {
+                            format!("failed: {}", printable(&entry.detail))
+                        },
+                    ];
+                    if interactive {
+                        table.add_row(row);
+                    } else {
+                        println!("{}", row.join("\t"));
+                    }
+                }
+                if interactive {
+                    println!("{table}");
+                }
+            }
         }
         Command::Books { library, json } => {
             let options = library.options(&defaults, !cli.no_optimize, !cli.flat)?;

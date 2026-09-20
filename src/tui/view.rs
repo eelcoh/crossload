@@ -404,7 +404,9 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         frame.render_widget(block, areas[3]);
         frame.render_widget(Paragraph::new(lines), inner);
     }
-    let keys: &[(&str, &str)] = if model.ask.is_some() {
+    let keys: &[(&str, &str)] = if model.history.is_some() {
+        &[("esc", "close")]
+    } else if model.ask.is_some() {
         &[("y", "convert and copy"), ("esc", "cancel")]
     } else if model.confirm.is_some() {
         &[("y", "delete"), ("esc", "keep")]
@@ -449,6 +451,36 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         Paragraph::new(status_lines(model)).wrap(Wrap { trim: false }),
         areas[5],
     );
+    if let Some(entries) = &model.history {
+        let area = overlay(frame, " Copied lately · Esc close ", 88, 20);
+        let lines: Vec<Line<'static>> = if entries.is_empty() {
+            vec![Line::raw(
+                "Nothing copied yet, or the record has not been kept.",
+            )]
+        } else {
+            entries
+                .iter()
+                .rev()
+                .take(area.height as usize)
+                .map(|entry| {
+                    Line::from(vec![
+                        Span::styled(format!("{}  ", crate::history::stamp(entry.at)), plain()),
+                        Span::styled(format!("{:<34}", shorten(&entry.title, 33)), bold()),
+                        Span::styled(format!("{:<11}", entry.to.label()), plain()),
+                        if entry.ok {
+                            Span::styled("copied", fg(Color::Green))
+                        } else {
+                            Span::styled(
+                                shorten(&format!("failed: {}", entry.detail), 24),
+                                fg(Color::Red),
+                            )
+                        },
+                    ])
+                })
+                .collect()
+        };
+        frame.render_widget(Paragraph::new(lines), area);
+    }
     if model.help {
         let area = overlay(frame, " Help · ↑/↓ scroll · ?/Esc close ", 86, 23);
         frame.render_widget(

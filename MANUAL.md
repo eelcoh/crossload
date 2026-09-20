@@ -813,6 +813,18 @@ made and quietly wasted. A copy already on the reader in such a format is
 labelled in the details panel as held but not listed. Kobo and local folders
 accept every format Crossload carries.
 
+Every copy is written down. `crossload history` shows the most recent, with
+`-n` for how many, `--failed` for only the ones that did not arrive, and `--json`
+for the record as data. **h** shows the same in the library, newest first.
+
+The record is one JSON object per line in `$XDG_STATE_HOME/crossload/history.jsonl`,
+or `~/.local/state/crossload/history.jsonl` when that is unset, and under
+`~/Library/Application Support/crossload` on macOS. It is state rather than
+cache, so it does not live with the things that are disposable, and it keeps the
+last 5000 copies. Writing it is a courtesy and never a condition: a copy that
+succeeded is never reported as failed because its line could not be written, and
+a line that cannot be parsed is skipped rather than spoiling the rest.
+
 ACSM files appear as local import requests. Choose Local first to fulfill them,
 then refresh to copy the resulting EPUB. A fulfilled request is moved into an
 `archive/` folder beside itself, so it stops appearing as pending; nothing is
