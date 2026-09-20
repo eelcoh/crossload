@@ -741,6 +741,47 @@
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.
 
+32. [ ] OPDS catalogues, as a client — investigation
+    OPDS is a syndication format for ebook catalogues: 1.2 is Atom XML and is
+    what nearly everything speaks, 2.0 is JSON and is not widely deployed. A
+    feed is either navigation, linking on to more feeds, or acquisition, whose
+    entries are books carrying links of `rel="http://opds-spec.org/acquisition"`.
+    Calibre-Web, calibre's own content server, COPS, Kavita, Standard Ebooks,
+    Gutenberg and many library systems serve it.
+    Client only. Serving our own library would mean becoming a daemon, and the
+    reader speaks its own File Transfer API rather than OPDS, so a server is a
+    different program's job.
+    The integration is small because the rest already exists: a book downloaded
+    into the import folder is discovered, hashed, grouped and syncable with no
+    new code, and an ACSM dropped there is already a pending request with a ⇩
+    against it. So the reason this earns its place, rather than being a second
+    Google Books, is that many library feeds offer acquisition links of type
+    `application/vnd.adobe.adept+xml`. Crossload already fulfills ACSM with its
+    own ADEPT implementation, so borrowing from a library and reading it on the
+    X4 would be one tool on Linux, with neither Adobe Digital Editions nor
+    Calibre. A catalogue also actually serves the file, which is precisely what
+    Google Books could not.
+    Establish before writing anything, and from real feeds rather than from
+    memory: that 1.2 is what the catalogues worth using actually serve; whether
+    those feeds offer ACSM acquisition links or only a web page with a button on
+    it, since the whole case above rests on that; what authentication they want,
+    because a library card behind a login is the same wall that dropped item 28,
+    and an OPDS Authentication Document is not the only shape it takes; which
+    feeds can be developed against unauthenticated, Standard Ebooks and
+    Gutenberg being the obvious candidates; and how paging and OpenSearch are
+    spelled in practice.
+    Dependencies are already here: curl for HTTP, roxmltree for Atom, serde_json
+    if 2.0 ever matters. A catalogue is not a fourth Place — nothing syncs to it
+    — so it wants its own view rather than a column in the library.
+    Known limitation, and not one to design around: a catalogue cannot tell us
+    whether a book is already owned. Identity here is content-based on purpose,
+    and `inventory.rs` says outright that title and ISBN alone never prove two
+    books are the same edition. A catalogue offers title, author and an
+    identifier, so any "you already have this" marker would be exactly the guess
+    the rest of the tool refuses to make. Downloading and letting the content
+    decide is the honest behaviour, at the cost of occasionally fetching
+    something already held.
+
 ## macOS verification update
 
 Resolved on 2026-09-14. The Check workflow runs ubuntu-latest and macos-latest
