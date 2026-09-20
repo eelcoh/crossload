@@ -11,3 +11,6 @@ activation.xml
 activation.dat
 /.adept/
 /state/
+/.local/
+/.cache/
+/.config/
