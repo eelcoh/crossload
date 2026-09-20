@@ -717,6 +717,13 @@
     its title because there was nowhere else to put it. It now reads
     `Calibans strijd` by `James S. A. Corey`, The Expanse book 2, and the
     library groups it with the copy on the reader rather than showing two books.
+    Two things it was missing, both reported straight away. The bottom bar never
+    learned the new keys, so e and h existed only in the help; the hints are now
+    ordered by how often each is wanted, since one that will not fit is dropped
+    from the end. And a plain search folded only title and author, so correcting
+    a title that carried its series — which is exactly what this feature is for
+    — took the series out of the search box's reach. A plain search folds the
+    series in now, and `series:` still narrows to it alone.
     Left: the correction only reaches a device by copying the book there again,
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.

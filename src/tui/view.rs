@@ -420,15 +420,19 @@ pub(super) fn draw(model: &Model, frame: &mut Frame<'_>) {
         &[("esc", "stop after this book"), ("q", "quit when finished")]
     } else {
         &[
+            // Ordered by how often each is wanted: a hint that will not fit is
+            // dropped from the end, so the least useful goes first.
             ("?", "help"),
             ("enter", "copy"),
             ("space", "mark"),
+            ("/", "search"),
             ("f", "filter"),
             ("s", "sort"),
-            (",", "settings"),
-            ("d", "copies"),
-            ("/", "search"),
+            ("e", "edit"),
             ("r", "refresh"),
+            ("d", "copies"),
+            (",", "settings"),
+            ("h", "history"),
             ("q", "quit"),
         ]
     };

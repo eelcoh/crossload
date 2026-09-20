@@ -276,6 +276,11 @@ fn a_series_sorts_in_its_own_order_and_a_field_can_be_searched_alone() {
     model.query = "title:herron".into();
     assert!(model.filtered().is_empty());
 
+    // A plain search finds a series too. Correcting a title that carried the
+    // series would otherwise put the series out of the search box's reach.
+    model.query = "slough".into();
+    assert_eq!(model.filtered().len(), 3);
+
     // Typing into the search box: a control chord is a command, not a letter.
     // Ctrl+U used to arrive as the letter it is struck with.
     let mut model = Model::new(options());

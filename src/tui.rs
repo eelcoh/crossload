@@ -52,7 +52,14 @@ struct Entry {
 }
 impl Entry {
     fn new(title: String, author: String, kind: &'static str, source: Source) -> Self {
-        let search = format!("{title} {author}").to_lowercase();
+        // A series is part of what a book is called, so a plain search finds it
+        // too: correcting a title that carried the series would otherwise take
+        // the series out of reach of the search box.
+        let series_name = match &source {
+            Source::Book(book) => book.series.clone().unwrap_or_default(),
+            _ => String::new(),
+        };
+        let search = format!("{title} {author} {series_name}").to_lowercase();
         let series_key = match &source {
             Source::Book(book) => match (&book.series, book.series_index) {
                 // Pad the position so 2 sorts before 10, and keep a half

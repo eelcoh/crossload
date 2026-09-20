@@ -746,7 +746,8 @@ Colour is never the only signal, and setting `NO_COLOR` turns it off.
   and search apply together, and the line above the library shows which filter
   is active and how many books it matches.
 - **/** searches; arrows and page-navigation keys still move through matches.
-  A field named before a colon searches that field alone: `author:herron`,
+  A plain search matches a book's title, its author and the series it belongs
+  to. A field named before a colon searches that field alone: `author:herron`,
   `title:dune`, `series:slough`. **Ctrl+U** clears the query.
   Enter/Escape leaves search mode. **j/k**, arrows, Home/End and
   Page Up/Page Down navigate. **q** quits, waiting for active work.
