@@ -275,6 +275,9 @@ fn fulfillment_download_retry_reuses_receipt_and_decrypts() {
                     Err(e) => panic!("{e}"),
                 }
             };
+            // macOS inherits the listener's nonblocking flag on accept, and a
+            // read timeout cannot help a socket that never waits.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
