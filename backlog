@@ -249,6 +249,11 @@
     executes on a Mac with no exception made for it, and the toolchain's ad-hoc
     signature is all Apple Silicon wanted. The earlier failure on a corporate
     MacBook was a browser download's quarantine, not the binary.
+    It was the managed MacBook that ran it, which is the strongest form this
+    answer comes in: that machine's restrictions stop quarantine being cleared
+    and nothing else. Homebrew works on the same machine, and its formula
+    bottles are unsigned and unnotarized for exactly the reason established
+    here, so it had been running unsigned binaries there all along.
     The manual said a packaged macOS binary had been produced by CI and never
     executed. That is no longer true and no longer said, in the manual, the
     README or the release notes.

@@ -49,8 +49,8 @@ jobs:
           compression-level: 0
 
   release:
-    # Linux only: the macOS archives are unsigned, and a managed Mac cannot
-    # clear their quarantine, so publishing them would offer what will not run.
+    # Every platform: the macOS archives are unsigned, which is no obstacle to
+    # anything that does not arrive quarantined, as Homebrew's bottles show.
     needs: package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest

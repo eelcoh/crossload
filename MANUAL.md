@@ -40,10 +40,12 @@ it quarantines what a quarantine-aware application writes, which means a
 browser, Mail or AirDrop. `curl`, `wget` and `git` do not set the attribute, and
 Gatekeeper only refuses a file that carries it, so fetch the archive with curl
 and it runs. A browser download needs `xattr -d com.apple.quarantine crossload`,
-and that is exactly what a managed device may forbid: it was tried on a
-corporate MacBook and the restrictions did not allow it. Building from source
-works there and needs no exception, and a machine whose policy is stricter than
-Gatekeeper's default may refuse an unnotarized binary however it arrived.
+and that is what a managed device may forbid: it was tried on a corporate
+MacBook and the restrictions did not allow it. That restriction turns out to be
+the only one in the way. The same managed MacBook runs the packaged binary when
+it arrives by scp, and runs Homebrew, whose formula bottles are unsigned and
+unnotarized by the same reasoning. A device whose policy demanded notarization
+outright would refuse all of that, and none has been met.
 
 On Apple Silicon an executable needs a code signature to run at all, but an
 ad-hoc one satisfies that; the toolchain applies it at link time, and it is not
