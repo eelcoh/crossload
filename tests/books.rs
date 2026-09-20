@@ -46,7 +46,7 @@ fn options(root: &std::path::Path) -> Options {
         card: Some(card),
         folder: "/".into(),
         serial: None,
-        optimize: true,
+        optimize: Some(crossload::profile::X4),
         kepub: false,
         organized: true,
         cache: Some(root.join("index.json")),
@@ -163,7 +163,8 @@ fn optimized_reader_copy_groups_with_original_and_original_is_used_for_kobo() {
         .unwrap();
     zip.write_all(png.get_ref()).unwrap();
     fs::write(&source, zip.finish().unwrap().into_inner()).unwrap();
-    let prepared = crossload::prepare::prepare(&source, true, true).unwrap();
+    let prepared =
+        crossload::prepare::prepare(&source, Some(crossload::profile::X4), true).unwrap();
     assert_ne!(
         fs::read(&source).unwrap(),
         fs::read(&prepared.path).unwrap()

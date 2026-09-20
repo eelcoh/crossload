@@ -15,7 +15,8 @@ pub struct Options {
     pub output: PathBuf,
     pub serial: Option<String>,
     pub apply: bool,
-    pub optimize: bool,
+    /// The screen to make device copies for, or None to leave images alone.
+    pub optimize: Option<crate::profile::Profile>,
     pub organized: bool,
     pub repair: bool,
     pub exclude: Vec<String>,

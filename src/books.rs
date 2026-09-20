@@ -96,7 +96,8 @@ pub struct Options {
     pub card: Option<PathBuf>,
     pub folder: String,
     pub serial: Option<String>,
-    pub optimize: bool,
+    /// The screen to make device copies for, or None to leave images alone.
+    pub optimize: Option<crate::profile::Profile>,
     pub organized: bool,
     /// Identity cache file; None uses the default cache location.
     pub cache: Option<PathBuf>,
@@ -1003,7 +1004,11 @@ fn transferred(
     } else {
         (path, None)
     };
-    let prepared = prepare::prepare(&path, target == Place::CrossPoint && options.optimize, true)?;
+    let prepared = prepare::prepare(
+        &path,
+        options.optimize.filter(|_| target == Place::CrossPoint),
+        true,
+    )?;
     progress(&format!("Copying to {} and verifying…", target.label()));
     let output = match target {
         Place::Local => {
@@ -1042,6 +1047,7 @@ fn transferred(
         }
         Place::CrossPoint => match destination(options)? {
             inventory::Destination::Reader(reader) => {
+                let reader = reader.prepared_for(options.optimize);
                 let reader = if options.organized {
                     reader.for_author(&prepared.author)?
                 } else {

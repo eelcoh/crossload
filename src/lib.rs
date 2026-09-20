@@ -9,6 +9,7 @@ pub mod kobo;
 pub mod pdf;
 
 pub mod prepare;
+pub mod profile;
 
 pub mod tui;
 

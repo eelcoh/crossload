@@ -1,6 +1,6 @@
 //! Device copies: bounded image decoding, stable EPUB resources and safe names.
 //! A format Crossload does not rewrite is named and carried through untouched.
-use crate::{epub, format, format::Format};
+use crate::{epub, format, format::Format, profile::Profile};
 use anyhow::{ensure, Context, Result};
 use image::{imageops::FilterType, ImageFormat, ImageReader};
 use std::{
@@ -43,7 +43,9 @@ pub fn component(value: &str, fallback: &str) -> String {
     }
 }
 
-pub fn prepare(book: &Path, optimize: bool, organized: bool) -> Result<Prepared> {
+/// `optimize` names the screen to prepare for, or is None to leave a book's
+/// images exactly as they are.
+pub fn prepare(book: &Path, optimize: Option<Profile>, organized: bool) -> Result<Prepared> {
     let kind = Format::of_path(book).unwrap_or_default();
     let file = fs::File::open(book)?;
     ensure!(file.metadata()?.is_file(), "Expected a regular book file");
@@ -81,10 +83,9 @@ pub fn prepare(book: &Path, optimize: bool, organized: bool) -> Result<Prepared>
     };
     let original_bytes = data.len();
     // Optimization is an EPUB rewrite; there is nothing to rewrite otherwise.
-    let (data, images) = if optimize && kind.rewritten() {
-        optimize_images(&data)?
-    } else {
-        (data, 0)
+    let (data, images) = match optimize.filter(|_| kind.rewritten()) {
+        Some(profile) => optimize_images(&data, profile)?,
+        None => (data, 0),
     };
     let directory = tempfile::tempdir()?;
     let path = directory.path().join(name);
@@ -101,19 +102,18 @@ pub fn prepare(book: &Path, optimize: bool, organized: bool) -> Result<Prepared>
 
 /// Match the X4 screen dimensions. Keep resource names and media types so all
 /// OPF, CSS, SVG and XHTML references remain intact. Never crop or remove content.
-fn optimize_images(data: &[u8]) -> Result<(Vec<u8>, usize)> {
+fn optimize_images(data: &[u8], profile: Profile) -> Result<(Vec<u8>, usize)> {
     let mut archive = ZipArchive::new(Cursor::new(data))?;
-    // Both names are frozen. Every device copy already on a reader or a card
-    // carries this marker, and renaming it would make those copies read as
+    // The marker's name is frozen. Every device copy already on a reader or a
+    // card carries it, and renaming it would make those copies read as
     // originals: the ◐ would vanish and they would stop grouping with the books
-    // they came from. The profile names the X4's screen, which is what this
-    // conversion targets, whatever the reader running CrossPoint is called.
+    // they came from. What it holds is the screen the copy was made for, so a
+    // copy made for one device is not mistaken for a copy made for another.
     const MARKER: &str = "META-INF/xteink-device-profile.txt";
-    const PROFILE: &[u8] = b"xteink-x4-images-v1:480x800:gray:jpeg85";
     if let Ok(mut marker) = archive.by_name(MARKER) {
         let mut value = Vec::new();
         marker.by_ref().take(256).read_to_end(&mut value)?;
-        if value == PROFILE {
+        if value == profile.marker.as_bytes() {
             return Ok((data.to_vec(), 0));
         }
     }
@@ -146,8 +146,8 @@ fn optimize_images(data: &[u8]) -> Result<(Vec<u8>, usize)> {
                 limits.max_alloc = Some(256 * 1024 * 1024);
                 reader.limits(limits);
                 let img = reader.decode().with_context(|| format!("Cannot optimize image {name}; use --no-optimize to preserve its original bytes"))?;
-                let img = if img.width() > 480 || img.height() > 800 {
-                    img.resize(480, 800, FilterType::Lanczos3)
+                let img = if img.width() > profile.width || img.height() > profile.height {
+                    img.resize(profile.width, profile.height, FilterType::Lanczos3)
                 } else {
                     img
                 };
@@ -179,7 +179,7 @@ fn optimize_images(data: &[u8]) -> Result<(Vec<u8>, usize)> {
         MARKER,
         SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
     )?;
-    out.write_all(PROFILE)?;
+    out.write_all(profile.marker.as_bytes())?;
     let bytes = out.finish()?.into_inner();
     epub::validate(&bytes).context("Optimized EPUB failed validation")?;
     ensure!(

@@ -281,7 +281,7 @@ impl LibraryArgs {
                 .or(defaults.folder.clone())
                 .unwrap_or_else(|| "/".to_owned()),
             serial: self.serial,
-            optimize,
+            optimize: optimize.then(|| defaults.screen()).transpose()?,
             organized,
             kepub: defaults.kepub.unwrap_or(false),
             cache: None,
@@ -433,7 +433,7 @@ fn run() -> Result<()> {
                     .folder
                     .or(defaults.folder.clone())
                     .unwrap_or_else(|| "/".to_owned()),
-                optimize: !cli.no_optimize,
+                optimize: (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
                 organized: !cli.flat,
                 kepub: defaults.kepub.unwrap_or(false),
             })?;
@@ -583,7 +583,11 @@ fn run() -> Result<()> {
                 "Only EPUB is optimized for the reader; copy a PDF or CBZ as it is with crossload copy"
             );
             let output = required(output, defaults.output.clone(), "--output")?;
-            let prepared = prepare(&book, !cli.no_optimize, !cli.flat)?;
+            let prepared = prepare(
+                &book,
+                (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                !cli.flat,
+            )?;
             std::fs::create_dir_all(&output)?;
             let result = crossload::copy::copy(&prepared.path, &output)?;
             println!(
@@ -594,7 +598,7 @@ fn run() -> Result<()> {
         Command::Copy { book, to } => copy(
             &book,
             &required(to, defaults.copy_to.clone(), "--to/--copy-to")?,
-            !cli.no_optimize,
+            (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
             !cli.flat,
         )?,
         Command::Import {
@@ -616,10 +620,20 @@ fn run() -> Result<()> {
                 ),
             }
             if let Some(reader) = reader {
-                send(&reader, &path, !cli.no_optimize, !cli.flat)?;
+                send(
+                    &reader,
+                    &path,
+                    (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                    !cli.flat,
+                )?;
             }
             if let Some(destination) = transfer.copy_to {
-                copy(&path, &destination, !cli.no_optimize, !cli.flat)?;
+                copy(
+                    &path,
+                    &destination,
+                    (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                    !cli.flat,
+                )?;
             }
         }
         Command::Send {
@@ -635,7 +649,7 @@ fn run() -> Result<()> {
             send(
                 &crossload::crosspoint::Reader::new(&to, &folder)?.repair_incomplete(repair),
                 &book,
-                !cli.no_optimize,
+                (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
                 !cli.flat,
             )?;
         }
@@ -696,7 +710,7 @@ fn run() -> Result<()> {
                         output,
                         serial,
                         apply,
-                        optimize: !cli.no_optimize,
+                        optimize: (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
                         organized: !cli.flat,
                         repair,
                         exclude,
@@ -845,10 +859,20 @@ fn run() -> Result<()> {
                 let path = library.import(&book_id, &output, serial.as_deref())?;
                 println!("Imported {}", printable(&path.display().to_string()));
                 if let Some(reader) = reader {
-                    send(&reader, &path, !cli.no_optimize, !cli.flat)?;
+                    send(
+                        &reader,
+                        &path,
+                        (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                        !cli.flat,
+                    )?;
                 }
                 if let Some(destination) = transfer.copy_to {
-                    copy(&path, &destination, !cli.no_optimize, !cli.flat)?;
+                    copy(
+                        &path,
+                        &destination,
+                        (!cli.no_optimize).then(|| defaults.screen()).transpose()?,
+                        !cli.flat,
+                    )?;
                 }
             }
         },
@@ -858,14 +882,19 @@ fn run() -> Result<()> {
 
 fn prepare(
     book: &std::path::Path,
-    optimize: bool,
+    optimize: Option<crossload::profile::Profile>,
     organized: bool,
 ) -> Result<crossload::prepare::Prepared> {
     let prepared = crossload::prepare::prepare(book, optimize, organized)?;
-    if optimize {
+    if let Some(screen) = optimize {
         eprintln!(
-            "Device copy: {} → {} bytes; {} images optimized for X4 (480×800).",
-            prepared.original_bytes, prepared.bytes, prepared.images
+            "Device copy: {} → {} bytes; {} images optimized for {} ({}×{}).",
+            prepared.original_bytes,
+            prepared.bytes,
+            prepared.images,
+            screen.device,
+            screen.width,
+            screen.height
         );
     }
     Ok(prepared)
@@ -874,7 +903,7 @@ fn prepare(
 fn copy(
     book: &std::path::Path,
     destination: &std::path::Path,
-    optimize: bool,
+    optimize: Option<crossload::profile::Profile>,
     organized: bool,
 ) -> Result<()> {
     anyhow::ensure!(
@@ -905,7 +934,7 @@ fn copy(
 fn send(
     reader: &crossload::crosspoint::Reader,
     book: &std::path::Path,
-    optimize: bool,
+    optimize: Option<crossload::profile::Profile>,
     organized: bool,
 ) -> Result<()> {
     use anyhow::Context;

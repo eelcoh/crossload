@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 /// Bumped whenever a stored field changes meaning; older files are discarded.
-const VERSION: u32 = 6;
+const VERSION: u32 = 7;
 const MAX_ENTRIES: usize = 20_000;
 const MAX_AGE: u64 = 90 * 24 * 60 * 60;
 /// What discovery would otherwise reread and rehash the whole book to learn.
@@ -93,10 +93,19 @@ pub fn source_key(
     scope: &str,
     id: &str,
     fingerprint: &str,
-    optimize: bool,
+    optimize: Option<crate::profile::Profile>,
     organized: bool,
 ) -> String {
-    format!("{scope}\u{1}{id}\u{1}{fingerprint}\u{1}{optimize}{organized}")
+    format!(
+        "{scope}\u{1}{id}\u{1}{fingerprint}\u{1}{}{organized}",
+        shaped(optimize)
+    )
+}
+/// How a book was shaped, as part of a key. The screen it was made for belongs
+/// here: a copy optimized for one device must never be served from the cache
+/// as if it had been optimized for another.
+fn shaped(optimize: Option<crate::profile::Profile>) -> &'static str {
+    optimize.map_or("none", |profile| profile.marker)
 }
 /// Size and modification time: what a local or mounted file can be checked for
 /// without reading it.
@@ -110,8 +119,12 @@ pub fn file_fingerprint(path: &Path) -> Option<String> {
         modified.subsec_nanos()
     ))
 }
-pub fn variant_key(sha: &str, optimize: bool, organized: bool) -> String {
-    format!("{sha}\u{1}{optimize}{organized}")
+pub fn variant_key(
+    sha: &str,
+    optimize: Option<crate::profile::Profile>,
+    organized: bool,
+) -> String {
+    format!("{sha}\u{1}{}{organized}", shaped(optimize))
 }
 impl Index {
     /// `path` of `None` uses the default cache file; a path that cannot be read

@@ -33,7 +33,7 @@ fn member(data: &[u8], name: &str) -> Vec<u8> {
 fn optimization_preserves_original_text_links_and_is_deterministic() {
     let (dir, original) = fixture();
     let input = dir.path().join("input.epub");
-    let result = prepare::prepare(&input, true, true).unwrap();
+    let result = prepare::prepare(&input, Some(crossload::profile::X4), true).unwrap();
     assert_eq!(result.author, "Writer");
     assert_eq!(result.path.file_name().unwrap(), "A Book.epub");
     assert_eq!(result.images, 1);
@@ -45,9 +45,9 @@ fn optimization_preserves_original_text_links_and_is_deterministic() {
     }
     let image = image::load_from_memory(&member(&bytes, "cover.jpg")).unwrap();
     assert!(image.width() <= 480 && image.height() <= 800);
-    let second = prepare::prepare(&input, true, true).unwrap();
+    let second = prepare::prepare(&input, Some(crossload::profile::X4), true).unwrap();
     assert_eq!(fs::read(second.path).unwrap(), bytes);
-    let again = prepare::prepare(&result.path, true, true).unwrap();
+    let again = prepare::prepare(&result.path, Some(crossload::profile::X4), true).unwrap();
     assert_eq!(again.images, 0);
     assert_eq!(fs::read(again.path).unwrap(), bytes);
     let mut zip = ZipArchive::new(Cursor::new(bytes)).unwrap();
@@ -58,7 +58,7 @@ fn optimization_preserves_original_text_links_and_is_deterministic() {
 #[test]
 fn opting_out_preserves_exact_bytes_and_filename() {
     let (dir, original) = fixture();
-    let result = prepare::prepare(&dir.path().join("input.epub"), false, false).unwrap();
+    let result = prepare::prepare(&dir.path().join("input.epub"), None, false).unwrap();
     assert_eq!(result.path.file_name().unwrap(), "input.epub");
     assert_eq!(fs::read(result.path).unwrap(), original);
 }

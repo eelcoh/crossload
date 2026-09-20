@@ -15,7 +15,7 @@ fn options() -> Options {
         send_to: None,
         copy_to: None,
         folder: "/".into(),
-        optimize: true,
+        optimize: Some(crate::profile::X4),
         kepub: false,
         organized: true,
         serial: None,

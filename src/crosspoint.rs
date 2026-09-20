@@ -42,6 +42,9 @@ pub struct Sent {
 
 #[derive(Clone)]
 pub struct Reader {
+    /// The screen the books being sent were prepared for, so the reader can
+    /// say if it is not that one.
+    made_for: Option<crate::profile::Profile>,
     base: Url,
     folder: String,
     websocket_port: u16,
@@ -83,6 +86,7 @@ impl Reader {
             }
         }
         Ok(Self {
+            made_for: None,
             base,
             folder: folder.to_owned(),
             websocket_port: 81,
@@ -90,6 +94,12 @@ impl Reader {
         })
     }
 
+    /// Say which screen the books being sent were prepared for, so the reader
+    /// can be asked whether that is the screen it has.
+    pub fn prepared_for(mut self, profile: Option<crate::profile::Profile>) -> Self {
+        self.made_for = profile;
+        self
+    }
     pub fn with_websocket_port(mut self, port: u16) -> Self {
         self.websocket_port = port;
         self
@@ -231,9 +241,21 @@ impl Reader {
             "Book exceeds the 128 MiB transfer limit"
         );
         format::validate(kind, &data).context("Book failed validation; nothing was sent")?;
-        self.status().context(
+        let status = self.status().context(
             "Cannot reach CrossPoint; open File Transfer and use the address shown on the reader",
         )?;
+        // The reader gets to contradict what it was prepared for. This is the
+        // only moment its name is known for free, and a device copy sized for
+        // another screen still opens, which is what makes it worth saying.
+        if let Some(made_for) = self.made_for {
+            if !made_for.device.eq_ignore_ascii_case(status.device.trim()) {
+                eprintln!(
+                    "Note: this book was prepared for a {} screen, but the reader says it is a {}. \
+                     Set profile, or use --no-optimize to send books as they are.",
+                    made_for.device, status.device
+                );
+            }
+        }
         self.check_folder()?;
         let remote = format!("{}/{}", self.folder.trim_end_matches('/'), name);
         let entries = self.entries(&self.folder)?;

@@ -33,6 +33,10 @@ pub struct Defaults {
     #[arg(long)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kepub: Option<bool>,
+    /// The reader model to prepare device copies for, as CrossPoint names it.
+    #[arg(long)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 pub fn default_path() -> Result<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -58,6 +62,21 @@ pub fn load(path: &Path) -> Result<Defaults> {
     }
 }
 impl Defaults {
+    /// The screen device copies are made for. An unknown name is refused
+    /// rather than quietly falling back to a screen the reader does not have.
+    pub fn screen(&self) -> Result<crate::profile::Profile> {
+        match self.profile.as_deref() {
+            None => Ok(crate::profile::DEFAULT),
+            Some(name) => crate::profile::for_device(name).with_context(|| {
+                format!(
+                    "Unknown reader {name}; known screens are {}. Leave profile unset for {}, \
+                     or use --no-optimize to send books as they are",
+                    crate::profile::known(),
+                    crate::profile::DEFAULT.device
+                )
+            }),
+        }
+    }
     pub fn normalize(&mut self) -> Result<()> {
         for value in [
             &mut self.device,
@@ -82,6 +101,9 @@ impl Defaults {
             self.reader.as_deref().unwrap_or("crosspoint.local"),
             self.folder.as_deref().unwrap_or("/"),
         )?;
+        // A screen nobody knows is refused here, when it is being saved,
+        // rather than on every command that reads it afterwards.
+        self.screen()?;
         Ok(())
     }
     pub fn merge(&mut self, update: Self) {
@@ -106,6 +128,9 @@ impl Defaults {
         if update.kepub.is_some() {
             self.kepub = update.kepub;
         }
+        if update.profile.is_some() {
+            self.profile = update.profile;
+        }
     }
     pub fn unset(&mut self, key: &str) -> Result<()> {
         match key {
@@ -116,8 +141,9 @@ impl Defaults {
             "browse" => self.browse = None,
             "folder" => self.folder = None,
             "kepub" => self.kepub = None,
+            "profile" => self.profile = None,
             _ => anyhow::bail!(
-                "Unknown setting {key}; use device, output, reader, copy-to, browse, folder or kepub"
+                "Unknown setting {key}; use device, output, reader, copy-to, browse, folder, kepub or profile"
             ),
         }
         Ok(())

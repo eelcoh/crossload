@@ -57,7 +57,7 @@ impl Fixture {
             output: self.output.clone(),
             serial: None,
             apply,
-            optimize: true,
+            optimize: Some(crossload::profile::X4),
             organized: true,
             repair: false,
             exclude: vec![],

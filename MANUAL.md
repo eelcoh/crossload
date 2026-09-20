@@ -813,6 +813,19 @@ made and quietly wasted. A copy already on the reader in such a format is
 labelled in the details panel as held but not listed. Kobo and local folders
 accept every format Crossload carries.
 
+Optimizing means resizing a book's images to the screen that will show them, so
+which screen matters. Crossload prepares for the XTeink X4's 480×800 unless
+`profile` names another, and the only screen it knows is the X4: a device is
+named here once its size is known from the hardware, because guessing would
+degrade every image to a size no device has. Saving a name it does not know is
+refused at the time it is saved, rather than failing every command afterwards.
+
+The screen a copy was made for is written into the copy, and it is part of the
+identity cache's keys, so a copy made for one device is never served as one made
+for another. When a book is sent over Wi-Fi the reader is asked what it is, and
+says so if that is not the screen the book was prepared for — the one moment its
+name is known without an extra request. A mounted card cannot be asked at all.
+
 A book sent to a Kobo is an ordinary EPUB unless `kepub` is saved, in which
 case it is sent as a kepub: named `.kepub.epub`, with its prose divided into
 `koboSpan` elements. That is what the Kobo's own reading engine counts, and so

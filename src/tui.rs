@@ -24,7 +24,7 @@ pub struct Options {
     pub send_to: Option<String>,
     pub copy_to: Option<PathBuf>,
     pub folder: String,
-    pub optimize: bool,
+    pub optimize: Option<crate::profile::Profile>,
     pub kepub: bool,
     pub organized: bool,
     pub serial: Option<String>,

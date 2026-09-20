@@ -566,7 +566,7 @@
     now checks the default is offered, then points the address at a port
     nothing answers on before saving.
 
-30. [ ] Optimize for the reader in hand, not always for an X4
+30. [~] Optimize for the reader in hand — mechanism done, one screen known
     `prepare::optimize_images` converts every book to one fixed profile,
     `xteink-x4-images-v1:480x800:gray:jpeg85`, which is the X4's screen. Now
     that the tool says it serves any CrossPoint reader, that is wrong for any
@@ -594,6 +594,24 @@
     colour depth of each supported device, and whether CrossPoint reports a
     distinct `device` string for each. Take them from hardware or from
     CrossPoint, not from memory.
+    The mechanism is in, with the X4 as the only screen in it. `src/profile.rs`
+    holds a screen as data — device name, size, marker — and `optimize` is now
+    the screen to prepare for rather than a yes or no, so the thing being asked
+    for travels with the request. The X4's marker is unchanged, so every device
+    copy already on a reader is still recognized as one.
+    The trap is closed: both cache keys carry the screen, so a copy made for one
+    device can never be served as one made for another. That is tested against a
+    second, invented screen, since there is no real one to test against yet.
+    A name the tool does not know is refused when it is saved rather than on
+    every command that reads it afterwards, which is how it was found: saving
+    M5Paper left every later command failing until the setting was removed.
+    When a book goes over Wi-Fi the reader is asked what it is — the one moment
+    its name is free, since send already calls status — and it says so when that
+    is not the screen the book was prepared for. A card cannot be asked.
+    Still open, and deliberately: no second screen. The M5Paper's geometry is
+    not known here, and inventing it would resize every image to a size no
+    device has. Adding one now means one constant, a name that matches what
+    CrossPoint reports for it, and nothing else.
 
 ## macOS verification update
 
