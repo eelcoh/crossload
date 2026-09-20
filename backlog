@@ -741,7 +741,7 @@
     and the old copy under the old author folder stays where it is. Deleting
     that is possible on a mounted card and not over Wi-Fi.
 
-32. [ ] OPDS catalogues, as a client — investigation
+32. [~] OPDS catalogues, as a client — investigated, one claim unproven
     OPDS is a syndication format for ebook catalogues: 1.2 is Atom XML and is
     what nearly everything speaks, 2.0 is JSON and is not widely deployed. A
     feed is either navigation, linking on to more feeds, or acquisition, whose
@@ -781,6 +781,23 @@
     the rest of the tool refuses to make. Downloading and letting the content
     decide is the honest behaviour, at the cost of occasionally fetching
     something already held.
+    Investigated against real feeds; see OPDS.md. 1.2 Atom is what is actually
+    served. Entries do not necessarily carry acquisition links — Gutenberg's
+    search results are navigation entries pointing at a per-book feed, so a
+    client has to follow subsections until it finds them. A book offers several
+    acquisition links of one media type, distinguished only by free text: Pride
+    and Prejudice comes as three EPUBs of 558 KB, 24.8 MB and 24.8 MB, so
+    choosing needs the length rather than the wording. Length is given, which
+    suits both the 128 MiB ceiling and item 23's room check. Paging is rel=next
+    and search is an OpenSearch document. Authentication is real and not
+    uniform: Standard Ebooks now answers 401 with Basic, wanting a patron email
+    as the username and an empty password.
+    The claim the whole item rests on is still unproven. No feed reachable
+    without an account was found that serves an ACSM: Gutenberg has no DRM to
+    hand out, Cantook's index is empty without a library context, and Standard
+    Ebooks wants a login. Settling it needs one lending library's feed, with
+    credentials, and an entry looked at. Building on it before then would be
+    building on the assumption it was recorded to test.
 
 ## macOS verification update
 
