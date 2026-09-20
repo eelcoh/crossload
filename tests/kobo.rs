@@ -888,3 +888,133 @@ fn decrypted_copy_with_same_identifier_is_not_decrypted_again() {
     let path = library.import(&book.id, output.path(), None).unwrap();
     assert_eq!(fs::read(path).unwrap(), plain);
 }
+
+/// Collections exist only in the device's database, so they come off it the
+/// same way the highlights do. Shapes here match the real KoboReader.sqlite:
+/// `ShelfContent.ShelfName` refers to `Shelf.InternalName`, which equals
+/// `Name` for a collection made on the device, and deletions are the text
+/// "true" rather than a boolean.
+#[test]
+fn collections_come_off_the_device_with_the_books_on_them() {
+    let device = Device::new(false, false, false);
+    let db = Connection::open(device.path().join(".kobo/KoboReader.sqlite")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE Shelf (CreationDate TEXT, Id TEXT, InternalName TEXT, Name TEXT,
+         Type TEXT, _IsDeleted TEXT, _IsVisible TEXT);
+         CREATE TABLE ShelfContent (ShelfName TEXT, ContentId TEXT, DateModified TEXT,
+         _IsDeleted TEXT, _IsSynced TEXT);
+         INSERT INTO content VALUES ('other', 'Another book', 'Someone Else');",
+    )
+    .unwrap();
+    for (internal, name, deleted) in [
+        ("Science Fiction", "Science Fiction", "false"),
+        ("Leanpub", "Leanpub", "false"),
+        // A collection the reader removed is gone, not empty.
+        ("Old", "Old", "true"),
+    ] {
+        db.execute(
+            "INSERT INTO Shelf VALUES ('2025-01-01', ?1, ?1, ?2, 'UserTag', ?3, 'true')",
+            [internal, name, deleted],
+        )
+        .unwrap();
+    }
+    for (shelf, content, deleted) in [
+        ("Science Fiction", ID, "false"),
+        ("Science Fiction", "other", "false"),
+        // A book taken off a shelf leaves a row behind saying so.
+        ("Science Fiction", "cloud-only", "true"),
+        // A shelf entry whose book is no longer on the device at all.
+        ("Science Fiction", "vanished", "false"),
+        ("Old", ID, "false"),
+    ] {
+        db.execute(
+            "INSERT INTO ShelfContent VALUES (?1, ?2, '2025-01-02', ?3, 'true')",
+            [shelf, content, deleted],
+        )
+        .unwrap();
+    }
+    let shelves = Library::open(device.path()).unwrap().shelves().unwrap();
+    let names: Vec<_> = shelves.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["Leanpub", "Science Fiction"]);
+    // An empty collection is still a collection.
+    assert!(shelves[0].books.is_empty());
+    let titles: Vec<_> = shelves[1].books.iter().map(|b| b.title.as_str()).collect();
+    assert_eq!(titles, ["Another book", "Test / book", "vanished"]);
+    // The ID is the one `kobo list` prints, so a shelf can be acted on.
+    assert_eq!(shelves[1].books[1].id, ID);
+    assert_eq!(shelves[1].books[0].author, "Someone Else");
+}
+
+/// A Kobo old or minimal enough to have no collections at all is a device
+/// without collections, not a broken one.
+#[test]
+fn a_device_without_the_collection_tables_reports_no_collections() {
+    let device = Device::new(false, false, false);
+    assert!(Library::open(device.path())
+        .unwrap()
+        .shelves()
+        .unwrap()
+        .is_empty());
+}
+
+/// Older databases key shelf contents by Name, with no InternalName column.
+#[test]
+fn collections_are_read_from_a_schema_without_internal_names() {
+    let device = Device::new(false, false, false);
+    let db = Connection::open(device.path().join(".kobo/KoboReader.sqlite")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE Shelf (Name TEXT, Type TEXT, _IsDeleted TEXT);
+         CREATE TABLE ShelfContent (ShelfName TEXT, ContentId TEXT, _IsDeleted TEXT);
+         INSERT INTO Shelf VALUES ('Favourites', 'UserTag', 'false');",
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO ShelfContent VALUES ('Favourites', ?1, 'false')",
+        [ID],
+    )
+    .unwrap();
+    let shelves = Library::open(device.path()).unwrap().shelves().unwrap();
+    assert_eq!(shelves.len(), 1);
+    assert_eq!(shelves[0].books.len(), 1);
+    assert_eq!(shelves[0].books[0].title, "Test / book");
+}
+
+/// Listing a collection shows what is actually on the device, and a name that
+/// is not there says so with the ones that are.
+#[test]
+fn listing_by_collection_filters_the_books_and_names_the_collections_on_a_typo() {
+    let device = Device::new(false, false, false);
+    let db = Connection::open(device.path().join(".kobo/KoboReader.sqlite")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE Shelf (InternalName TEXT, Name TEXT, Type TEXT, _IsDeleted TEXT);
+         CREATE TABLE ShelfContent (ShelfName TEXT, ContentId TEXT, _IsDeleted TEXT);
+         INSERT INTO Shelf VALUES ('Science Fiction', 'Science Fiction', 'UserTag', 'false');",
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO ShelfContent VALUES ('Science Fiction', ?1, 'false')",
+        [ID],
+    )
+    .unwrap();
+    // Named collections match however they are typed.
+    let listed = Command::new(env!("CARGO_BIN_EXE_crossload"))
+        .args(["kobo", "list", "--shelf", "science fiction", "--device"])
+        .arg(device.path())
+        .output()
+        .unwrap();
+    assert!(listed.status.success());
+    let text = String::from_utf8(listed.stdout).unwrap();
+    assert!(text.contains("Test / book"), "{text}");
+    let missing = Command::new(env!("CARGO_BIN_EXE_crossload"))
+        .args(["kobo", "list", "--shelf", "Sci-Fi", "--device"])
+        .arg(device.path())
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    let complaint = String::from_utf8(missing.stderr).unwrap();
+    assert!(
+        complaint.contains("no collection called Sci-Fi"),
+        "{complaint}"
+    );
+    assert!(complaint.contains("Science Fiction"), "{complaint}");
+}

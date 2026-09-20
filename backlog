@@ -421,7 +421,7 @@
     Verified by copying real books and reading the record back, including a CBZ
     refused by the reader, which the record keeps with its reason.
 
-25. [~] Kobo annotations and collections — annotations done
+25. [~] Kobo annotations and collections — reading done, --organized not
     `kobo.rs` opens KoboReader.sqlite and reads only the `content` table. The
     same database holds `Bookmark` (highlights and notes) and `Shelf` /
     `ShelfContent` (collections). Export highlights per book as Markdown:
@@ -439,10 +439,26 @@
     not. Read-only throughout: a Kobo's database is the device's, not ours.
     Verified against the real Kobo here — 13 highlights across four books, with
     its 14 dog-ears correctly left behind.
-    Shelves are still untouched. This library has seven of them over 75 books,
-    so there is real data to build against when it is wanted, but using them for
-    `--organized` changes the folder layout on a device, which deserves its own
-    decision rather than being folded in here.
+    Shelves are read too, by `Library::shelves`. `crossload kobo shelves` lists
+    the collections and the books on each, as a table or `--json`, and
+    `crossload kobo list --shelf NAME` narrows a listing to one, matching the
+    name however it is typed and naming the collections that do exist when the
+    one asked for does not. ShelfContent keys on Shelf.InternalName, which is
+    the Name for a collection made on the device; a schema with no InternalName
+    column is read by Name instead. Deleted shelves and deleted shelf entries
+    are text "true" rather than booleans, and both are dropped. An empty shelf
+    is still a shelf, and an entry whose book has left the device is named by
+    what is left of it. Shelf.Type is deliberately not filtered on: a real
+    device was the only place to learn whether it needed to be, and it did not.
+    Verified against the real Kobo here — seven collections over 75 books,
+    exactly the seven it shows, including the empty one. Reading it found one
+    bug: an entry with no content row has a NULL title, which SQLite sorts
+    before everything, so the ordering now uses the name actually shown.
+    `--organized` still groups by author. Using collections for it changes the
+    folder layout on a device, which is a decision about someone's reader
+    rather than a detail of this, and the reading side above is what it would
+    be built on. Open questions when it is wanted: a book on several shelves
+    has to go somewhere or be copied twice, and a book on none needs a home.
 
 26. [x] kepub for the Kobo — implemented
     A sideloaded EPUB on a Kobo loses the store reading experience: no reliable

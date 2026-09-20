@@ -58,6 +58,26 @@ impl Annotation {
     }
 }
 
+/// A collection made on the device.
+///
+/// A shelf is the reader's own grouping, which no amount of reading the files
+/// can reconstruct: it exists only in the device's database, which is the same
+/// reason the annotations above are worth carrying off.
+#[derive(Clone, Debug, Serialize)]
+pub struct Shelf {
+    pub name: String,
+    pub books: Vec<Shelved>,
+}
+
+/// One book on a shelf, as the shelf records it.
+#[derive(Clone, Debug, Serialize)]
+pub struct Shelved {
+    /// The same ID `crossload kobo list` prints, so a shelf can be acted on.
+    pub id: String,
+    pub title: String,
+    pub author: String,
+}
+
 /// A reader's marks on one book, as Markdown.
 ///
 /// Quoted rather than reproduced as body text, so it stays clear on the page
@@ -180,6 +200,93 @@ impl Library {
             // to carry off the device.
             .filter(|note| !note.text.is_empty() || !note.note.is_empty())
             .collect())
+    }
+
+    /// The collections on the device, each with the books on it.
+    ///
+    /// Read-only, like everything else here: a Kobo's database is the
+    /// device's, not ours.
+    pub fn shelves(&self) -> Result<Vec<Shelf>> {
+        // A device with no collections may not have the tables at all, which
+        // is a device with no collections rather than a failure.
+        let present: bool = self.db.query_row(
+            "SELECT (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'
+             AND name IN ('Shelf', 'ShelfContent')) = 2",
+            [],
+            |row| row.get(0),
+        )?;
+        if !present {
+            return Ok(vec![]);
+        }
+        // Shelf rows are keyed by InternalName, which equals Name for a
+        // collection made on the device and is an identifier for one that came
+        // down from an account. Older schemas have only Name.
+        let has_internal: bool = self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('Shelf')
+             WHERE lower(name) = 'internalname')",
+            [],
+            |row| row.get(0),
+        )?;
+        let joined = if has_internal {
+            "sc.ShelfName IN (s.InternalName, s.Name)"
+        } else {
+            "sc.ShelfName = s.Name"
+        };
+        // Type is deliberately not filtered on: a real device is the only
+        // place to learn which values it uses, and dropping rows on a guess
+        // would hide a collection rather than show a spurious one.
+        let mut query = self
+            .db
+            .prepare(&format!(
+                "SELECT DISTINCT s.Name, COALESCE(sc.ContentId, ''),
+                 COALESCE(c.Title, ''), COALESCE(c.Attribution, '')
+                 FROM Shelf s
+                 LEFT JOIN ShelfContent sc
+                   ON {joined}
+                   AND COALESCE(sc._IsDeleted, 'false') NOT IN ('true', '1')
+                 LEFT JOIN content c ON c.ContentID = sc.ContentId
+                 WHERE COALESCE(s._IsDeleted, 'false') NOT IN ('true', '1')
+                 ORDER BY s.Name COLLATE NOCASE,
+                 COALESCE(NULLIF(c.Title, ''), sc.ContentId) COLLATE NOCASE,
+                 COALESCE(sc.ContentId, '')"
+            ))
+            .context("Unsupported Kobo database schema")?;
+        let rows = query.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                Shelved {
+                    id: row.get(1)?,
+                    title: row.get(2)?,
+                    author: row.get(3)?,
+                },
+            ))
+        })?;
+        let mut shelves: Vec<Shelf> = Vec::new();
+        for row in rows {
+            let (name, book) = row?;
+            if shelves.last().is_none_or(|shelf| shelf.name != name) {
+                shelves.push(Shelf {
+                    name,
+                    books: Vec::new(),
+                });
+            }
+            // An empty shelf joins to one row of nothing; it is still a shelf.
+            if !book.id.is_empty() {
+                // A book on the shelf that is no longer on the device has no
+                // content row left. It is still on the shelf, so it is named
+                // by what remains of it.
+                let named = Shelved {
+                    title: if book.title.is_empty() {
+                        book.id.clone()
+                    } else {
+                        book.title.clone()
+                    },
+                    ..book
+                };
+                shelves.last_mut().expect("just pushed").books.push(named);
+            }
+        }
+        Ok(shelves)
     }
 
     pub fn books(&self) -> Result<Vec<Book>> {

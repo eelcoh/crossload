@@ -956,6 +956,21 @@ survives the trip. A dog-ear marks a page and says nothing, so there is nothing
 in it to carry off; a mark that was taken back stays taken back. Nothing is
 written to the device: its database is read, and only read.
 
+`crossload kobo shelves` lists the collections made on the Kobo and the books
+on each, as a table or with `--json` as data. Collections live only in the
+device's database, so like the highlights above they cannot be reconstructed
+from the files; an empty collection is still listed, and one the reader deleted
+is not. `crossload kobo list --shelf "Science Fiction"` narrows a listing to a
+collection, matching the name however it is typed, and names the collections
+that do exist if the one asked for does not.
+
+The two counts differ on purpose. `shelves` reports the collection as the device
+records it, including books kept in the cloud; `list` shows only what is
+actually on the device and can be imported. A collection of sixteen with six
+downloaded is both answers being right.
+
+Collections are not yet used for `--organized`, which still groups by author.
+
 Every copy is written down. `crossload history` shows the most recent, with
 `-n` for how many, `--failed` for only the ones that did not arrive, and `--json`
 for the record as data. **h** shows the same in the library, newest first.

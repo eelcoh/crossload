@@ -372,11 +372,22 @@ enum KoboCommand {
         #[arg(long)]
         json: bool,
     },
+    /// List the collections made on the Kobo and the books on them.
+    Shelves {
+        #[command(flatten)]
+        device: Device,
+        /// Print structured JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// List Kobo store books, previews, and sideloaded EPUBs with their IDs.
     List {
         /// Include previews (hidden by default).
         #[arg(long)]
         show_previews: bool,
+        /// Only books on this collection, as `crossload kobo shelves` names it.
+        #[arg(long)]
+        shelf: Option<String>,
         #[command(flatten)]
         device: Device,
         /// Print structured JSON instead of a table.
@@ -863,6 +874,65 @@ fn run() -> Result<()> {
                 }
             }
 
+            KoboCommand::Shelves { device, json } => {
+                let library = Library::open(&required(
+                    device.device,
+                    defaults.device.clone(),
+                    "--device",
+                )?)?;
+                let shelves = library.shelves()?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&shelves)?);
+                } else if shelves.is_empty() {
+                    eprintln!("No collections on this Kobo.");
+                } else {
+                    let interactive = std::io::stdout().is_terminal();
+                    let mut table = Table::new();
+                    table
+                        .load_style(NOTHING)
+                        .set_content_arrangement(ContentArrangement::Dynamic)
+                        .set_header(["COLLECTION", "TITLE", "AUTHOR"]);
+                    if !interactive {
+                        println!("COLLECTION\tTITLE\tAUTHOR");
+                    }
+                    for shelf in &shelves {
+                        if shelf.books.is_empty() {
+                            let row = [printable(&shelf.name), "(empty)".to_owned(), String::new()];
+                            if interactive {
+                                table.add_row(row);
+                            } else {
+                                println!("{}", row.join("\t"));
+                            }
+                        }
+                        for (index, book) in shelf.books.iter().enumerate() {
+                            // The collection is named once and then implied,
+                            // so a long shelf reads as one block.
+                            let row = [
+                                if index == 0 {
+                                    printable(&shelf.name)
+                                } else {
+                                    String::new()
+                                },
+                                printable(&book.title),
+                                printable(&book.author),
+                            ];
+                            if interactive {
+                                table.add_row(row);
+                            } else {
+                                println!("{}", row.join("\t"));
+                            }
+                        }
+                    }
+                    if interactive {
+                        println!("{table}");
+                    }
+                    eprintln!(
+                        "{} collections, {} books.",
+                        shelves.len(),
+                        shelves.iter().map(|s| s.books.len()).sum::<usize>()
+                    );
+                }
+            }
             KoboCommand::Notes {
                 device,
                 output,
@@ -921,6 +991,7 @@ fn run() -> Result<()> {
             KoboCommand::List {
                 device,
                 json,
+                shelf,
                 show_previews,
             } => {
                 let library = Library::open(&required(
@@ -928,10 +999,43 @@ fn run() -> Result<()> {
                     defaults.device.clone(),
                     "--device",
                 )?)?;
+                // A named collection that is not there is a mistake worth
+                // saying, rather than an empty listing that looks like a Kobo
+                // with nothing on it.
+                let on_shelf = match &shelf {
+                    None => None,
+                    Some(wanted) => {
+                        let shelves = library.shelves()?;
+                        let found = shelves
+                            .iter()
+                            .find(|s| s.name.eq_ignore_ascii_case(wanted))
+                            .with_context(|| {
+                                format!(
+                                    "This Kobo has no collection called {wanted}. It has: {}",
+                                    match shelves.len() {
+                                        0 => "none".to_owned(),
+                                        _ => shelves
+                                            .iter()
+                                            .map(|s| s.name.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                    }
+                                )
+                            })?;
+                        Some(
+                            found
+                                .books
+                                .iter()
+                                .map(|book| book.id.clone())
+                                .collect::<std::collections::HashSet<_>>(),
+                        )
+                    }
+                };
                 let books: Vec<_> = library
                     .books()?
                     .into_iter()
                     .filter(|book| show_previews || !book.preview)
+                    .filter(|book| on_shelf.as_ref().is_none_or(|ids| ids.contains(&book.id)))
                     .collect();
                 if json {
                     println!("{}", serde_json::to_string_pretty(&books)?);
