@@ -571,6 +571,22 @@
     and expect DCTDecode to pass through as JPEG while Flate needs rebuilding
     through the image crate, with indexed and CMYK colour, SMask transparency
     and CCITT all waiting to be got wrong.
+    That blocker is gone. The catalogue of item 32 serves PDFs by the thousand,
+    and eight taken from the Palace Bookshelf cover the range: born-digital
+    books with figures (36 images over 24 fonts; 303 over 1118), scanned books
+    with an OCR layer, and everything between, in Flate, DCT, JBIG2 and JPX.
+    Reading them at once found the bug this note predicted the shape of. A page
+    is checked for pictures one level deep, and a scanner does not put them
+    there: ABBYY wraps the page image in a form XObject and writes the form's
+    entry as a reference, so both the reference and the nesting hid it. A real
+    165-page scan reported two pages with pictures instead of 165, and so came
+    back Good — the one verdict that must never be wrong, on a book where the
+    pictures are the book and the text is a transcript of them. has_images now
+    dereferences the entry and follows forms, depth-bounded because a form's
+    resources can reach back to it; that book now reads as 27 figure pages of
+    27 text pages sampled, and Poor. Covered by a test built the way the real
+    file is written.
+    So extraction is what is left, against files that now exist.
     Two bugs fell out of testing the figure warning. Page resources written
     inline rather than referenced were invisible to the image check, which is
     most pages that carry one. And a one-page document had its only line counted

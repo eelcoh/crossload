@@ -112,29 +112,52 @@ fn has_images(document: &Document, page: lopdf::ObjectId) -> bool {
             .iter()
             .filter_map(|id| document.get_dictionary(*id).ok()),
     );
-    for resources in dictionaries {
-        let Ok(objects) = resources.get(b"XObject").and_then(|o| o.as_dict()) else {
-            continue;
-        };
-        for (_, object) in objects.iter() {
-            let Some(stream) = document
-                .dereference(object)
-                .ok()
-                .and_then(|(_, o)| o.as_stream().ok())
-            else {
-                continue;
-            };
-            if stream
-                .dict
-                .get(b"Subtype")
-                .and_then(|s| s.as_name())
-                .is_ok_and(|name| name == b"Image")
-            {
-                return true;
-            }
-        }
+    dictionaries.into_iter().any(|resources| {
+        // Depth is bounded because a form's resources can reach back to it.
+        draws_an_image(document, resources, 0)
+    })
+}
+
+/// Whether these resources put a picture on the page, following forms.
+///
+/// A scanner wraps the page image in a form XObject and puts nothing else at
+/// the top level, so a check that does not descend sees a page of pure text.
+/// Read that way a scanned book looks like one that converts perfectly, which
+/// is the one verdict that must never be wrong.
+fn draws_an_image(document: &Document, resources: &lopdf::Dictionary, depth: usize) -> bool {
+    if depth >= 8 {
+        return false;
     }
-    false
+    // The entry itself is often a reference rather than a dictionary written
+    // out, exactly as MediaBox is.
+    let Some(objects) = resources
+        .get(b"XObject")
+        .ok()
+        .and_then(|entry| document.dereference(entry).ok())
+        .and_then(|(_, object)| object.as_dict().ok())
+    else {
+        return false;
+    };
+    objects.iter().any(|(_, object)| {
+        let Some(stream) = document
+            .dereference(object)
+            .ok()
+            .and_then(|(_, o)| o.as_stream().ok())
+        else {
+            return false;
+        };
+        match stream.dict.get(b"Subtype").and_then(|s| s.as_name()) {
+            Ok(b"Image") => true,
+            Ok(b"Form") => stream
+                .dict
+                .get(b"Resources")
+                .ok()
+                .and_then(|entry| document.dereference(entry).ok())
+                .and_then(|(_, object)| object.as_dict().ok())
+                .is_some_and(|inner| draws_an_image(document, inner, depth + 1)),
+            _ => false,
+        }
+    })
 }
 
 /// Each page's lines in reading order, which for a two-column page means one
@@ -503,6 +526,72 @@ mod tests {
         let prose = prose(&epub);
         assert!(prose.contains("real-time responses"), "{prose}");
         assert!(prose.contains("inconsistent with"), "{prose}");
+    }
+
+    /// A scanner wraps the page image in a form and puts the reference to the
+    /// form's dictionary rather than the dictionary itself. Both of those hid
+    /// every picture in a real scanned book, which then reported as a book
+    /// that converts perfectly.
+    #[test]
+    fn a_picture_inside_a_form_is_still_a_picture_on_the_page() {
+        let mut document = Document::with_version("1.5");
+        let image = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => 2,
+                "Height" => 2,
+                "ColorSpace" => "DeviceGray",
+                "BitsPerComponent" => 8,
+            },
+            vec![0, 64, 128, 255],
+        ));
+        // The form's own resources hold the image, and its XObject entry is a
+        // reference rather than a dictionary written out.
+        let inner = document.add_object(dictionary! { "Im0" => image });
+        let form = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Form",
+                "BBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+                "Resources" => dictionary! { "XObject" => inner },
+            },
+            b"q 100 0 0 80 50 400 cm /Im0 Do Q".to_vec(),
+        ));
+        let outer = document.add_object(dictionary! { "Fg" => form });
+        let pages_id = document.new_object_id();
+        let words = "a scanned page whose words were added underneath the picture of it by \
+                     optical recognition, which is text and a picture at once";
+        let content = format!("BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET q /Fg Do Q");
+        let contents = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => contents,
+            "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            "Resources" => dictionary! { "XObject" => outer },
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        document.trailer.set("Root", catalog);
+        let mut data = Vec::new();
+        document.save_to(&mut data).unwrap();
+
+        let report = inspect(&data).unwrap();
+        assert_eq!((report.text_pages, report.figure_pages), (1, 1));
+        assert!(
+            matches!(&report.verdict, Verdict::Poor(concerns)
+                if concerns.contains(&Concern::FiguresDropped)),
+            "{:?}",
+            report.verdict
+        );
     }
 
     #[test]
