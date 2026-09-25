@@ -24,6 +24,19 @@ pub(super) struct Piece {
     pub text: String,
 }
 
+/// Something drawn on a page by name, rather than written out: a picture, or
+/// a form that may hold one. Where it sits is taken from the transformation in
+/// force, which maps the unit square onto the page.
+#[derive(Clone, Debug)]
+pub(super) struct Drawn {
+    pub name: Vec<u8>,
+    /// The top edge in page points, so a figure can be put back into reading
+    /// order among the lines it sat between.
+    pub top: f32,
+    pub height: f32,
+    pub width: f32,
+}
+
 /// A font stream cannot be trusted to be small; decoding one is bounded.
 const FONT_LIMIT: usize = 4 * 1024 * 1024;
 /// A gap this wide, as a fraction of the font size, is a space the producer
@@ -146,6 +159,11 @@ pub(super) fn number(operand: Option<&Object>) -> f32 {
 /// The page's width in its own units, inherited from the page tree when the
 /// page itself does not say.
 pub(super) fn width(document: &Document, page: ObjectId) -> f32 {
+    size(document, page).0
+}
+
+/// A page's width and height in points, from the box it declares.
+pub(super) fn size(document: &Document, page: ObjectId) -> (f32, f32) {
     let mut node = document.get_dictionary(page).ok();
     for _ in 0..32 {
         let Some(dictionary) = node else { break };
@@ -159,8 +177,9 @@ pub(super) fn width(document: &Document, page: ObjectId) -> f32 {
         {
             let edge = |index: usize| number(box_.get(index).and_then(&resolved));
             let (left, right) = (edge(0), edge(2));
+            let (bottom, top) = (edge(1), edge(3));
             if right - left > 1.0 {
-                return right - left;
+                return (right - left, (top - bottom).max(1.0));
             }
         }
         node = dictionary
@@ -170,7 +189,7 @@ pub(super) fn width(document: &Document, page: ObjectId) -> f32 {
             .and_then(|(_, object)| object.as_dict().ok());
     }
     // A4 is the likeliest default and only sets the scale for column bands.
-    595.0
+    (595.0, 842.0)
 }
 
 /// The horizontal part of a transformation: everything this needs to know
@@ -240,23 +259,81 @@ fn number_of(object: &Object) -> f32 {
     number(Some(object))
 }
 
-/// Every run of text on a page, in the order the producer drew it.
-pub(super) fn pieces(document: &Document, page: ObjectId) -> Vec<Piece> {
-    let Ok(content) = Content::decode(&document.get_page_content(page)) else {
-        return vec![];
+/// What a page draws: its text, and the things it draws by name.
+///
+/// Both come from one walk, so a figure's place among the lines is measured
+/// against the same transformations the lines were.
+pub(super) fn contents(document: &Document, page: ObjectId) -> (Vec<Piece>, Vec<Drawn>) {
+    let mut found = Found::default();
+    let resources = document
+        .get_page_resources(page)
+        .ok()
+        .and_then(|(direct, streams)| {
+            direct.cloned().or_else(|| {
+                streams
+                    .iter()
+                    .find_map(|id| document.get_dictionary(*id).ok().cloned())
+            })
+        })
+        .unwrap_or_default();
+    walk(
+        document,
+        &document.get_page_content(page),
+        &resources,
+        (Axis::IDENTITY, Axis::IDENTITY),
+        0,
+        &mut found,
+    );
+    (found.pieces, found.drawn)
+}
+
+/// What one walk of a content stream turned up.
+#[derive(Default)]
+struct Found {
+    pieces: Vec<Piece>,
+    drawn: Vec<Drawn>,
+}
+
+/// How deep a form may be nested before this stops following.
+const FORMS_DEEP: usize = 6;
+
+/// Walk one content stream, following the forms it draws.
+///
+/// A producer may put the whole page inside a form XObject and leave one `Do`
+/// on the page itself. Not following that reads the page as empty, which
+/// refuses a perfectly ordinary document as a scan.
+fn walk(
+    document: &Document,
+    stream: &[u8],
+    resources: &lopdf::Dictionary,
+    base: (Axis, Axis),
+    depth: usize,
+    found: &mut Found,
+) {
+    let Ok(content) = Content::decode(stream) else {
+        return;
     };
-    let available = document.get_page_fonts(page).unwrap_or_default();
-    let fonts: std::collections::BTreeMap<Vec<u8>, Font> = available
-        .iter()
-        .map(|(name, dictionary)| (name.clone(), font(document, dictionary)))
+    let fonts: std::collections::BTreeMap<Vec<u8>, Font> = resources
+        .get(b"Font")
+        .ok()
+        .and_then(|entry| document.dereference(entry).ok())
+        .and_then(|(_, object)| object.as_dict().ok())
+        .into_iter()
+        .flat_map(|table| table.iter())
+        .filter_map(|(name, entry)| {
+            let dictionary = document
+                .dereference(entry)
+                .ok()
+                .and_then(|(_, object)| object.as_dict().ok())?;
+            Some((name.clone(), font(document, dictionary)))
+        })
         .collect();
-    let (mut horizontal, mut vertical) = (Axis::IDENTITY, Axis::IDENTITY);
+    let (mut horizontal, mut vertical) = base;
     let mut saved: Vec<(Axis, Axis)> = vec![];
     // Text, line and font state, all reset by BT.
     let (mut x, mut y, mut line_x, mut line_y) = (0.0, 0.0, 0.0, 0.0);
     let (mut scale, mut font_size, mut leading) = (1.0_f32, 0.0_f32, 0.0_f32);
     let mut font: Option<Vec<u8>> = None;
-    let mut pieces = vec![];
     for operation in &content.operations {
         let operands = &operation.operands;
         match operation.operator.as_str() {
@@ -327,7 +404,7 @@ pub(super) fn pieces(document: &Document, page: ObjectId) -> Vec<Piece> {
                 // leaves the words either side to be told apart by a gap that
                 // the space itself was holding open.
                 if !text.is_empty() {
-                    pieces.push(Piece {
+                    found.pieces.push(Piece {
                         x: horizontal.at(x),
                         y: vertical.at(y),
                         size,
@@ -336,8 +413,71 @@ pub(super) fn pieces(document: &Document, page: ObjectId) -> Vec<Piece> {
                     });
                 }
             }
+            "Do" => {
+                let Some(name) = operands.first().and_then(|o| o.as_name().ok()) else {
+                    continue;
+                };
+                let object = resources
+                    .get(b"XObject")
+                    .ok()
+                    .and_then(|entry| document.dereference(entry).ok())
+                    .and_then(|(_, object)| object.as_dict().ok())
+                    .and_then(|table| table.get(name).ok())
+                    .and_then(|entry| document.dereference(entry).ok())
+                    .and_then(|(_, object)| object.as_stream().ok());
+                let kind = object
+                    .and_then(|stream| stream.dict.get(b"Subtype").ok())
+                    .and_then(|subtype| subtype.as_name().ok());
+                match kind {
+                    Some(b"Form") if depth < FORMS_DEEP => {
+                        // A form draws in its own space, on top of the
+                        // transformation in force where it was called.
+                        if let Some(stream) = resources
+                            .get(b"XObject")
+                            .ok()
+                            .and_then(|entry| document.dereference(entry).ok())
+                            .and_then(|(_, object)| object.as_dict().ok())
+                            .and_then(|table| table.get(name).ok())
+                            .and_then(|entry| document.dereference(entry).ok())
+                            .and_then(|(_, object)| object.as_stream().ok())
+                        {
+                            let inner = stream
+                                .dict
+                                .get(b"Resources")
+                                .ok()
+                                .and_then(|entry| document.dereference(entry).ok())
+                                .and_then(|(_, object)| object.as_dict().ok())
+                                .cloned()
+                                // A form without resources of its own inherits
+                                // the ones in force where it was drawn.
+                                .unwrap_or_else(|| resources.clone());
+                            if let Ok(bytes) = stream.decompressed_content() {
+                                walk(
+                                    document,
+                                    &bytes,
+                                    &inner,
+                                    (horizontal, vertical),
+                                    depth + 1,
+                                    found,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        // The transformation maps the unit square onto the
+                        // page, so the two edges are its image of 0 and 1.
+                        // Which is the top depends on the sign of the scale.
+                        let (a, b) = (vertical.at(0.0), vertical.at(1.0));
+                        found.drawn.push(Drawn {
+                            name: name.to_vec(),
+                            top: a.max(b),
+                            height: (b - a).abs(),
+                            width: (horizontal.at(1.0) - horizontal.at(0.0)).abs(),
+                        });
+                    }
+                }
+            }
             _ => {}
         }
     }
-    pieces
 }

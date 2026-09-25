@@ -10,6 +10,8 @@ use super::text::Piece;
 pub(super) enum Block {
     Heading(String),
     Paragraph(String),
+    /// A picture, by its place in the book's own list of them.
+    Figure(usize),
 }
 
 /// One line of a page: its text, where it begins and ends, and how big it is.
@@ -276,7 +278,16 @@ pub(super) fn furniture(pages: &[Vec<Line>]) -> std::collections::BTreeSet<Strin
 
 /// Join what the page break split: a page number between two halves of a
 /// sentence is not a full stop.
-pub(super) fn blocks(pages: &[Vec<Line>], body: f32) -> Vec<Block> {
+/// A picture on a page: how far down it sits, and which picture it is.
+pub(super) type Placed = (f32, usize);
+
+/// One thing a page puts in the flow, in reading order.
+enum Item<'a> {
+    Line(&'a Line),
+    Figure(usize),
+}
+
+pub(super) fn blocks(pages: &[Vec<Line>], figures: &[Vec<Placed>], body: f32) -> Vec<Block> {
     let furniture = furniture(pages);
     let key = |text: &str| {
         text.chars()
@@ -289,6 +300,29 @@ pub(super) fn blocks(pages: &[Vec<Line>], body: f32) -> Vec<Block> {
         .iter()
         .flatten()
         .filter(|line| !furniture.contains(&key(&line.text)))
+        .collect();
+    // Figures take their place among the lines of their own page, by where
+    // they sat on it, so a picture keeps the paragraphs it stood between.
+    let flow: Vec<Item> = pages
+        .iter()
+        .enumerate()
+        .flat_map(|(number, lines)| {
+            let mut items: Vec<(f32, Item)> = lines
+                .iter()
+                .filter(|line| !furniture.contains(&key(&line.text)))
+                .map(|line| (line.y, Item::Line(line)))
+                .collect();
+            items.extend(
+                figures
+                    .get(number)
+                    .into_iter()
+                    .flatten()
+                    .map(|(top, index)| (*top, Item::Figure(*index))),
+            );
+            // Down the page is decreasing y.
+            items.sort_by(|a, b| b.0.total_cmp(&a.0));
+            items.into_iter().map(|(_, item)| item)
+        })
         .collect();
     // Where a full line ends. Taken near the top of the spread rather than at
     // the very top, so one wide table row cannot redefine the margin and make
@@ -313,7 +347,16 @@ pub(super) fn blocks(pages: &[Vec<Line>], body: f32) -> Vec<Block> {
     let words = vocabulary(&kept);
     let mut blocks: Vec<Block> = vec![];
     let mut previous: Option<&Line> = None;
-    for line in kept {
+    for item in flow {
+        let line = match item {
+            Item::Figure(index) => {
+                blocks.push(Block::Figure(index));
+                // Whatever follows a picture starts a paragraph of its own.
+                previous = None;
+                continue;
+            }
+            Item::Line(line) => line,
+        };
         let heading = line.size > body * HEADING && !dot_leader(&line.text);
         let starts_paragraph = previous.is_none_or(|last| {
             last.size > body * HEADING

@@ -899,10 +899,22 @@ Converting writes the EPUB into the import folder and sends that; the PDF is not
 touched, moved or replaced, so both remain and the result can be read before it
 is trusted. Paragraphs are rebuilt from where lines sit on the page, a page's
 columns are read one at a time rather than straight across, running heads and
-page numbers are dropped, and headings become the table of contents. Images,
-tables and footnotes are not carried over, and a word broken across a line
-break loses its hyphen, so a compound such as real-time can come back as
-realtime.
+page numbers are dropped, and headings become the table of contents. Tables and
+footnotes are not carried over, and a word broken across a line break loses its
+hyphen, so a compound such as real-time can come back as realtime.
+
+Pictures are carried into the book where they stood. A JPEG is copied across
+whole rather than decoded and re-encoded; anything else is read back through its
+colour space and written as a PNG, with transparency flattened onto white
+because a reader shows a book on paper. Three kinds are left behind, and a PDF
+that has any of them is offered in yellow saying so: an encoding this does not
+read, which in practice means the JPEG 2000, JBIG2 and fax codecs a scanner
+writes; a colour space that paints through a function rather than a table; and
+a picture that covers the whole page, which is a scan of the page rather than
+something on it. Carrying those would make a heavier copy of the PDF with none
+of the reasons anyone wanted an EPUB. Rules, bullets and spacers are skipped
+rather than becoming figures, and no alt text is invented, because a PDF says
+nothing about what its pictures show.
 
 Discovery lists only EPUB on the reader, mirroring what the reader itself lists.
 A PDF or CBZ left on the device by other means is skipped rather than shown as a

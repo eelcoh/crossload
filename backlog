@@ -487,7 +487,7 @@
     Not verified: how the device itself reads them. That needs ejecting and
     reading on the Kobo, which no test here can do.
 
-27. [~] PDF to EPUB — done but for pictures
+27. [x] PDF to EPUB — implemented, pictures included
     Many PDFs have no reason to be PDFs. Many others cannot survive the trip,
     and a bad conversion is a book you do not find out is unreadable until you
     are away from your computer. So the feature is the triage, not the
@@ -586,7 +586,41 @@
     resources can reach back to it; that book now reads as 27 figure pages of
     27 text pages sampled, and Poor. Covered by a test built the way the real
     file is written.
-    So extraction is what is left, against files that now exist.
+    So extraction is what is left, against files that now exist. Written, in
+    src/pdf/figure.rs. A DCTDecode stream is a JPEG file already and is copied
+    across whole rather than decoded and re-encoded for nothing; everything
+    else is read back through its colour space — grey, RGB, CMYK, ICCBased by
+    the component count it declares, and Indexed through its palette, at 1, 2,
+    4, 8 or 16 bits with rows padded to the byte — and written as a PNG. A soft
+    mask is flattened onto white, because a reader shows a book on paper and
+    keeping the alpha leaves a logo as a black rectangle on a device that
+    ignores it. Pictures take their place among the lines by where they sat on
+    the page, so a figure keeps the paragraphs it stood between, and no alt
+    text is invented because a PDF says nothing about what its pictures show.
+    What is left behind is now named rather than blanket: an encoding we do not
+    read (JPX, JBIG2, CCITT — what a scanner writes), a colour space that
+    paints through a function rather than a table, and a picture covering the
+    whole page. That last is a decision rather than a limit: a scan of a page
+    is not a figure, and carrying those makes a heavier copy of the PDF with
+    none of the reasons anyone wanted an EPUB. So FiguresDropped now means some
+    picture really is lost, and it fires on far fewer books.
+    Doing it turned up the twin of the picture bug, in the text. A producer may
+    put the whole page inside a form XObject and leave one Do on the page, and
+    the walk did not follow it: a real 30-page book with 38 figures read as
+    having no text at all and was refused as a scan needing OCR. The walk now
+    descends into forms, carrying the transformation in force and taking the
+    form's own resources for its fonts, bounded at six deep.
+    Measured against the eight Palace Bookshelf PDFs. Two convert Good with 26
+    and 14 pictures; the one that was refused outright now converts with 38.
+    Every carried picture decodes with an independent decoder and every book
+    passes Crossload's own EPUB validation. Text was checked against pdftotext
+    on all seven convertible files and comes within 0 to 3 percent, the
+    shortfall being the running heads deliberately dropped, with no paragraph
+    duplicated by the new descent. Discovery costs about 3 seconds for a
+    300-page book, once, and is cached after that.
+    Left undone deliberately: tables, footnotes, and resampling a soft mask
+    that is not the same size as the picture it masks, which is rare enough to
+    leave opaque rather than stretch badly.
     Two bugs fell out of testing the figure warning. Page resources written
     inline rather than referenced were invisible to the image check, which is
     most pages that carry one. And a one-page document had its only line counted

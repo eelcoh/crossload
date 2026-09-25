@@ -11,6 +11,7 @@
 //! as the text and line matrices, because a second column is as often a
 //! translated coordinate space as it is a larger x. Rotation and skew are not
 //! modelled, which is why this stays a heuristic rather than a measurement.
+mod figure;
 mod layout;
 mod text;
 mod write;
@@ -40,7 +41,7 @@ impl Concern {
                 "some pages are in columns and some are not, so the order of those is a guess"
             }
             Self::NoChapters => "the PDF has no outline, so the EPUB would have no chapters",
-            Self::FiguresDropped => "its pictures are not carried over, only its words",
+            Self::FiguresDropped => "some of its pictures cannot be read and will be left behind",
         }
     }
 }
@@ -102,63 +103,6 @@ const TEXT_ON_A_PAGE: usize = 120;
 /// Reading every page of a long document to guess its shape is waste; an even
 /// sample across it says the same thing.
 const SAMPLED_PAGES: usize = 40;
-
-fn has_images(document: &Document, page: lopdf::ObjectId) -> bool {
-    // A page's resources may be written inline or referenced, and looking at
-    // only the referenced ones misses every page that spells them out.
-    let (direct, streams) = document.get_page_resources(page).unwrap_or_default();
-    let dictionaries = direct.into_iter().chain(
-        streams
-            .iter()
-            .filter_map(|id| document.get_dictionary(*id).ok()),
-    );
-    dictionaries.into_iter().any(|resources| {
-        // Depth is bounded because a form's resources can reach back to it.
-        draws_an_image(document, resources, 0)
-    })
-}
-
-/// Whether these resources put a picture on the page, following forms.
-///
-/// A scanner wraps the page image in a form XObject and puts nothing else at
-/// the top level, so a check that does not descend sees a page of pure text.
-/// Read that way a scanned book looks like one that converts perfectly, which
-/// is the one verdict that must never be wrong.
-fn draws_an_image(document: &Document, resources: &lopdf::Dictionary, depth: usize) -> bool {
-    if depth >= 8 {
-        return false;
-    }
-    // The entry itself is often a reference rather than a dictionary written
-    // out, exactly as MediaBox is.
-    let Some(objects) = resources
-        .get(b"XObject")
-        .ok()
-        .and_then(|entry| document.dereference(entry).ok())
-        .and_then(|(_, object)| object.as_dict().ok())
-    else {
-        return false;
-    };
-    objects.iter().any(|(_, object)| {
-        let Some(stream) = document
-            .dereference(object)
-            .ok()
-            .and_then(|(_, o)| o.as_stream().ok())
-        else {
-            return false;
-        };
-        match stream.dict.get(b"Subtype").and_then(|s| s.as_name()) {
-            Ok(b"Image") => true,
-            Ok(b"Form") => stream
-                .dict
-                .get(b"Resources")
-                .ok()
-                .and_then(|entry| document.dereference(entry).ok())
-                .and_then(|(_, object)| object.as_dict().ok())
-                .is_some_and(|inner| draws_an_image(document, inner, depth + 1)),
-            _ => false,
-        }
-    })
-}
 
 /// Each page's lines in reading order, which for a two-column page means one
 /// column and then the other rather than straight across the gutter.
@@ -256,14 +200,26 @@ pub fn convert(data: &[u8]) -> Result<(Vec<u8>, Verdict)> {
     }
     let document = Document::load_mem(data).context("This file could not be read as a PDF")?;
     let info = from(&document);
-    let pages: Vec<_> = document
-        .get_pages()
-        .values()
-        .map(|page| text::pieces(&document, *page))
-        .collect();
+    let mut pages = Vec::new();
+    let mut placed = Vec::new();
+    let mut pictures = Vec::new();
+    for page in document.get_pages().values() {
+        let (pieces, drawn) = text::contents(&document, *page);
+        // A picture is read once, here, and referred to by its place in the
+        // book's own list from then on.
+        let on_this_page = figure::on_page(&document, *page, &drawn)
+            .into_iter()
+            .map(|(top, picture)| {
+                pictures.push(picture);
+                (top, pictures.len() - 1)
+            })
+            .collect();
+        pages.push(pieces);
+        placed.push(on_this_page);
+    }
     let body = layout::body_size(&pages);
     let lines: Vec<_> = page_lines(&document, &pages);
-    let blocks = layout::blocks(&lines, body);
+    let blocks = layout::blocks(&lines, &placed, body);
     anyhow::ensure!(
         blocks
             .iter()
@@ -272,7 +228,10 @@ pub fn convert(data: &[u8]) -> Result<(Vec<u8>, Verdict)> {
     );
     let title = write::title(info.title, &blocks);
     let author = info.author.unwrap_or_default();
-    Ok((write::epub(&title, &author, &blocks)?, report.verdict))
+    Ok((
+        write::epub(&title, &author, &blocks, &pictures)?,
+        report.verdict,
+    ))
 }
 
 pub fn inspect(data: &[u8]) -> Result<Report> {
@@ -301,19 +260,21 @@ pub fn inspect(data: &[u8]) -> Result<Report> {
     let sampled: Vec<_> = pages.values().copied().step_by(step).collect();
     for page in &sampled {
         let width = text::width(&document, *page);
-        let pieces = text::pieces(&document, *page);
+        // One walk serves both: what the page says, and what it draws.
+        let (pieces, drawn) = text::contents(&document, *page);
+        let pictures = figure::judge(&document, *page, &drawn);
         let bytes: usize = pieces.iter().map(|piece| piece.text.len()).sum();
         if bytes >= TEXT_ON_A_PAGE {
             report.text_pages += 1;
             if layout::two_columns(&pieces, width) {
                 report.column_pages += 1;
             }
-            // Only the words are rebuilt, so a page of text around a figure
-            // converts to a page of text with a hole where the figure was.
-            if has_images(&document, *page) {
+            // Pictures that can be read are carried across, so only the
+            // ones that cannot leave a hole worth warning about.
+            if pictures.dropped {
                 report.figure_pages += 1;
             }
-        } else if has_images(&document, *page) {
+        } else if pictures.any {
             report.image_pages += 1;
         }
     }
@@ -528,10 +489,9 @@ mod tests {
         assert!(prose.contains("inconsistent with"), "{prose}");
     }
 
-    /// A scanner wraps the page image in a form and puts the reference to the
-    /// form's dictionary rather than the dictionary itself. Both of those hid
-    /// every picture in a real scanned book, which then reported as a book
-    /// that converts perfectly.
+    /// A producer may put a figure inside a form and write the form's entry as
+    /// a reference rather than a dictionary. Each of those on its own hid
+    /// every picture in a real book.
     #[test]
     fn a_picture_inside_a_form_is_still_a_picture_on_the_page() {
         let mut document = Document::with_version("1.5");
@@ -584,20 +544,24 @@ mod tests {
         let mut data = Vec::new();
         document.save_to(&mut data).unwrap();
 
+        // Reachable, so carried rather than reported as lost.
         let report = inspect(&data).unwrap();
-        assert_eq!((report.text_pages, report.figure_pages), (1, 1));
+        assert_eq!(
+            (report.text_pages, report.figure_pages),
+            (1, 0),
+            "{report:?}"
+        );
+        let (book, _) = convert(&data).unwrap();
         assert!(
-            matches!(&report.verdict, Verdict::Poor(concerns)
-                if concerns.contains(&Concern::FiguresDropped)),
-            "{:?}",
-            report.verdict
+            members(&book).iter().any(|name| name.contains("figure")),
+            "a picture inside a form is carried into the book"
         );
     }
 
     #[test]
-    fn a_page_of_text_around_a_picture_says_the_picture_will_be_left_behind() {
-        // A page carrying both text and an image XObject. Only the words are
-        // rebuilt, so the reader is told before agreeing to the conversion.
+    fn a_picture_on_a_page_of_text_is_carried_into_the_book_where_it_stood() {
+        // A page carrying both text and an image XObject. The picture is read
+        // back through its colour space and written into the book.
         let mut document = Document::with_version("1.5");
         let image = document.add_object(Stream::new(
             dictionary! {
@@ -638,20 +602,226 @@ mod tests {
         let mut data = Vec::new();
         document.save_to(&mut data).unwrap();
 
+        // Nothing is lost here: greyscale samples are a picture this can read,
+        // so it is carried rather than warned about.
         let report = inspect(&data).unwrap();
+        assert_eq!(
+            (report.text_pages, report.figure_pages),
+            (1, 0),
+            "{report:?}"
+        );
+        assert!(
+            !report.verdict.concerns().contains(&Concern::FiguresDropped),
+            "{:?}",
+            report.verdict
+        );
+        let (book, _) = convert(&data).unwrap();
+        let names = members(&book);
+        assert!(
+            names.iter().any(|name| name.starts_with("OEBPS/figure")),
+            "{names:?}"
+        );
+        assert!(
+            text_of(&book).contains("<img src=\"figure1.png\" alt=\"\"/>"),
+            "the picture is referred to where it stood"
+        );
+        // Declared in the manifest, or a reader is entitled to ignore it.
+        assert!(text_of(&book).contains("media-type=\"image/png\""));
+    }
+
+    /// The names of everything inside a book.
+    fn members(book: &[u8]) -> Vec<String> {
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(book)).unwrap();
+        (0..zip.len())
+            .map(|index| zip.by_index(index).unwrap().name().to_owned())
+            .collect()
+    }
+
+    /// Everything readable in a book, for asking what it says.
+    fn text_of(book: &[u8]) -> String {
+        use std::io::Read;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(book)).unwrap();
+        let mut out = String::new();
+        for index in 0..zip.len() {
+            let mut file = zip.by_index(index).unwrap();
+            if file.name().ends_with(".xhtml") || file.name().ends_with(".opf") {
+                let mut text = String::new();
+                file.read_to_string(&mut text).unwrap();
+                out.push_str(&text);
+            }
+        }
+        out
+    }
+
+    /// A producer may put the whole page inside a form and leave one `Do` on
+    /// the page itself. Read without following that, the page is empty, and a
+    /// perfectly ordinary document is refused as a scan needing OCR.
+    #[test]
+    fn text_drawn_inside_a_form_is_still_text_on_the_page() {
+        let mut document = Document::with_version("1.5");
+        let words = "a paragraph that the producer chose to draw inside a form rather than \
+                     on the page itself, which is a thing real books do";
+        let inner = format!("BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET");
+        let form = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Form",
+                "BBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            },
+            inner.into_bytes(),
+        ));
+        let pages_id = document.new_object_id();
+        let contents = document.add_object(Stream::new(
+            dictionary! {},
+            b"q 1 0 0 1 0 0 cm /Fg Do Q".to_vec(),
+        ));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => contents,
+            "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            "Resources" => dictionary! { "XObject" => dictionary! { "Fg" => form } },
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        document.trailer.set("Root", catalog);
+        let mut data = Vec::new();
+        document.save_to(&mut data).unwrap();
+
+        let report = inspect(&data).unwrap();
+        assert_eq!(report.text_pages, 1, "{report:?}");
+        assert!(
+            !matches!(report.verdict, Verdict::Impossible(_)),
+            "{:?}",
+            report.verdict
+        );
+        let (book, _) = convert(&data).unwrap();
+        assert!(text_of(&book).contains("inside a form"));
+    }
+
+    /// A scan of a page is a picture that is the page. Carrying those makes a
+    /// heavier copy of the PDF with none of the reasons anyone wanted an EPUB,
+    /// so the size on the page decides, not where the picture was written.
+    #[test]
+    fn a_picture_that_is_the_whole_page_is_a_scan_rather_than_a_figure() {
+        let mut document = Document::with_version("1.5");
+        let image = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => 4,
+                "Height" => 4,
+                "ColorSpace" => "DeviceGray",
+                "BitsPerComponent" => 8,
+            },
+            vec![128; 16],
+        ));
+        let pages_id = document.new_object_id();
+        let words = "the words an optical reader found on the scan of this page, set down \
+                     underneath the picture of it in the way that optical recognition does";
+        // Drawn across the entire MediaBox.
+        let content = format!(
+            "q 520 0 0 800 0 0 cm /Im1 Do Q \
+             BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET"
+        );
+        let contents = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => contents,
+            "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            "Resources" => dictionary! { "XObject" => dictionary! { "Im1" => image } },
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        document.trailer.set("Root", catalog);
+        let mut data = Vec::new();
+        document.save_to(&mut data).unwrap();
+
+        let report = inspect(&data).unwrap();
+        // The encoding is readable, so this is not about what we can decode.
         assert_eq!(
             (report.text_pages, report.figure_pages),
             (1, 1),
             "{report:?}"
         );
+        assert!(report.verdict.concerns().contains(&Concern::FiguresDropped));
+        let (book, _) = convert(&data).unwrap();
         assert!(
-            report.verdict.concerns().contains(&Concern::FiguresDropped),
-            "{:?}",
-            report.verdict
+            !members(&book).iter().any(|name| name.contains("figure")),
+            "a page scan is not carried into the book"
         );
+    }
+
+    /// A picture in an encoding this cannot read is still a warning, and that
+    /// is what the concern now means.
+    #[test]
+    fn a_picture_this_cannot_read_is_what_the_dropped_figures_warning_is_for() {
+        let mut document = Document::with_version("1.5");
+        // JPEG 2000, which a scanner writes and nothing here decodes.
+        let image = document.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => 2,
+                "Height" => 2,
+                "ColorSpace" => "DeviceRGB",
+                "BitsPerComponent" => 8,
+                "Filter" => "JPXDecode",
+            },
+            vec![0, 0, 0, 0],
+        ));
+        let pages_id = document.new_object_id();
+        let words = "a page of ordinary prose with a picture sitting underneath it, long \
+                     enough that nobody could mistake it for a running head or a page number";
+        let content = format!(
+            "BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET \
+             q 100 0 0 80 50 400 cm /Im1 Do Q"
+        );
+        let contents = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => contents,
+            "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+            "Resources" => dictionary! { "XObject" => dictionary! { "Im1" => image } },
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+        let catalog = document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        document.trailer.set("Root", catalog);
+        let mut data = Vec::new();
+        document.save_to(&mut data).unwrap();
+
+        let report = inspect(&data).unwrap();
+        assert_eq!((report.text_pages, report.figure_pages), (1, 1));
+        assert!(report.verdict.concerns().contains(&Concern::FiguresDropped));
         // Still worth converting, so long as it says what will be lost.
-        assert!(matches!(report.verdict, Verdict::Poor(_)));
-        assert!(convert(&data).is_ok());
+        let (book, _) = convert(&data).unwrap();
+        assert!(
+            !members(&book).iter().any(|n| n.contains("figure")),
+            "nothing is written for a picture that could not be read"
+        );
     }
 
     #[test]

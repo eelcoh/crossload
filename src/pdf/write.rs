@@ -5,6 +5,7 @@
 //! a run — a title page, a heading with its subtitle — stay together rather
 //! than becoming a file each, and text before the first heading opens the book
 //! in a file of its own.
+use super::figure::Picture;
 use super::layout::Block;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -48,8 +49,13 @@ struct Chapter {
     body: String,
 }
 
+/// What a picture is called inside the book.
+fn picture_name(index: usize, extension: &str) -> String {
+    format!("figure{}.{extension}", index + 1)
+}
+
 /// Cut the blocks into chapters at their headings.
-fn chapters(blocks: &[Block]) -> Vec<Chapter> {
+fn chapters(blocks: &[Block], pictures: &[Picture]) -> Vec<Chapter> {
     let mut chapters: Vec<Chapter> = vec![];
     // Whether the chapter being filled has any prose yet. A heading that
     // follows another heading belongs with it, not to a file of its own.
@@ -87,14 +93,43 @@ fn chapters(blocks: &[Block]) -> Vec<Chapter> {
                     .push_str(&format!("<p>{}</p>\n", escaped(text.trim())));
                 prose = true;
             }
+            Block::Figure(index) => {
+                let Some(picture) = pictures.get(*index) else {
+                    continue;
+                };
+                let chapter = match chapters.last_mut() {
+                    Some(chapter) => chapter,
+                    None => {
+                        // A book that opens on a picture still needs a file.
+                        chapters.push(Chapter {
+                            title: "Beginning".to_owned(),
+                            body: String::new(),
+                        });
+                        chapters.last_mut().expect("just pushed")
+                    }
+                };
+                // No alt text is invented for it. A PDF says nothing about
+                // what its pictures show, and a made-up description is worse
+                // than an honest blank.
+                chapter.body.push_str(&format!(
+                    "<p class=\"figure\"><img src=\"{}\" alt=\"\"/></p>\n",
+                    picture_name(*index, picture.extension)
+                ));
+                prose = true;
+            }
             _ => {}
         }
     }
     chapters
 }
 
-pub(super) fn epub(title: &str, author: &str, blocks: &[Block]) -> Result<Vec<u8>> {
-    let chapters = chapters(blocks);
+pub(super) fn epub(
+    title: &str,
+    author: &str,
+    blocks: &[Block],
+    pictures: &[Picture],
+) -> Result<Vec<u8>> {
+    let chapters = chapters(blocks, pictures);
     let name = |index: usize| format!("chapter{}.xhtml", index + 1);
     let mut contents = String::new();
     let mut manifest = String::new();
@@ -113,6 +148,22 @@ pub(super) fn epub(title: &str, author: &str, blocks: &[Block]) -> Result<Vec<u8
         ));
         spine.push_str(&format!("<itemref idref=\"c{}\"/>\n", index + 1));
         body.push_str(&chapter.body);
+    }
+    // Only the pictures that reached a chapter are declared, so a figure
+    // dropped for being furniture cannot leave a manifest entry pointing at
+    // nothing.
+    let carried: Vec<(usize, &Picture)> = pictures
+        .iter()
+        .enumerate()
+        .filter(|(index, picture)| body.contains(&picture_name(*index, picture.extension)))
+        .collect();
+    for (index, picture) in &carried {
+        manifest.push_str(&format!(
+            "<item id=\"f{}\" href=\"{}\" media-type=\"{}\"/>\n",
+            index + 1,
+            picture_name(*index, picture.extension),
+            picture.media_type
+        ));
     }
     // A stable identifier: the same PDF converted twice is the same book, and
     // nothing here should depend on the clock.
@@ -141,22 +192,26 @@ pub(super) fn epub(title: &str, author: &str, blocks: &[Block]) -> Result<Vec<u8
     )?;
     zip.write_all(b"application/epub+zip")?;
     let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    let mut file = |name: &str, content: &str| -> Result<()> {
-        zip.start_file(name, deflated)?;
-        zip.write_all(content.as_bytes())?;
-        Ok(())
-    };
-    file(
-        "META-INF/container.xml",
-        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+    // The text is written inside a scope of its own: the closure borrows the
+    // archive, and the pictures below need it back to be stored rather than
+    // deflated a second time.
+    {
+        let mut file = |name: &str, content: &str| -> Result<()> {
+            zip.start_file(name, deflated)?;
+            zip.write_all(content.as_bytes())?;
+            Ok(())
+        };
+        file(
+            "META-INF/container.xml",
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
          <container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\">\n\
          <rootfiles><rootfile full-path=\"OEBPS/content.opf\" \
          media-type=\"application/oebps-package+xml\"/></rootfiles>\n</container>\n",
-    )?;
-    file(
-        "OEBPS/content.opf",
-        &format!(
-            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+        )?;
+        file(
+            "OEBPS/content.opf",
+            &format!(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
              <package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" \
              unique-identifier=\"id\">\n\
              <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n\
@@ -168,16 +223,26 @@ pub(super) fn epub(title: &str, author: &str, blocks: &[Block]) -> Result<Vec<u8
              <item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" \
              properties=\"nav\"/>\n\
              {manifest}</manifest>\n<spine>\n{spine}</spine>\n</package>\n"
-        ),
-    )?;
-    file(
-        "OEBPS/nav.xhtml",
-        &page(&format!(
+            ),
+        )?;
+        file(
+            "OEBPS/nav.xhtml",
+            &page(&format!(
             "<nav epub:type=\"toc\" id=\"toc\"><h1>Contents</h1>\n<ol>\n{contents}</ol>\n</nav>\n"
         )),
-    )?;
-    for (index, chapter) in chapters.iter().enumerate() {
-        file(&format!("OEBPS/{}", name(index)), &page(&chapter.body))?;
+        )?;
+        for (index, chapter) in chapters.iter().enumerate() {
+            file(&format!("OEBPS/{}", name(index)), &page(&chapter.body))?;
+        }
+    }
+    for (index, picture) in carried {
+        // A JPEG or PNG is already compressed; deflating it again costs time
+        // and gives back nothing.
+        zip.start_file(
+            format!("OEBPS/{}", picture_name(index, picture.extension)),
+            SimpleFileOptions::default().compression_method(CompressionMethod::Stored),
+        )?;
+        zip.write_all(&picture.bytes)?;
     }
     Ok(zip.finish()?.into_inner())
 }
