@@ -618,6 +618,19 @@
     shortfall being the running heads deliberately dropped, with no paragraph
     duplicated by the new descent. Discovery costs about 3 seconds for a
     300-page book, once, and is cached after that.
+    A read of the new code afterwards found three things it had got wrong, none
+    of which the fixtures happened to exercise. Sixteen-bit samples were read
+    one byte at a time and then measured against a range of 0..65535, so a
+    white picture came out pure black; the test for it was checked against the
+    old code to be sure it bites. A Decode array of [1 0] says the levels run
+    the other way and was ignored, which inverts a picture rather than failing
+    at it. And Filter written as a reference read as no filter at all, which
+    would have rebuilt a JPEG into noise — the same indirect-reference trap
+    that MediaBox and XObject each sprang earlier.
+    Judging and decoding now go through one gate, so the two cannot disagree.
+    They could before: the verdict asked only about the codec and the colour
+    space while decoding also needed a sane size and a depth it knew, so a book
+    could be called Good and come out with a picture quietly missing.
     Left undone deliberately: tables, footnotes, and resampling a soft mask
     that is not the same size as the picture it masks, which is rare enough to
     leave opaque rather than stretch badly.

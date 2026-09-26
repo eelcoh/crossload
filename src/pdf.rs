@@ -653,6 +653,85 @@ mod tests {
         out
     }
 
+    /// Samples are not always eight bits running dark to light. Sixteen-bit
+    /// samples read as one byte land in 0..255 while the range they are
+    /// measured against is 0..65535, which turns every picture black; a
+    /// `Decode` array of [1 0] says the levels run the other way.
+    #[test]
+    fn deep_samples_and_a_reversed_range_are_read_as_the_pdf_means_them() {
+        // A white 16-bit pixel, and a Decode array that makes black white.
+        /// Sample depth, the bytes, an optional Decode array, and the grey
+        /// level those should come back as.
+        type Case = (u32, Vec<u8>, Option<Vec<Object>>, u8);
+        let cases: [Case; 3] = [
+            (16, vec![0xFF, 0xFF], None, 255),
+            (16, vec![0x00, 0x00], None, 0),
+            // One bit, sample 0, reversed: the darkest level becomes white.
+            (1, vec![0b0000_0000], Some(vec![1.into(), 0.into()]), 255),
+        ];
+        for (bits, samples, decode, expected) in cases {
+            let mut document = Document::with_version("1.5");
+            let mut dictionary = dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => 1,
+                "Height" => 1,
+                "ColorSpace" => "DeviceGray",
+                "BitsPerComponent" => bits as i64,
+            };
+            if let Some(decode) = decode {
+                dictionary.set("Decode", Object::Array(decode));
+            }
+            let image = document.add_object(Stream::new(dictionary, samples.clone()));
+            let pages_id = document.new_object_id();
+            let words = "a paragraph long enough to make this a page of text rather than a \
+                         page of pictures, which is what decides the verdict above";
+            let content = format!(
+                "q 100 0 0 80 50 400 cm /Im1 Do Q \
+                 BT /F1 1 Tf 11 0 0 11 50 700 Tm ({words}) Tj ET"
+            );
+            let contents = document.add_object(Stream::new(dictionary! {}, content.into_bytes()));
+            let page_id = document.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => contents,
+                "MediaBox" => vec![0.into(), 0.into(), 520.into(), 800.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im1" => image } },
+            });
+            document.objects.insert(
+                pages_id,
+                Object::Dictionary(dictionary! {
+                    "Type" => "Pages",
+                    "Kids" => vec![page_id.into()],
+                    "Count" => 1,
+                }),
+            );
+            let catalog =
+                document.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+            document.trailer.set("Root", catalog);
+            let mut data = Vec::new();
+            document.save_to(&mut data).unwrap();
+
+            let (book, _) = convert(&data).unwrap();
+            let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&book)).unwrap();
+            let mut picture = Vec::new();
+            for index in 0..zip.len() {
+                use std::io::Read;
+                let mut file = zip.by_index(index).unwrap();
+                if file.name().contains("figure") {
+                    file.read_to_end(&mut picture).unwrap();
+                }
+            }
+            assert!(!picture.is_empty(), "{bits} bits: nothing was carried");
+            let pixel = image::load_from_memory(&picture).unwrap().to_rgb8();
+            assert_eq!(
+                pixel.get_pixel(0, 0).0,
+                [expected; 3],
+                "{bits} bits, samples {samples:?}"
+            );
+        }
+    }
+
     /// A producer may put the whole page inside a form and leave one `Do` on
     /// the page itself. Read without following that, the page is empty, and a
     /// perfectly ordinary document is refused as a scan needing OCR.

@@ -105,15 +105,87 @@ fn named(
 }
 
 /// The filters a stream is wrapped in, outermost first.
-fn filters(stream: &Stream) -> Vec<Vec<u8>> {
-    match stream.dict.get(b"Filter") {
-        Ok(Object::Name(name)) => vec![name.clone()],
-        Ok(Object::Array(items)) => items
+///
+/// The entry may be written as a reference, and reading it as a name alone
+/// would call a JPEG raw samples and rebuild it into noise.
+fn filters(document: &Document, stream: &Stream) -> Vec<Vec<u8>> {
+    let entry = stream
+        .dict
+        .get(b"Filter")
+        .ok()
+        .and_then(|object| document.dereference(object).ok())
+        .map(|(_, object)| object);
+    match entry {
+        Some(Object::Name(name)) => vec![name.clone()],
+        Some(Object::Array(items)) => items
             .iter()
-            .filter_map(|item| item.as_name().ok().map(<[u8]>::to_vec))
+            .filter_map(|item| {
+                document
+                    .dereference(item)
+                    .ok()
+                    .and_then(|(_, object)| object.as_name().ok().map(<[u8]>::to_vec))
+            })
             .collect(),
         _ => vec![],
     }
+}
+
+/// Sample depths this reads back. Anything else is refused rather than
+/// guessed at.
+fn supported_depth(bits: u32) -> bool {
+    matches!(bits, 1 | 2 | 4 | 8 | 16)
+}
+
+/// The shape of a picture, or nothing if it is one this cannot read.
+///
+/// One gate for both judging and decoding: if these disagreed, a book could
+/// be called perfect and then come out with a picture quietly missing.
+fn readable(document: &Document, stream: &Stream) -> Option<Shape> {
+    let encoding = filters(document, stream);
+    if encoding.iter().any(|name| {
+        matches!(
+            name.as_slice(),
+            b"JPXDecode" | b"JBIG2Decode" | b"CCITTFaxDecode"
+        )
+    }) {
+        return None;
+    }
+    let width = number(stream.dict.get(b"Width").ok()?)?;
+    let height = number(stream.dict.get(b"Height").ok()?)?;
+    if width == 0 || height == 0 || width as u64 * height as u64 > MAX_PIXELS {
+        return None;
+    }
+    // A JPEG is carried whole, so its colour space and depth are the
+    // decoder's problem rather than ours.
+    if encoding.last().is_some_and(|name| name == b"DCTDecode") {
+        return Some(Shape::Jpeg {
+            outer: encoding.len() > 1,
+        });
+    }
+    let bits = stream
+        .dict
+        .get(b"BitsPerComponent")
+        .ok()
+        .and_then(number)
+        .unwrap_or(8);
+    supported_depth(bits).then_some(())?;
+    Some(Shape::Samples {
+        width,
+        height,
+        bits,
+        space: components(document, stream)?,
+    })
+}
+
+enum Shape {
+    /// Already a JPEG file; `outer` says whether anything is wrapped round it.
+    Jpeg { outer: bool },
+    Samples {
+        width: u32,
+        height: u32,
+        bits: u32,
+        space: Space,
+    },
 }
 
 /// Whether this picture can be carried, without decoding it.
@@ -121,21 +193,7 @@ fn filters(stream: &Stream) -> Vec<Vec<u8>> {
 /// Cheap on purpose: every PDF is judged during discovery, so the verdict must
 /// not depend on decompressing every image in the book.
 pub(super) fn carryable(document: &Document, stream: &Stream) -> bool {
-    let encoding = filters(stream);
-    if encoding.iter().any(|name| {
-        matches!(
-            name.as_slice(),
-            b"JPXDecode" | b"JBIG2Decode" | b"CCITTFaxDecode"
-        )
-    }) {
-        return false;
-    }
-    // A JPEG is carried whole, so its colour space is the decoder's problem
-    // rather than ours.
-    if encoding.iter().any(|name| name == b"DCTDecode") {
-        return true;
-    }
-    components(document, stream).is_some()
+    readable(document, stream).is_some()
 }
 
 /// How many samples each pixel has, for a colour space we can read back.
@@ -226,54 +284,40 @@ fn space(document: &Document, object: &Object, depth: usize) -> Option<Space> {
 
 /// Turn a picture into something an EPUB can hold.
 pub(super) fn decode(document: &Document, stream: &Stream) -> Option<Picture> {
-    let encoding = filters(stream);
-    if encoding.iter().any(|name| {
-        matches!(
-            name.as_slice(),
-            b"JPXDecode" | b"JBIG2Decode" | b"CCITTFaxDecode"
-        )
-    }) {
-        return None;
-    }
-    let width = number(stream.dict.get(b"Width").ok()?)?;
-    let height = number(stream.dict.get(b"Height").ok()?)?;
-    if width == 0 || height == 0 || width as u64 * height as u64 > MAX_PIXELS {
-        return None;
-    }
-    // A DCTDecode stream is a JPEG file already, so it is carried across
-    // without being decoded and re-encoded, which would cost quality for
-    // nothing.
-    if encoding.last().is_some_and(|name| name == b"DCTDecode") {
-        let mut bytes = stream.content.clone();
-        // Any filters outside the JPEG still have to come off.
-        if encoding.len() > 1 {
-            bytes = unwrap_outer(stream)?;
-        }
-        return Some(Picture {
-            bytes,
+    match readable(document, stream)? {
+        // A DCTDecode stream is a JPEG file already, so it is carried across
+        // without being decoded and re-encoded, which would cost quality for
+        // nothing.
+        Shape::Jpeg { outer } => Some(Picture {
+            // Any filters outside the JPEG still have to come off.
+            bytes: if outer {
+                unwrap_outer(document, stream)?
+            } else {
+                stream.content.clone()
+            },
             media_type: "image/jpeg",
             extension: "jpg",
-        });
+        }),
+        Shape::Samples {
+            width,
+            height,
+            bits,
+            space,
+        } => {
+            let samples = stream.decompressed_content().ok()?;
+            let pixels = to_rgb(&samples, width, height, bits, &space, inverted(stream))?;
+            let alpha = soft_mask(document, stream, width, height);
+            encode_png(&pixels, width, height, alpha.as_deref())
+        }
     }
-    let space = components(document, stream)?;
-    let bits = stream
-        .dict
-        .get(b"BitsPerComponent")
-        .ok()
-        .and_then(number)
-        .unwrap_or(8);
-    let samples = stream.decompressed_content().ok()?;
-    let pixels = to_rgb(&samples, width, height, bits, &space)?;
-    let alpha = soft_mask(document, stream, width, height);
-    encode_png(&pixels, width, height, alpha.as_deref())
 }
 
 /// Strip every filter except the innermost image codec.
-fn unwrap_outer(stream: &Stream) -> Option<Vec<u8>> {
+fn unwrap_outer(document: &Document, stream: &Stream) -> Option<Vec<u8>> {
     let mut copy = stream.clone();
     // Dropping the image codec from the chain leaves lopdf willing to undo the
     // compression wrapped around it.
-    let remaining: Vec<Object> = filters(stream)
+    let remaining: Vec<Object> = filters(document, stream)
         .into_iter()
         .filter(|name| name != b"DCTDecode")
         .map(Object::Name)
@@ -287,7 +331,14 @@ fn number(object: &Object) -> Option<u32> {
 }
 
 /// Samples to RGB, which is the one form everything below can be written from.
-fn to_rgb(samples: &[u8], width: u32, height: u32, bits: u32, space: &Space) -> Option<Vec<u8>> {
+fn to_rgb(
+    samples: &[u8],
+    width: u32,
+    height: u32,
+    bits: u32,
+    space: &Space,
+    inverted: bool,
+) -> Option<Vec<u8>> {
     let per_pixel = space.samples();
     let mut out = Vec::with_capacity(width as usize * height as usize * 3);
     // Rows are padded to a byte boundary, which matters for anything under 8
@@ -305,6 +356,12 @@ fn to_rgb(samples: &[u8], width: u32, height: u32, bits: u32, space: &Space) -> 
             for (component, value) in values.iter_mut().enumerate().take(per_pixel) {
                 let index = column * per_pixel + component;
                 *value = read(samples, start, index, bits)?;
+                // A Decode array of [1 0] says the samples run the other way.
+                // An index into a palette is a position, not a level, so it is
+                // never turned around.
+                if inverted && !matches!(space, Space::Indexed(..)) {
+                    *value = (max as u32).saturating_sub(*value);
+                }
             }
             match space {
                 Space::Gray => {
@@ -346,11 +403,34 @@ fn to_rgb(samples: &[u8], width: u32, height: u32, bits: u32, space: &Space) -> 
     Some(out)
 }
 
+/// Whether the samples run from light to dark rather than dark to light.
+fn inverted(stream: &Stream) -> bool {
+    stream
+        .dict
+        .get(b"Decode")
+        .ok()
+        .and_then(|object| object.as_array().ok())
+        .is_some_and(|range| {
+            let value = |index: usize| {
+                range
+                    .get(index)
+                    .and_then(|object| object.as_float().ok())
+                    .unwrap_or(0.0)
+            };
+            value(0) > value(1)
+        })
+}
+
 /// One sample, which below 8 bits is a run of bits inside a byte.
 fn read(samples: &[u8], row: usize, index: usize, bits: u32) -> Option<u32> {
     match bits {
         8 => samples.get(row + index).map(|v| *v as u32),
-        16 => samples.get(row + index * 2).map(|v| *v as u32),
+        16 => {
+            // Both bytes, or the value lands in 0..255 while the range it is
+            // measured against is 0..65535 and every picture comes out black.
+            let at = row + index * 2;
+            Some((*samples.get(at)? as u32) << 8 | *samples.get(at + 1)? as u32)
+        }
         1 | 2 | 4 => {
             let offset = index * bits as usize;
             let byte = *samples.get(row + offset / 8)?;
@@ -380,7 +460,7 @@ fn soft_mask(document: &Document, stream: &Stream, width: u32, height: u32) -> O
         .and_then(number)
         .unwrap_or(8);
     let samples = mask.decompressed_content().ok()?;
-    let gray = to_rgb(&samples, w, h, bits, &Space::Gray)?;
+    let gray = to_rgb(&samples, w, h, bits, &Space::Gray, inverted(mask))?;
     // A mask of a different size would need resampling; it is rare enough to
     // be left opaque rather than stretched badly.
     (w == width && h == height).then(|| gray.iter().step_by(3).copied().collect())
