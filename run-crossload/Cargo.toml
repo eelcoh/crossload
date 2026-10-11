@@ -1,0 +1,47 @@
+[package]
+name = "crossload-cli"
+description = "Wiring: which folders, devices and endpoints crossload gets, with which scope; and the command line, which runs the app's functions with native capabilities until ambit has a cli platform. Human-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "crossload"
+
+[[bin]]
+name = "crossload"
+path = "src/main.rs"
+
+[[bin]]
+name = "xteink"
+path = "src/compat.rs"
+
+[dependencies]
+ambit-caps.workspace = true
+ambit-caps-dir.workspace = true
+ambit-caps-dir-native.workspace = true
+ambit-caps-net.workspace = true
+ambit-caps-net-native.workspace = true
+ambit-tui.workspace = true
+ambit-tui-native.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+comfy-table.workspace = true
+crossload.workspace = true
+crossload-adobe.workspace = true
+crossload-adobe-native.workspace = true
+crossload-kobo.workspace = true
+crossload-kobo-native.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+aes = "0.8"
+base64 = "0.22"
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+image.workspace = true
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+sha2.workspace = true
+url.workspace = true
+zip.workspace = true
+flate2 = "1"
+openssl = "0.10"

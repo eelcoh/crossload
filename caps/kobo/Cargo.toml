@@ -1,0 +1,10 @@
+[package]
+name = "crossload-kobo"
+description = "The Kobo database as a capability: the trait, and a sim for tests. No implementation, so the app's tree has no SQLite. Human-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true

@@ -1,0 +1,38 @@
+# The ambit checks (cargo ambit check). Human-owned.
+name: ambit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cackle and Bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # Ubuntu restricts unprivileged user namespaces, which Bubblewrap needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          cargo install --locked cargo-acl --version 0.9.0
+      - name: Install cargo-ambit, the same commit as the ambit crates in Cargo.lock
+        run: |
+          rev=$(grep -o 'git+https://github.com/eelcoh/ambit?rev=[0-9a-f]*#[0-9a-f]*' Cargo.lock \
+            | sed 's/.*#//' | sort -u)
+          if [ "$(echo "$rev" | wc -w)" != 1 ]; then
+            echo "expected exactly one ambit commit in Cargo.lock, found: $rev"; exit 1
+          fi
+          cargo install --locked --git https://github.com/eelcoh/ambit --rev "$rev" cargo-ambit
+      - run: cargo ambit check

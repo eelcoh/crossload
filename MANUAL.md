@@ -663,7 +663,7 @@ See [NATIVE-OPTIONS.md](NATIVE-OPTIONS.md) for the backend investigation and
 
 The Rust application and bridge use the [MIT license](LICENSE). The bundled
 libgourou and uPDFParser libraries use LGPL-3.0-or-later; see
-[native/README.md](native/README.md) for rebuilding and distribution details.
+[native/README.md](caps/adobe-native/native/README.md) for rebuilding and distribution details.
 Kobo processing uses pinned
 [Flamberge](https://github.com/kessriga/flamberge) Rust libraries; attribution and
 dependency details are in [THIRD-PARTY.md](THIRD-PARTY.md).
@@ -1113,11 +1113,13 @@ crossload kobo list | grep -i herron
 crossload kobo list > books.tsv
 ```
 
-The TUI uses Tears 0.8.0 and Ratatui 0.30.2 with Elm-style messages and effects.
+The TUI runs on ambit's tui platform (Ratatui widgets, Elm-style messages and
+effects): the app holds the logic and gets every folder, device and endpoint as a
+capability from the wiring in `run-crossload/`.
 The book table shows title, locations and author, with selected-copy details
 below when height permits. Background discovery reports location availability;
 search and selection remain responsive while locations load.
-[TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and migration results.
+[TUI-ARCHITECTURE.md](TUI-ARCHITECTURE.md) records the design and both migrations.
 
 Direct ByteBooks account activation has been dropped from the roadmap; the
 Calibre activation-export workflow above is the supported setup method. [BYTEBOOKS-ACTIVATION.md](BYTEBOOKS-ACTIVATION.md)
@@ -1128,4 +1130,4 @@ terminal restoration without a real reader. Native macOS execution is pending.
 
 macOS baseline update: the user compiled and smoke-tested the initial GitHub
 Kobo CLI revision (26180b0) on a Mac. Kobo USB could not be tested on the corporate
-Mac. This does not yet verify the newer native ADEPT and Tears TUI changes.
+Mac. This does not yet verify the newer native ADEPT changes or the ambit TUI.

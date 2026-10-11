@@ -1,0 +1,17 @@
+[package]
+name = "crossload-kobo-native"
+description = "The Kobo database capability on a mounted Kobo: SQLite (bundled), read from a snapshot, and Kobo store-book decryption (flamberge). Wiring only. Human-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+crossload-kobo.workspace = true
+flamberge-keys = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
+flamberge-schemes = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+tempfile.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

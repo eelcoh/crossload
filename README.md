@@ -7,7 +7,8 @@ Crossload shows one library across all three places and tells you which books
 are where, so you can copy what is missing in either direction. It fulfills
 Adobe/ByteBooks ACSM files on its own, reads OPDS catalogues, prepares images
 for the X4's screen, and verifies every copy it makes. Nothing is ever
-overwritten or deleted.
+overwritten, and the only thing it can delete is a copy on a mounted reader
+card, when you ask.
 
 Python and Calibre are not needed to run it.
 
@@ -218,11 +219,11 @@ title, so a renamed or repacked copy is still recognized as the same edition.
 | `space` `a` | mark one book, mark or clear everything shown |
 | `f` | open the filter menu; arrows and Enter, or `1`–`6`, select |
 | `s` | sort by author or title, keeping the highlighted book selected |
-| `,` | edit saved folders and devices, find a mounted Kobo, test the reader connection |
-| `e` | correct a book's title, author or series |
+| `,` | edit saved folders and devices, pick a mounted Kobo, test the reader connection |
+| `e` | correct a book's title, author or series, as a new copy in the import folder |
 | `h` | what was copied lately, and whether it arrived |
 | `?` | open keyboard help and the presence legend |
-| `d` | list every copy of a book, and delete one of them |
+| `d` | list every copy of a book, and delete one on a mounted reader card |
 | `/` | search by title or author |
 | `r` | rescan |
 | `esc` | stop a running copy after the book in progress |
@@ -247,14 +248,26 @@ copy of one is ever the lesser one — `◐` cannot appear for them — and the 
 is not offered as a destination for one at all.
 
 **d** lists every copy of a book with its size and path — the only place a
-duplicate shows itself, since two files of the same book share one row. Pressing
-its number asks for confirmation, and only **y** deletes it. Crossload refuses
-to remove the last copy of a book, a book the Kobo database lists, anything it
-cannot verify is still the copy it found, and anything on a reader reached over
-Wi-Fi rather than as a mounted card. A deleted file is gone, not moved aside.
+duplicate shows itself, since two files of the same book share one row. Only a
+copy on a mounted reader card can be deleted: your own folders and the Kobo are
+only ever added to, so their copies are marked *add only*. Pressing a card
+copy's number asks for confirmation, and only **y** deletes it. Crossload
+refuses to remove the last copy of a book, anything it cannot verify is still
+the copy it found, and anything on a reader reached over Wi-Fi rather than as a
+mounted card. A deleted file is gone, not moved aside.
 
-ACSM files are fulfilled by choosing **Local**. The spent request is then moved
-into an `archive/` folder beside itself, so it stops asking to be dealt with.
+**e** corrects what a book says about itself. The corrected book is saved as a
+new file in the import folder and the original is left as it is; since only
+the metadata differs, the two are still one book in the library.
+
+Saving the settings (**,**) starts the interface again with the folders and
+devices they name. Finding a Kobo lists the ones that were mounted when
+Crossload started.
+
+ACSM files are fulfilled by choosing **Local**. A copy of the spent request is
+then put in an `archive/` folder beside it, so it stops asking to be dealt with;
+the request itself stays where it was, since Crossload only adds to your
+folders.
 This needs a one-time activation import, which is
 [in the manual](MANUAL.md#adobebytebooks-acsm-files).
 
@@ -302,8 +315,12 @@ scan.
 
 Crossload never overwrites a file. A copy that would land on an existing,
 different file is reported instead, and every transfer is read back and verified
-against its source. The one thing that removes anything is `d`, which asks first
-and refuses to take the last copy of a book.
+against its source. The one thing that removes anything is `d`, which works only
+on a mounted reader card, asks first, and refuses to take the last copy of a
+book.
+
+A reader given by IP address is reached on your local network only; one given by
+name (such as `crosspoint.local`) is reached at exactly that name.
 
 ## Further reading
 

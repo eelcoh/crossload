@@ -1,0 +1,177 @@
+# Human-owned. Every crate in the app's normal (non-dev) dependency tree: what ends up in the
+# artifact, plus proc macros, which run at build time with full authority.
+# Checked by `cargo ambit check`.
+#
+# DRAFT, NOT REVIEWED. Drafted by the ambit migration (2026-10-11) from what `cargo ambit check`
+# reported, grouped by why each crate is here. The owner has not approved any of it yet.
+
+# ambit: the platform and the capability traits (draft: the platform's own crates)
+ambit-caps
+ambit-caps-dir
+ambit-caps-net
+ambit-tui
+http
+bytes
+itoa
+
+# crossload's own capability traits, human-owned under caps/ (draft: no implementation inside)
+crossload-adobe
+crossload-kobo
+
+# Errors, JSON, XML, settings (draft: as before the migration)
+anyhow
+serde
+serde_core
+serde_json
+memchr
+ryu
+zmij
+roxmltree
+
+# Reader and catalogue addresses: url, and IDNA for host names (draft: url was already used)
+url
+form_urlencoded
+percent-encoding
+idna
+idna_adapter
+utf8_iter
+icu_collections
+icu_locale_core
+icu_normalizer
+icu_normalizer_data
+icu_properties
+icu_properties_data
+icu_provider
+litemap
+potential_utf
+smallvec
+stable_deref_trait
+tinystr
+writeable
+yoke
+zerofrom
+zerotrie
+zerovec
+
+# Content identity (SHA-256), shared with lopdf's crypto below (draft)
+sha2
+digest
+block-buffer
+crypto-common
+generic-array
+typenum
+cpufeatures
+libc
+hybrid-array
+cpubits
+
+# EPUB/CBZ archives (zip with deflate on flate2/zlib-rs) (draft: as before)
+zip
+flate2
+crc32fast
+miniz_oxide
+adler2
+simd-adler32
+zlib-rs
+zopfli
+
+# Device copies: JPEG/PNG decoding and resizing (image, png, jpeg) (draft: as before)
+image
+bytemuck
+byteorder-lite
+num-traits
+libm
+png
+fdeflate
+moxcms
+pxfm
+bitflags
+zune-core
+zune-jpeg
+
+# PDF reading and conversion (lopdf, default features off). lopdf always pulls in its PDF
+# encryption (aes, cbc, ecb, md-5, rand, getrandom, chacha20), its text encodings and nom; crossload
+# never encrypts a PDF. getrandom reads OS randomness: flagged for review (draft)
+lopdf
+aes
+cbc
+ecb
+cipher
+inout
+block-padding
+md-5
+rand
+rand_core
+chacha20
+getrandom
+cfg-if
+encoding_rs
+nom
+indexmap
+equivalent
+hashbrown
+rangemap
+stringprep
+unicode-bidi
+unicode-normalization
+unicode-properties
+tinyvec
+weezl
+log
+const-oid
+subtle
+alloc-no-stdlib
+alloc-stdlib
+brotli-decompressor
+core_detect
+multiversion
+multiversion_no_op
+simdutf8
+bumpalo
+
+# ratatui, as for ambit's todo example (draft)
+allocator-api2
+castaway
+compact_str
+either
+foldhash
+itertools
+kasuari
+line-clipping
+lru
+ratatui-core
+ratatui-widgets
+static_assertions
+strum
+thiserror
+unicode-segmentation
+unicode-truncate
+unicode-width
+indoc
+instability
+scopeguard
+
+# Build time: proc macros and build scripts (serde_derive, ratatui's, zerovec's, lopdf's
+# multiversion) and their helpers. They run with full authority at build time (draft)
+autocfg
+darling
+darling_core
+darling_macro
+displaydoc
+heck
+ident_case
+multiversion-macros
+proc-macro2
+quote
+rustversion
+serde_derive
+strsim
+strum_macros
+syn
+synstructure
+thiserror-impl
+unicode-ident
+version_check
+yoke-derive
+zerofrom-derive
+zerovec-derive

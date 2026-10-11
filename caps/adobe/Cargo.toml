@@ -1,0 +1,9 @@
+[package]
+name = "crossload-adobe"
+description = "Adobe/ByteBooks (ADEPT) fulfilment as a capability: the trait, and a sim for tests. No implementation, so the app's tree has no C++. Human-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

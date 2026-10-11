@@ -1,5 +1,35 @@
 # Crossload TUI architecture
 
+## Now: ambit's platform model (2026-10-11)
+
+Tears and Tokio are gone. The workspace follows ambit's layout:
+
+- `apps/crossload/` (agent-owned) holds all logic: the model, update and view, the
+  library across places, EPUB/KEPUB/PDF preparation, metadata, OPDS, and the
+  CrossPoint protocol. It has no ambient authority: `crossload::init` takes every
+  effect as a capability (folders as `DirWrite`, the reader's card as `DirModify`,
+  the reader as two `Http`s and a `WebSocket`, the Kobo database and ADEPT
+  fulfilment as crossload's own capabilities, the clock and randomness).
+- `run-crossload/` (human-owned) is the wiring: it picks the folders, scopes and
+  ports from arguments and settings, and runs the command line, which calls the
+  app's functions with native capabilities until ambit has a cli platform.
+- `caps/kobo`, `caps/adobe` (traits and sims) and `caps/kobo-native`,
+  `caps/adobe-native` (SQLite and libgourou, the C/C++ and the `unsafe`) are
+  human-owned capability crates.
+- `spec/` (human-owned) holds acceptance tests on sim capabilities and the sim
+  terminal.
+
+The model below is unchanged in shape. Its effects became platform tasks:
+discovery is a chain per place (list it, then read its books a few at a time),
+and a copy job is one `Cmd::serial` task per book, so books going to one device
+go one after another. A task cannot report progress while it runs, so the status
+line names each book as it starts rather than each phase of it.
+
+Saving settings starts crossload again (the wiring re-executes itself) with the
+folders they name: only the wiring can open a folder.
+
+## Before: Tears (2026-09-13)
+
 Research date: 2026-09-13. Status: implemented and verified on Linux; macOS execution pending.
 
 ## Recommendation

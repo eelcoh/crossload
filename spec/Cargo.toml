@@ -1,0 +1,29 @@
+[package]
+name = "spec"
+description = "Acceptance properties of the crossload app, against the sim backends. Human-owned."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# The helpers in src/ (a fake reader, book builders, the sim world) are for tests/.
+[dependencies]
+ambit-caps.workspace = true
+ambit-caps-dir.workspace = true
+ambit-caps-net.workspace = true
+ambit-caps-sim.workspace = true
+ambit-tui.workspace = true
+ambit-tui-sim.workspace = true
+crossload.workspace = true
+crossload-adobe.workspace = true
+crossload-kobo.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+url.workspace = true
+zip.workspace = true
+
+# Native folders only where the sim cannot stand in: symlinks that lead out of a tree, and
+# modification times (SimDir has neither).
+[dev-dependencies]
+ambit-caps-dir-native.workspace = true
+image.workspace = true
+tempfile.workspace = true

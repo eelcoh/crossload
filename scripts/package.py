@@ -20,8 +20,8 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATHS = (
-    "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "mise.toml", "build.rs", "install.sh", "src", "native",
-    "tests", "scripts", ".github", ".gitignore", ".containerignore",
+    "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "mise.toml", "install.sh", "cackle.toml",
+    "apps", "caps", "run-crossload", "spec", "scripts", ".github", ".gitignore", ".containerignore",
     "Containerfile.build", "README.md", "MANUAL.md", "LICENSE", "THIRD-PARTY.md", "NATIVE-OPTIONS.md", "TUI-ARCHITECTURE.md",
 )
 
@@ -44,7 +44,7 @@ def archive(source, output):
 
 def package(output):
     manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
-    version = manifest["package"]["version"]
+    version = manifest["workspace"]["package"]["version"]
     rustc = run("rustc", "-vV")
     triple = next(line[6:] for line in rustc.splitlines() if line.startswith("host: "))
     if platform.system() not in {"Linux", "Darwin"}:
@@ -103,7 +103,7 @@ def package(output):
 ===========================
 Install the toolchain in rust-toolchain.toml and C/C++ compiler, Make, CMake,
 Perl, and pkg-config (see README.md). All Cargo and native library sources are
-included; edit native/vendor or vendor as needed to rebuild with modified
+included; edit caps/adobe-native/native/vendor or vendor as needed to rebuild with modified
 libraries. Then run from this directory:
 
     cargo build --release --locked --offline
@@ -122,7 +122,8 @@ file hashes. Native vendored libraries can be edited directly.
             shutil.copy2(ROOT / name, release / name)
         # Native sources/notices travel with the binary as well, so references
         # from THIRD-PARTY.md resolve. Cargo dependency notices are collected below.
-        shutil.copytree(ROOT / "native", release / "native", symlinks=True)
+        native = Path("caps/adobe-native/native")
+        shutil.copytree(ROOT / native, release / native, symlinks=True)
         notices = release / "licenses"
         inventory = []
         for crate in sorted(vendor.iterdir()):
@@ -164,7 +165,7 @@ if applicable, is not signed/notarized; local system policy may restrict it.
 The corresponding source archive is {artifacts[1].name}.
 Distribute it alongside this binary archive; it includes all dependency sources
 and offline rebuild instructions, including replacement of LGPL libraries.
-See LICENSE, THIRD-PARTY.md, native/, and licenses/ for notices.
+See LICENSE, THIRD-PARTY.md, caps/adobe-native/native/, and licenses/ for notices.
 """)
         archive(source, artifacts[1])
         archive(release, artifacts[0])

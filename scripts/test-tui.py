@@ -105,6 +105,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         # rather than walking down to the last row.
         t.send(b'\t\r\x15' + str(root / 'setup-imports').encode() + b'\r')
         t.send(b'\t\r\x15127.0.0.1:9\r')
+        # Saving starts the interface again with the saved folders.
         t.send(b'\x13')
         t.expect(b'Library ready.')
         saved = json.loads(setup_config.read_text())
@@ -124,18 +125,18 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         t.expect('author ↑'.encode())
         t.send(b',')
         t.expect(b'Test reader connection')
-        # The Kobo row takes a typed path with e, and judges it as a Kobo.
-        # What Enter detects there depends on what is plugged in, so the unit
-        # tests own that half.
+        # The Kobo row takes a typed path with e. Folders are opened when the
+        # interface starts, so a typed one is checked then. What Enter lists
+        # there depends on what is plugged in, so the unit tests own that half.
         t.send(b'\x1b[B\x1b[Be\x15/etc\r')
-        t.expect('\u26a0 no Kobo database here'.encode())
+        t.expect(b'checked when saved')
         t.send(b'\x1b[A' * 3)
-        # A books folder that does not exist is refused, and the complaint
+        # A books folder that is not a path is refused, and the complaint
         # arrives at the row that caused it.
-        t.send(b'\r\x15/unsaved\r')
-        t.expect('\u2717 not found'.encode())
+        t.send(b'\r\x15unsaved\r')
+        t.expect('\u2717 must start with / or ~/'.encode())
         t.send(b'\x13')
-        t.expect(b'Books folder: not found')
+        t.expect(b'Books folder: must start with / or ~/')
         t.send(b'\x1b')
         t.expect(b'Library ready.')
         assert json.loads(setup_config.read_text()) == saved
@@ -177,4 +178,4 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
     finally:
         t.close()
-print('TUI PTY passed: setup/settings, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.')
+print('TUI PTY passed: setup/settings and restart, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.')

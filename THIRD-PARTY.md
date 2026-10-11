@@ -48,19 +48,22 @@ The source revisions are recorded in each vendor directory's `UPSTREAM` file.
 
 | Component | License | Source and notice |
 | --- | --- | --- |
-| libgourou 0.8.10 | LGPL-3.0-or-later | [Source](native/vendor/libgourou), [license](native/vendor/libgourou/LICENSE) |
-| libgourou reference client | BSD-3-Clause | [Notice in source](native/vendor/libgourou/utils/drmprocessorclientimpl.cpp) |
-| uPDFParser | LGPL-3.0-or-later | [Source](native/vendor/updfparser), [license](native/vendor/updfparser/LICENSE) |
-| pugixml 1.15 | MIT | [License](native/vendor/pugixml/LICENSE.md) |
-| libzip 1.11.4 | BSD-3-Clause | [License](native/vendor/libzip/LICENSE) |
+| libgourou 0.8.10 | LGPL-3.0-or-later | [Source](caps/adobe-native/native/vendor/libgourou), [license](caps/adobe-native/native/vendor/libgourou/LICENSE) |
+| libgourou reference client | BSD-3-Clause | [Notice in source](caps/adobe-native/native/vendor/libgourou/utils/drmprocessorclientimpl.cpp) |
+| uPDFParser | LGPL-3.0-or-later | [Source](caps/adobe-native/native/vendor/updfparser), [license](caps/adobe-native/native/vendor/updfparser/LICENSE) |
+| pugixml 1.15 | MIT | [License](caps/adobe-native/native/vendor/pugixml/LICENSE.md) |
+| libzip 1.11.4 | BSD-3-Clause | [License](caps/adobe-native/native/vendor/libzip/LICENSE) |
 
 OpenSSL, curl, and zlib are statically compiled from the sources selected by
 `Cargo.lock` through their Cargo sys crates. Their licenses and those of all
-transitive dependencies also apply. See [native/README.md](native/README.md) for
+transitive dependencies also apply. See [native/README.md](caps/adobe-native/native/README.md) for
 local upstream changes and the source/relinking requirements for binary releases.
 
 ## Terminal interface
 
-Crossload uses Tears 0.8.0 (Apache-2.0), Ratatui (MIT), and Tokio (MIT).
+Crossload uses ambit (its tui platform and capabilities) and Ratatui (MIT).
+The reader and catalogues are reached through ambit's network capability: ureq
+with rustls and ring for HTTP(S), and tungstenite for the reader's upload
+WebSocket.
 Cargo.lock records all resolved dependencies; packaging collects their license
 notices and includes their sources in the offline source archive.

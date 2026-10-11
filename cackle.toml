@@ -1,0 +1,982 @@
+# DRAFT, NOT REVIEWED. Two parts:
+# - Copied from ambit's cackle.toml at 300f401: reviewed there for ambit's crates and their
+#   dependencies. Entries for crates crossload doesn't build, and grants nothing here uses, were
+#   removed (cackle fails on both). Where crossload needs more of one of these crates, the
+#   addition is marked "Draft (crossload)".
+# - The "CROSSLOAD" section at the end: what `cargo acl` reported for this workspace, granted only
+#   to the crates it named, each with a one-line reason. None of it is approved by the owner yet.
+#   Most `allow_unsafe` and build-script grants were drafted from the crates' sources and then
+#   confirmed by `cargo acl`, which fails on any grant that isn't used.
+#
+# Level 2 enforcement: which crate may use which API, checked by cackle (`cargo acl`) on the
+# compiled code of every crate, dependencies included. Human-owned.
+#
+# - Apps (under apps/) get no [pkg.*] entry: no restricted API, and no opting out of memory safety.
+#   Their effects go through the capabilities handed to init().
+# - Build scripts and tests run in a Bubblewrap sandbox.
+
+[common]
+version = 2
+import_std = ["fs", "net", "process", "env", "terminate"]
+
+[sandbox]
+kind = "Bubblewrap"
+
+[pkg.unicode-ident]
+allow_unsafe = true
+
+[pkg.itoa]
+allow_unsafe = true
+
+[pkg.proc-macro2]
+build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+    "terminate",
+]
+allow_unsafe = true
+
+[pkg.once_cell]
+allow_unsafe = true
+
+[pkg.quote]
+build.allow_apis = [
+    "env",
+    "process",
+]
+
+[pkg.bytes]
+allow_unsafe = true
+allow_apis = [
+    "terminate",
+]
+
+[pkg.libc]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.tracing-core]
+allow_unsafe = true
+
+[pkg.httparse]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.lazy_static]
+allow_unsafe = true
+
+[pkg.http]
+allow_unsafe = true
+
+[pkg.getrandom]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.log]
+allow_unsafe = true
+
+[pkg.tracing-log]
+allow_unsafe = true
+
+[pkg.thread_local]
+allow_unsafe = true
+
+[pkg.sharded-slab]
+allow_unsafe = true
+
+[pkg.smallvec]
+allow_unsafe = true
+
+[pkg.redb]
+build.allow_apis = [
+    "env",
+]
+allow_unsafe = true
+
+[pkg.tracing-subscriber]
+allow_unsafe = true
+
+[pkg.syn]
+allow_unsafe = true
+
+[pkg.rustversion]
+allow_proc_macro = true
+build.allow_apis = [
+    "fs",
+    "process",
+    "terminate",
+]
+allow_apis = [
+    "env",
+]
+# Draft (crossload): uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.document-features]
+allow_proc_macro = true
+allow_apis = [
+    "env",
+    "fs",
+]
+
+[pkg.indoc]
+allow_proc_macro = true
+
+[pkg.instability]
+allow_proc_macro = true
+
+[pkg.darling_macro]
+allow_proc_macro = true
+
+[pkg.derive_more-impl]
+allow_proc_macro = true
+# Draft (crossload): uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.thiserror-impl]
+allow_proc_macro = true
+# Draft (crossload): uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.strum_macros]
+allow_proc_macro = true
+allow_apis = [
+    "env",
+]
+
+[pkg.foldhash]
+allow_unsafe = true
+
+[pkg.allocator-api2]
+allow_unsafe = true
+
+[pkg.bitflags]
+allow_unsafe = true
+
+[pkg.thiserror]
+build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+    "terminate",
+]
+
+[pkg.either]
+allow_unsafe = true
+
+[pkg.castaway]
+allow_unsafe = true
+
+[pkg.hashbrown]
+allow_unsafe = true
+
+[pkg.itertools]
+allow_unsafe = true
+
+[pkg.ryu]
+allow_unsafe = true
+
+[pkg.static_assertions]
+allow_unsafe = true
+
+[pkg.compact_str]
+allow_unsafe = true
+
+[pkg.lru]
+allow_unsafe = true
+
+[pkg.errno]
+allow_unsafe = true
+
+[pkg.parking_lot_core]
+build.allow_apis = [
+    "env",
+]
+allow_unsafe = true
+
+[pkg.signal-hook-registry]
+allow_unsafe = true
+
+[pkg.scopeguard]
+allow_unsafe = true
+
+[pkg.rustix]
+build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.lock_api]
+allow_unsafe = true
+
+[pkg.signal-hook]
+allow_unsafe = true
+# Draft (crossload): build script uses env, fs, process (reported by cargo acl).
+
+[pkg.mio]
+allow_unsafe = true
+
+[pkg.linux-raw-sys]
+allow_unsafe = true
+
+[pkg.parking_lot]
+allow_unsafe = true
+
+[pkg.ambit-caps-native]
+
+[pkg.crossterm]
+allow_unsafe = true
+allow_apis = [
+    "env",
+    "fs",
+    "process",
+]
+
+[pkg.signal-hook-mio]
+allow_apis = [
+    "net",
+]
+
+[pkg.shlex]
+allow_unsafe = true
+
+[pkg.find-msvc-tools]
+allow_unsafe = true
+from.build.allow_apis = [
+    "env",
+    "fs",
+    # Draft (crossload): runs the C compiler for build scripts (cc, cmake), as cc itself may.
+    "process",
+]
+
+
+[pkg.zeroize]
+allow_unsafe = true
+
+[pkg.cc]
+allow_unsafe = true
+from.build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+    "terminate",
+]
+
+[pkg.rustls-pki-types]
+allow_unsafe = true
+
+[pkg.ring]
+build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+]
+build.allow_build_instructions = [
+    "cargo:rustc-link-lib=static=ring_core_*",
+    "cargo:rustc-link-search=native=*",
+]
+allow_unsafe = true
+
+[pkg.subtle]
+allow_unsafe = true
+
+[pkg.utf8-zero]
+allow_unsafe = true
+
+[pkg.percent-encoding]
+allow_unsafe = true
+
+[pkg.ambit-caps-net-native]
+allow_apis = [
+    "net",
+]
+
+[pkg.ureq]
+# Draft (crossload): uses env; uses net (reported by cargo acl).
+allow_apis = ["env", "net"]
+
+[pkg.serde_derive]
+allow_proc_macro = true
+
+[pkg.serde_core]
+build.allow_apis = [
+    "env",
+    "fs",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.zmij]
+build.allow_apis = [
+    "env",
+    "process",
+    "terminate",
+]
+allow_unsafe = true
+
+[pkg.serde_json]
+build.allow_apis = [
+    "env",
+]
+allow_unsafe = true
+
+[pkg.memchr]
+allow_unsafe = true
+
+[pkg.io-lifetimes]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.io-extras]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+
+[pkg.cap-primitives]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+from.test.allow_apis = [
+    "fs",
+]
+# Draft (crossload): uses fs (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.fs-set-times]
+allow_unsafe = true
+
+[pkg.rustix-linux-procfs]
+allow_unsafe = true
+
+[pkg.cap-std]
+build.allow_apis = [
+    "env",
+    "process",
+]
+allow_unsafe = true
+from.test.allow_apis = [
+    "fs",
+]
+# Draft (crossload): uses fs (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.ambit-caps-dir-native]
+
+# --- WebSocket (tungstenite and what it pulls in) ----------------------------------------------
+
+# Never built: zerocopy names it under cfg(any()) only to pin its version. cackle lists it from
+# the metadata anyway.
+# Draft (crossload): uses fs (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.zerocopy-derive]
+allow_proc_macro = true
+
+# rand's ChaCha (ws frame masks) uses it through ppv-lite86. Its build script asks rustc its
+# version and reads its own Cargo.toml.
+# Draft (crossload): uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.zerocopy]
+allow_unsafe = true
+build.allow_apis = ["env", "fs", "process"]
+
+# The WebSocket protocol. Unsafe only to skip re-checking text it has validated, and for fast
+# frame masking. It opens no connections: NativeWebSocket hands it one.
+[pkg.tungstenite]
+allow_unsafe = true
+
+# random masks for ws frames, as the protocol requires of clients.
+[pkg.rand]
+allow_unsafe = true
+
+# rand's ChaCha: SIMD.
+[pkg.ppv-lite86]
+allow_unsafe = true
+
+# ws handshake key (SHA-1, as the protocol requires) and its helpers; SIMD.
+[pkg.sha1]
+allow_unsafe = true
+
+[pkg.cpufeatures]
+allow_unsafe = true
+
+[pkg.block-buffer]
+allow_unsafe = true
+
+[pkg.generic-array]
+allow_unsafe = true
+
+# build time only: a build script asks rustc its version through it.
+# Draft (crossload): build script uses env, fs, process (reported by cargo acl).
+
+[pkg.version_check]
+allow_apis = ["env", "process"]
+
+# base64 for the handshake key.
+[pkg.data-encoding]
+allow_unsafe = true
+
+[api.net]
+include = [
+    "cap-primitives::net",
+    "cap-std::net",
+    "mio::net",
+]
+
+[api.fs]
+include = [
+    "cap-primitives::fs",
+    "cap-std::fs",
+    "rustix::fs",
+]
+
+[api.process]
+include = [
+    "rustix::process",
+]
+
+# --- CROSSLOAD (draft, not reviewed) ----------------------------------------------------------
+
+[pkg.aes]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.ahash]
+# Draft: build script uses env, fs, process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env"]
+
+[pkg.alloc-no-stdlib]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.alloc-stdlib]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.anstream]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.anstyle]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.anstyle-parse]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.anstyle-query]
+# Draft: uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["env"]
+
+[pkg.anstyle-wincon]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.anyhow]
+# Draft: build script uses env, fs, process; build script uses terminate; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "fs", "process", "terminate"]
+
+[pkg.arbitrary]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.autocfg]
+# Draft: uses env; uses fs; uses process (reported by cargo acl).
+allow_apis = ["env", "fs", "process"]
+
+[pkg.base64]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.base64ct]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.block-padding]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.brotli-decompressor]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.bumpalo]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.bytemuck]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.byteorder]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.byteorder-lite]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.chacha20]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.cipher]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.clap_builder]
+# Draft: uses env; uses fs; uses terminate (reported by cargo acl).
+allow_apis = ["env", "fs", "terminate"]
+
+[pkg.clap_derive]
+# Draft: a proc macro (build-time code generation); uses env (reported by cargo acl).
+allow_proc_macro = true
+allow_apis = ["env"]
+
+[pkg.clap_lex]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.cmake]
+# Draft: uses env; uses fs; uses process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["env", "fs", "process"]
+
+[pkg.comfy-table]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.const-oid]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.core_detect]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.crc32fast]
+# Draft: build script uses env; build script uses env, fs, process; build script uses process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "process"]
+
+[pkg.crossbeam-utils]
+# Draft: build script uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.crossload-adobe-native]
+# Draft: the private ADEPT state directory, 0700/0600 (fs); libgourou (C++) behind one extern "C" call (unsafe); its build compiles libgourou, libzip and pugixml against zlib, OpenSSL and curl headers from other crates' build outputs, which the per-crate sandbox hides, so the build script runs unsandboxed (env, fs) (reported by cargo acl).
+allow_unsafe = true
+build.sandbox.kind = "Disabled"
+allow_apis = ["fs"]
+build.allow_apis = ["env", "fs"]
+
+[pkg.crossload-cli]
+# Draft: the wiring and the command line: opens the folders and settings file it grants (fs), reads HOME, XDG_* and NO_COLOR (env), parses reader IP addresses into scopes (net types), sets the exit code (process) (reported by cargo acl).
+allow_apis = ["env", "fs", "net", "process"]
+
+[pkg.crossload-kobo-native]
+# Draft: reads the Kobo database and copies it into a private temporary snapshot (fs) (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.crossterm_winapi]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.curl-sys]
+# Draft: build script compiles C against headers in other crates' build outputs (zlib, OpenSSL, curl), which the per-crate sandbox hides, so it runs unsandboxed; build script uses env, fs, process (reported by cargo acl).
+build.sandbox.kind = "Disabled"
+build.allow_apis = ["env", "fs", "process"]
+
+[pkg.darling_core]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.derive_arbitrary]
+# Draft: a proc macro (build-time code generation) (reported by cargo acl).
+allow_proc_macro = true
+
+[pkg.displaydoc]
+# Draft: a proc macro (build-time code generation) (reported by cargo acl).
+allow_proc_macro = true
+
+[pkg.encoding_rs]
+# Draft: build script emits ; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_build_instructions = ["cargo::rustc-check-cfg=cfg(slow_mm_packus_epi16)"]
+
+[pkg.filetime]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.flamberge-keys]
+# Draft: uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["fs"]
+
+[pkg.flamberge-schemes]
+# Draft: uses fs (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.flate2]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.foreign-types]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.foreign-types-shared]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.form_urlencoded]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.hashlink]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.hybrid-array]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.icu_collections]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.icu_locale_core]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.icu_normalizer]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.icu_normalizer_data]
+# Draft: build script uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env"]
+
+[pkg.icu_properties_data]
+# Draft: build script uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env"]
+
+[pkg.icu_provider]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.idna]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.image]
+# Draft: uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["fs"]
+
+[pkg.indexmap]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.inout]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.libm]
+# Draft: build script emits rustc-env; build script uses env, fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "fs"]
+build.allow_build_instructions = ["cargo:rustc-env=CFG_CARGO_FEATURES=*", "cargo:rustc-env=CFG_OPT_LEVEL=*", "cargo:rustc-env=CFG_TARGET_FEATURES=*"]
+
+[pkg.libsqlite3-sys]
+# Draft: build script emits include; build script emits lib_dir; build script emits rustc-link-lib; build script emits rustc-link-search; build script uses env, fs, process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "fs"]
+build.allow_build_instructions = ["cargo:include=*", "cargo:lib_dir=*", "cargo:rustc-link-lib=static=sqlite3", "cargo:rustc-link-search=native=*"]
+
+[pkg.libz-sys]
+# Draft: build script emits include; build script emits root; build script emits rustc-link-lib; build script emits rustc-link-search; build script uses env, fs, process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "fs", "process"]
+build.allow_build_instructions = ["cargo:include=*", "cargo:root=*", "cargo:rustc-link-lib=static=z", "cargo:rustc-link-search=native=*"]
+
+[pkg.md-5]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.moxcms]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.multiversion-macros]
+# Draft: a proc macro (build-time code generation); uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_proc_macro = true
+
+[pkg.multiversion_no_op]
+# Draft: a proc macro (build-time code generation) (reported by cargo acl).
+allow_proc_macro = true
+
+[pkg.nom]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.nu-ansi-term]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.num-bigint-dig]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.num-traits]
+# Draft: build script uses env, fs, process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.openssl]
+# Draft: build script uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env"]
+
+[pkg.openssl-macros]
+# Draft: a proc macro (build-time code generation) (reported by cargo acl).
+allow_proc_macro = true
+
+[pkg.openssl-probe]
+# Draft: uses env; uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["env", "fs"]
+
+[pkg.openssl-src]
+# Draft: uses env; uses fs; uses process; uses terminate (reported by cargo acl).
+allow_apis = ["env", "fs", "process", "terminate"]
+
+[pkg.openssl-sys]
+# Draft: build script emits conf; build script emits include; build script emits rustc-link-lib; build script emits rustc-link-search; build script emits version_number; build script uses env, fs, process; uses terminate; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["terminate"]
+build.allow_apis = ["env", "fs", "process"]
+build.allow_build_instructions = ["cargo:conf=*", "cargo:include=*", "cargo:rustc-link-lib=static=crypto", "cargo:rustc-link-lib=static=ssl", "cargo:rustc-link-search=native=*", "cargo:version_number=*"]
+
+[pkg.pem-rfc7468]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.pkg-config]
+# Draft: uses env; uses fs; uses process (reported by cargo acl).
+allow_apis = ["env", "fs", "process"]
+
+[pkg.potential_utf]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.pxfm]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.r-efi]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.rand_chacha]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.rand_core]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.redox_syscall]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.rusqlite]
+# Draft: uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["fs"]
+
+[pkg.rustls]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.semver]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.serde]
+# Draft: build script uses env, fs, process; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env", "fs", "process"]
+
+[pkg.sha2]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.simd-adler32]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.simdutf8]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.spec]
+# Draft: acceptance tests on a native temporary folder where the sim cannot stand in: symlinks, modification times (fs) (reported by cargo acl).
+allow_apis = ["fs"]
+
+[pkg.spin]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.stable_deref_trait]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.synstructure]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.tar]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.tempfile]
+# Draft: uses env; uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_apis = ["env", "fs"]
+
+[pkg.tinystr]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.unicode-bidi]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.unicode-normalization]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.url]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.utf8_iter]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.utf8parse]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.vcpkg]
+# Draft: uses env; uses fs (reported by cargo acl).
+allow_apis = ["env", "fs"]
+
+[pkg.wasi]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.wasip2]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.winapi]
+# Draft: build script uses env; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.windows-sys]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.winx]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.wit-bindgen]
+# Draft: build script uses env, fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.writeable]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.xattr]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.yoke]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.yoke-derive]
+# Draft: a proc macro (build-time code generation); uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_proc_macro = true
+
+[pkg.zerofrom-derive]
+# Draft: a proc macro (build-time code generation) (reported by cargo acl).
+allow_proc_macro = true
+
+[pkg.zerotrie]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.zerovec]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.zerovec-derive]
+# Draft: a proc macro (build-time code generation); uses unsafe (reported by cargo acl).
+allow_unsafe = true
+allow_proc_macro = true
+
+[pkg.zip]
+# Draft: build script uses env; uses fs; uses unsafe (reported by cargo acl).
+allow_unsafe = true
+build.allow_apis = ["env"]
+
+[pkg.zlib-rs]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.zopfli]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[pkg.zune-jpeg]
+# Draft: uses unsafe (reported by cargo acl).
+allow_unsafe = true
+
+[api.env]
+# Draft, flagged for review (ADOPTING warns against no_auto_detect): tempfile has a public module
+# called `env` (its default temp dir), which cackle would otherwise take for the env API. This
+# only stops that name match; tempfile's own std::env calls are still found, and are granted to
+# it above. tempfile is used by the human-owned caps/*-native crates and by tests, not the app.
+no_auto_detect = ["tempfile"]

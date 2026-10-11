@@ -1,0 +1,30 @@
+[package]
+name = "crossload"
+description = "Crossload's logic: the library across local folders, a Kobo and a CrossPoint reader, book preparation, OPDS, the CrossPoint protocol and the terminal interface. No ambient authority. Agent-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# New dependencies must also be added to allowed-deps.txt (human-owned).
+[dependencies]
+ambit-caps.workspace = true
+ambit-caps-dir.workspace = true
+ambit-caps-net.workspace = true
+ambit-tui.workspace = true
+anyhow.workspace = true
+crossload-adobe.workspace = true
+crossload-kobo.workspace = true
+image.workspace = true
+lopdf.workspace = true
+ratatui-widgets.workspace = true
+roxmltree.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+unicode-width.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+ambit-caps-sim.workspace = true

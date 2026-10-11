@@ -1,0 +1,30 @@
+[package]
+name = "crossload-adobe-native"
+description = "ADEPT fulfilment on libgourou (C++, built here) with a private state directory (0700, files 0600). Wiring only. Human-owned."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+crossload-adobe.workspace = true
+curl-sys = { version = "0.4", features = ["static-curl", "static-ssl"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
+libz-sys = { version = "1", features = ["static"] }
+openssl-probe = "0.1"
+roxmltree.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+zip.workspace = true
+
+[build-dependencies]
+cc = "1"
+cmake = "0.1"
+
+[dev-dependencies]
+aes = "0.8"
+base64 = "0.22"
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+flate2 = "1"
+openssl = "0.10"
