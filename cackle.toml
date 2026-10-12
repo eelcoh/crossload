@@ -782,7 +782,9 @@ allow_apis = ["env", "fs", "process", "terminate"]
 allow_unsafe = true
 allow_apis = ["terminate"]
 build.allow_apis = ["env", "fs", "process"]
-build.allow_build_instructions = ["cargo:conf=*", "cargo:include=*", "cargo:rustc-link-lib=static=crypto", "cargo:rustc-link-lib=static=ssl", "cargo:rustc-link-search=native=*", "cargo:version_number=*"]
+# Draft: vendored and root tell crates that link OpenSSL that it was built from source, and where;
+# emitted when the OpenSSL source build succeeds (it needs a complete Perl).
+build.allow_build_instructions = ["cargo:conf=*", "cargo:include=*", "cargo:root=*", "cargo:rustc-link-lib=static=crypto", "cargo:rustc-link-lib=static=ssl", "cargo:rustc-link-search=native=*", "cargo:vendored=1", "cargo:version_number=*"]
 
 [pkg.pem-rfc7468]
 # Draft: uses unsafe (reported by cargo acl).
