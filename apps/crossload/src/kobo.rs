@@ -87,6 +87,7 @@ impl Device {
     /// Every book on the device: store books whose file is in `.kobo/kepub`,
     /// and every sideloaded file that is a book.
     pub fn books(&self) -> Result<Vec<Book>> {
+        files::connected(&*self.dir, "The Kobo")?;
         // Chapter records, sideloaded books, and cloud-only entries have no
         // corresponding direct child in .kobo/kepub.
         let mut books: Vec<Book> = self

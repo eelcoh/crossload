@@ -125,6 +125,7 @@ impl Destination {
             Self::Reader(r) => r.files(),
             Self::Card(card) => {
                 let dir = &*card.dir;
+                files::connected(dir, "The reader's card")?;
                 ensure!(
                     dir.metadata(&RelPath::root()).is_ok_and(|m| m.is_dir),
                     "Destination must be an existing mounted-card directory"
@@ -172,6 +173,7 @@ impl Destination {
                 "Deleting over Wi-Fi is not supported by the reader's protocol; mount its card and use --copy-to, or delete on the device"
             ),
             Self::Card(card) => {
+                files::connected(&*card.dir, "The reader's card")?;
                 let path = files::rel(&file.path)?;
                 ensure!(
                     !card.dir.metadata(&path)?.is_dir,
@@ -191,6 +193,7 @@ impl Destination {
         match self {
             Self::Reader(reader) => reader.read_file(&file.path, file.size),
             Self::Card(card) => {
+                files::connected(&*card.dir, "The reader's card")?;
                 let bytes = files::read(&*card.dir, &files::rel(&file.path)?, file.size)
                     .with_context(|| {
                         format!("Card file changed during inventory: {}", file.path)

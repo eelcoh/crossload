@@ -72,17 +72,17 @@ checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 [[package]]
 name = "ambit-caps"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 
 [[package]]
 name = "ambit-caps-dir"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 
 [[package]]
 name = "ambit-caps-dir-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps-dir",
  "cap-std",
@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps",
  "ambit-caps-std",
@@ -103,7 +103,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-net"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "http",
 ]
@@ -111,7 +111,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-net-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps-net",
  "httparse",
@@ -122,7 +122,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps",
  "ambit-caps-dir",
@@ -133,7 +133,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-std"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps",
 ]
@@ -141,7 +141,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ratatui-core",
 ]
@@ -149,7 +149,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps-native",
  "ambit-tui",
@@ -161,7 +161,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=300f401a299edc82d50686a6d83020ac1755fa04#300f401a299edc82d50686a6d83020ac1755fa04"
+source = "git+https://github.com/eelcoh/ambit?rev=08c282eb5b434c3a7491527a14c252af8e7cbcef#08c282eb5b434c3a7491527a14c252af8e7cbcef"
 dependencies = [
  "ambit-caps-sim",
  "ambit-tui",
@@ -771,7 +771,7 @@ dependencies = [
  "openssl-sys",
  "pkg-config",
  "vcpkg",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -962,7 +962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1740,7 +1740,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2225,7 +2225,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2595,7 +2595,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

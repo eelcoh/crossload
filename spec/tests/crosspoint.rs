@@ -334,3 +334,51 @@ fn incomplete_inventory_download_is_an_error() {
     };
     assert!(destination.read(&file).is_err());
 }
+
+#[test]
+fn a_copy_over_wifi_says_each_phase_and_the_bytes_so_far() {
+    let mut world = World::new();
+    world.places.card = false;
+    world.places.wifi = true;
+    world.places.kobo = false;
+    // Big enough for three acknowledgement windows.
+    let mut zip = zip::ZipWriter::new_append(Cursor::new(books::epub("Big", "Writer"))).unwrap();
+    zip.start_file(
+        "large.bin",
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+    )
+    .unwrap();
+    zip.write_all(&vec![0x42; 150000]).unwrap();
+    world
+        .books
+        .file("big.epub", zip.finish().unwrap().into_inner());
+    let library = world.library();
+    let book = library.scan().books.remove(0);
+    let said = std::sync::Mutex::new(Vec::<String>::new());
+    crossload::books::transfer(&library, &book, crossload::Place::CrossPoint, &|text| {
+        said.lock().unwrap().push(text.to_owned())
+    })
+    .unwrap();
+    let said = said.into_inner().unwrap();
+    let position = |start: &str| {
+        said.iter()
+            .position(|s| s.starts_with(start))
+            .unwrap_or_else(|| panic!("no {start:?} in {said:?}"))
+    };
+    let phases = [
+        "Reading Local copy",
+        "Preparing device copy",
+        "Copying to CrossPoint",
+        "Uploading to the reader… 0 B of",
+        "Verifying the reader's copy",
+    ];
+    let order: Vec<usize> = phases.iter().map(|p| position(p)).collect();
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{said:?}");
+    // Bytes so far, after each acknowledged window.
+    let uploads: Vec<&String> = said
+        .iter()
+        .filter(|s| s.starts_with("Uploading to the reader…"))
+        .collect();
+    assert!(uploads.len() >= 4, "{said:?}");
+    assert!(uploads[1].contains("64.0 KiB of"), "{said:?}");
+}

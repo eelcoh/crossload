@@ -46,9 +46,6 @@ pub(super) enum Effect {
     },
     History,
     Room,
-    /// The settings were saved: start again with the folders and devices they
-    /// name, which only the wiring can open.
-    Relaunch,
     Quit,
 }
 /// Whether one copy may be deleted. The dialog shows these and the key handler
@@ -190,7 +187,7 @@ pub(super) struct Model {
     pending_catalog: Option<Snapshot>,
     next_id: u64,
     /// Settings were saved; quitting starts again with them.
-    pub relaunch: bool,
+    pub restart: Option<crate::config::Defaults>,
 }
 impl Model {
     pub fn new(options: Options) -> Self {
@@ -238,7 +235,7 @@ impl Model {
             retaining: false,
             pending_catalog: None,
             next_id: 0,
-            relaunch: false,
+            restart: None,
         }
     }
     pub fn filtered(&self) -> Vec<&Entry> {
@@ -353,6 +350,17 @@ impl Model {
             return Destination::Blocked(
                 "refreshing",
                 "Refreshing locations; wait before copying from the previous inventory.".into(),
+            );
+        }
+        let not_connected = self
+            .catalog
+            .status
+            .iter()
+            .any(|(p, s)| *p == target && s == "Not connected");
+        if not_connected {
+            return Destination::Blocked(
+                "not connected",
+                format!("{} is not connected.", target.label()),
             );
         }
         if target != Place::Local && !self.catalog.ready(target) {
@@ -490,12 +498,10 @@ impl Model {
     fn quit(&mut self) -> Vec<Effect> {
         if self.busy.is_some() || self.loading.is_some() || self.configuring.is_some() {
             self.pending_quit = true;
-            if !self.relaunch {
+            if self.restart.is_none() {
                 self.status = "Finishing current work before quitting…".into();
             }
             vec![]
-        } else if self.relaunch {
-            vec![Effect::Relaunch]
         } else {
             vec![Effect::Quit]
         }
@@ -523,11 +529,11 @@ impl Model {
             Message::Configured(id, result) if self.configuring == Some(id) => {
                 self.configuring = None;
                 match result {
-                    Ok(super::settings::Outcome::Saved) => {
+                    Ok(super::settings::Outcome::Saved(defaults)) => {
                         // The folders and devices are the wiring's to open, so
                         // new ones mean starting again with them.
                         self.settings = None;
-                        self.relaunch = true;
+                        self.restart = Some(defaults);
                         self.status = "Settings saved; starting again with them…".into();
                         return self.quit();
                     }

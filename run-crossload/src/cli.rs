@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ambit_caps_dir::{DirWrite, RelPath};
+use ambit_caps_dir_native::NativeDir;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use comfy_table::{presets::NOTHING, ColumnConstraint, ContentArrangement, Table};
@@ -17,7 +18,6 @@ use crossload_adobe::Adept;
 use crossload_adobe_native::NativeAdept;
 use crossload_kobo_native::NativeKobo;
 
-use crate::mount::Mount;
 use crate::{folder, own_folder, Paths, Tui};
 
 #[derive(Parser)]
@@ -341,7 +341,7 @@ impl LibraryArgs {
         let reader = match (card, reader_address) {
             (Some(card), _) => Some(Destination::Card(Card {
                 display: crate::absolute(&card).display().to_string(),
-                dir: Arc::new(Mount::new(card)),
+                dir: Arc::new(NativeDir::mount(card)),
             })),
             (None, Some(address)) => match reader(&address, &reader_folder) {
                 Ok(reader) => Some(Destination::Reader(reader)),
@@ -356,11 +356,11 @@ impl LibraryArgs {
             settings,
             books: Folder {
                 display: crate::absolute(&local).display().to_string(),
-                dir: Arc::new(Mount::new(&local)),
+                dir: Arc::new(NativeDir::mount(&local)),
             },
             import: Folder {
                 display: crate::absolute(&output).display().to_string(),
-                dir: Arc::new(Mount::creating(&output)),
+                dir: Arc::new(NativeDir::creating(&output)),
             },
             kobo: kobo.map(|path| device_at(&path)),
             reader,
@@ -527,7 +527,7 @@ fn link(address: Option<&Address>) -> Link {
 fn device_at(path: &Path) -> KoboDevice {
     KoboDevice {
         display: crate::absolute(path).display().to_string(),
-        dir: Arc::new(Mount::new(path)),
+        dir: Arc::new(NativeDir::mount(path)),
         db: Arc::new(NativeKobo::new(path)),
     }
 }
@@ -662,29 +662,22 @@ pub(crate) fn run() -> Result<()> {
                 output.clone(),
                 serial.clone(),
             )?;
-            // After a save, the settings file is what counts: the arguments that chose
-            // folders give way to the ones just saved; the rest are kept.
-            let mut restart: Vec<std::ffi::OsString> = vec![];
-            if let Some(config) = &cli.config {
-                restart.extend(["--config".into(), config.clone().into_os_string()]);
-            }
-            if let Some(state) = &cli.state_dir {
-                restart.extend(["--state-dir".into(), state.clone().into_os_string()]);
-            }
-            if cli.no_optimize {
-                restart.push("--no-optimize".into());
-            }
-            if cli.flat {
-                restart.push("--flat".into());
-            }
-            restart.push("tui".into());
-            if show_previews {
-                restart.push("--show-previews".into());
-            }
-            if let Some(serial) = &serial {
-                restart.extend(["--serial".into(), serial.into()]);
-            }
-            crate::run_tui(first, &restart)?;
+            // After a save, the saved settings are what count: the arguments that chose
+            // folders give way to them; the rest are kept.
+            crate::run_tui(first, |saved| {
+                start(
+                    saved,
+                    Transfer {
+                        send_to: None,
+                        copy_to: None,
+                        folder: None,
+                    },
+                    None,
+                    None,
+                    None,
+                    serial.clone(),
+                )
+            })?;
         }
         Command::History {
             count,
@@ -1049,7 +1042,7 @@ fn kobo_command(
                 &crossload::sync::Options {
                     output: Folder {
                         display: crate::absolute(&output).display().to_string(),
-                        dir: Arc::new(Mount::creating(&output)),
+                        dir: Arc::new(NativeDir::creating(&output)),
                     },
                     serial,
                     apply,

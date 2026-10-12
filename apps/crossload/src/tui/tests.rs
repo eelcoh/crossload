@@ -103,7 +103,11 @@ fn settings_save_is_atomic_for_the_model_and_starts_again_with_them() {
     // The folders are the wiring's to open: a save starts the interface again
     // with them, rather than pretending to have them now.
     let effects = model.update(Message::Configured(id, Ok(result)));
-    assert!(matches!(effects.as_slice(), [Effect::Relaunch]));
+    assert!(matches!(effects.as_slice(), [Effect::Quit]));
+    assert_eq!(
+        model.restart.as_ref().and_then(|d| d.output.as_deref()),
+        Some("/home/reader/imports")
+    );
     assert!(model.settings.is_none());
     assert_eq!(model.options.output, original_output);
 

@@ -348,7 +348,8 @@ fn books_reports_the_catalog_as_a_table_and_as_json() {
         status.contains("Local: Ready (2 books, 0 unreadable)"),
         "{status}"
     );
-    assert!(status.contains("Kobo: Unavailable"), "{status}");
+    // A Kobo that is not mounted is not connected, not broken.
+    assert!(status.contains("Kobo: Not connected"), "{status}");
     let result = f.run(&["books", "--json"]);
     assert!(result.status.success(), "{}", text(&result.stderr));
     let catalog: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();

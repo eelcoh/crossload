@@ -1,7 +1,5 @@
 //! The terminal interface end to end, on the sim terminal with sim capabilities: what the user
 //! sees, and what lands where. Tasks run inline, in the order asked.
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use ambit_tui::{Key, KeyCode};
 use crossload_kobo::StoreBook;
@@ -177,16 +175,34 @@ fn an_acsm_is_fulfilled_into_the_import_folder_and_archived_beside_itself() {
 #[test]
 fn saving_settings_writes_them_and_starts_again_with_them() {
     let world = World::new();
-    let relaunch = Arc::new(AtomicBool::new(false));
-    let mut sim = world.start_with(world.options(), relaunch.clone());
+    let mut sim = world.start();
     sim.key(',');
     assert!(sim.screen().contains("Books folder"), "{}", sim.screen());
+    // A new import folder, typed in.
+    sim.key(KeyCode::Down)
+        .key('e')
+        .key(Key::ctrl('u'))
+        .keys("~/Elsewhere")
+        .key(KeyCode::Enter);
     sim.key(Key::ctrl('s'));
     assert!(sim.quit(), "{}", sim.screen());
-    assert!(relaunch.load(Ordering::Relaxed));
     let saved: serde_json::Value =
         serde_json::from_slice(&world.settings_dir.read("config.json").unwrap()).unwrap();
     assert_eq!(saved["browse"], BOOKS);
+    assert_eq!(saved["output"], "/home/reader/Elsewhere");
+    // The app says what to start again with, as native `run` hands it back.
+    let restart = sim.into_app().restart().expect("a restart");
+    assert_eq!(restart.output.as_deref(), Some("/home/reader/Elsewhere"));
+    assert_eq!(restart.browse.as_deref(), Some(BOOKS));
+}
+
+#[test]
+fn a_plain_quit_asks_for_no_restart() {
+    let world = World::new();
+    let mut sim = world.start();
+    sim.key('q');
+    assert!(sim.quit());
+    assert!(sim.into_app().restart().is_none());
 }
 
 #[test]

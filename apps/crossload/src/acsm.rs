@@ -15,6 +15,7 @@ pub fn fulfil(library: &Library, source: &str, progress: &dyn Fn(&str)) -> Resul
     let (root, path) = library.locate(source)?;
     let folder = library.folder(root);
     let data = files::read(&*folder.dir, &path, 8 << 20)?;
+    progress("Fulfilling ACSM and importing EPUB…");
     let book = import(&*library.adept, &library.import, &data)?;
     let shown = format!("{}/{book}", library.import.display.trim_end_matches('/'));
     progress(&format!("Imported {shown}"));

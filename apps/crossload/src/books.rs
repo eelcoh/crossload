@@ -850,7 +850,13 @@ impl Scan {
         self.status(
             place,
             result.map_or_else(
-                |e| format!("Unavailable: {e}"),
+                |e| {
+                    if e.ends_with(files::NOT_CONNECTED) {
+                        "Not connected".to_owned()
+                    } else {
+                        format!("Unavailable: {e}")
+                    }
+                },
                 |()| format!("Ready ({}, {warnings} unreadable)", books_count(count)),
             ),
         );
@@ -1081,6 +1087,7 @@ fn transferred(
     } else {
         (name, data, None)
     };
+    progress("Preparing device copy…");
     let prepared = prepare::prepare(
         data,
         &name,
@@ -1142,7 +1149,7 @@ fn transferred(
                 } else {
                     reader
                 };
-                let sent = reader.send(&prepared.name, &prepared.data)?;
+                let sent = reader.send_with_progress(&prepared.name, &prepared.data, progress)?;
                 if let Some(note) = &sent.note {
                     progress(note);
                 }

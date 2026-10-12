@@ -22,11 +22,13 @@ Tears and Tokio are gone. The workspace follows ambit's layout:
 The model below is unchanged in shape. Its effects became platform tasks:
 discovery is a chain per place (list it, then read its books a few at a time),
 and a copy job is one `Cmd::serial` task per book, so books going to one device
-go one after another. A task cannot report progress while it runs, so the status
-line names each book as it starts rather than each phase of it.
+go one after another. Copy tasks report each phase (reading, preparing, uploading
+with bytes so far, verifying) to the status line while they run.
 
-Saving settings starts crossload again (the wiring re-executes itself) with the
-folders they name: only the wiring can open a folder.
+Saving settings ends the interface; the wiring asks it what was saved
+(`Crossload::restart`) and starts it again with the folders those name, opened
+afresh: only the wiring can open a folder. A Kobo or card that is unplugged shows
+as "Not connected".
 
 ## Before: Tears (2026-09-13)
 

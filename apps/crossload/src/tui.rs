@@ -124,7 +124,10 @@ const PLACES: [Place; 3] = [Place::Local, Place::Kobo, Place::CrossPoint];
 const INTERVAL: Duration = Duration::from_millis(200);
 const TICK: Duration = Duration::from_millis(150);
 
-pub(crate) enum Msg {
+/// A message to the app. What is in it is the app's own business.
+pub struct Msg(Inner);
+
+enum Inner {
     Model(Message),
     Tick,
     Indexed(u64, Arc<cache::Index>),
@@ -158,13 +161,14 @@ struct Job {
     last: String,
 }
 
-pub(crate) struct Shell {
+/// The terminal interface, as `init` gives it. When it quits, ask it whether the user saved new
+/// settings that it should start again with ([`Crossload::restart`]).
+pub struct Crossload {
     model: Model,
     first: Vec<Effect>,
     library: Arc<Library>,
     store: Option<config::Store>,
     link: crosspoint::Link,
-    relaunch: Arc<AtomicBool>,
     scanning: Option<Scanning>,
     job: Option<Job>,
     ticking: bool,
@@ -174,13 +178,18 @@ fn index(place: Place) -> usize {
     PLACES.iter().position(|p| *p == place).expect("a place")
 }
 
-impl Shell {
+impl Crossload {
+    /// The settings the user saved before quitting, if any: the wiring starts crossload again
+    /// with the folders and devices they name. `None` is a plain quit.
+    pub fn restart(&self) -> Option<config::Defaults> {
+        self.model.restart.clone()
+    }
+
     pub(crate) fn new(
         options: Options,
         library: Library,
         store: Option<config::Store>,
         link: crosspoint::Link,
-        relaunch: Arc<AtomicBool>,
     ) -> Self {
         COLOR.store(options.color, Ordering::Relaxed);
         let mut model = Model::new(options);
@@ -196,7 +205,6 @@ impl Shell {
             library: Arc::new(library),
             store,
             link,
-            relaunch,
             scanning: None,
             job: None,
             ticking: false,
@@ -213,7 +221,7 @@ impl Shell {
         let working = self.model.busy.is_some() || self.model.loading.is_some();
         if working && !self.ticking {
             self.ticking = true;
-            return Cmd::After(TICK, Msg::Tick);
+            return Cmd::After(TICK, Msg(Inner::Tick));
         }
         Cmd::None
     }
@@ -228,10 +236,6 @@ impl Shell {
         let library = self.library.clone();
         match effect {
             Effect::Quit => Cmd::Quit,
-            Effect::Relaunch => {
-                self.relaunch.store(true, Ordering::Relaxed);
-                Cmd::Quit
-            }
             Effect::Load { id } => {
                 self.scanning = Some(Scanning {
                     id,
@@ -245,7 +249,12 @@ impl Shell {
                 });
                 let store = library.cache.clone();
                 let clock = library.clock.clone();
-                Cmd::task(move || Msg::Indexed(id, Arc::new(cache::Index::open(store, clock))))
+                Cmd::task(move || {
+                    Msg(Inner::Indexed(
+                        id,
+                        Arc::new(cache::Index::open(store, clock)),
+                    ))
+                })
             }
             Effect::Work {
                 id,
@@ -270,15 +279,17 @@ impl Shell {
                 book,
                 place,
                 path,
-            } => Cmd::serial(move || {
-                let result = books::remove(&library, &book, place, &path, &|_| {})
+            } => Cmd::serial_with_progress(move |p| {
+                let progress =
+                    |text: &str| p.send(Msg(Inner::Model(Message::Progress(id, text.to_owned()))));
+                let result = books::remove(&library, &book, place, &path, &progress)
                     .map(|message| format!("{message}. Press r to refresh."))
                     .map_err(|e| format!("{e:#}"));
-                Msg::Model(Message::Finished(id, result))
+                Msg(Inner::Model(Message::Finished(id, result)))
             }),
             Effect::Correct { id, task } => Cmd::task(move || {
                 let result = edit::perform(&library, task).map_err(|e| format!("{e:#}"));
-                Msg::Model(Message::Corrected(id, result))
+                Msg(Inner::Model(Message::Corrected(id, result)))
             }),
             Effect::Configure { id, task } => {
                 let store = self.store.clone();
@@ -294,21 +305,21 @@ impl Shell {
                         },
                     )
                     .map_err(|e| format!("{e:#}"));
-                    Msg::Model(Message::Configured(id, result))
+                    Msg(Inner::Model(Message::Configured(id, result)))
                 })
             }
             Effect::History => Cmd::task(move || {
-                Msg::Model(Message::History(history::read(
+                Msg(Inner::Model(Message::History(history::read(
                     library.history.as_ref(),
                     200,
-                )))
+                ))))
             }),
             Effect::Room => Cmd::task(move || {
                 let room = PLACES
                     .iter()
                     .map(|place| (*place, books::room(&library, *place)))
                     .collect();
-                Msg::Model(Message::Room(room))
+                Msg(Inner::Model(Message::Room(room)))
             }),
         }
     }
@@ -342,14 +353,16 @@ impl Shell {
         };
         cmds.push(self.update_model(Message::Progress(id, text)));
         let library = self.library.clone();
-        cmds.push(Cmd::serial(move || {
+        cmds.push(Cmd::serial_with_progress(move |p| {
             let notes = std::sync::Mutex::new(Vec::new());
+            // Each phase, and bytes so far, go to the status line as they happen.
             let progress = |text: &str| {
                 if text.starts_with("Note:") {
                     if let Ok(mut notes) = notes.lock() {
                         notes.push(text.to_owned());
                     }
                 }
+                p.send(Msg(Inner::Model(Message::Progress(id, text.to_owned()))));
             };
             let result = match &entry.source {
                 Source::Book(book) => books::transfer(&library, book, target, &progress),
@@ -370,7 +383,7 @@ impl Shell {
                         format!("{e:#}")
                     }
                 });
-            Msg::Copied(id, result)
+            Msg(Inner::Copied(id, result))
         }));
         Cmd::Batch(cmds)
     }
@@ -411,7 +424,7 @@ impl Shell {
                         series_index: None,
                         copies: vec![],
                     });
-                    Msg::Read(id, place, Box::new(book))
+                    Msg(Inner::Read(id, place, Box::new(book)))
                 }));
             }
         }
@@ -469,7 +482,7 @@ impl Shell {
                 if let Some(index) = index {
                     index.save();
                 }
-                Msg::Saved(id)
+                Msg(Inner::Saved(id))
             }),
         ])
     }
@@ -510,7 +523,7 @@ fn summary(job: &Job, stopped: bool) -> Result<String, String> {
     Ok(summary)
 }
 
-impl App for Shell {
+impl App for Crossload {
     type Msg = Msg;
 
     fn start(&mut self) -> Cmd<Msg> {
@@ -522,12 +535,12 @@ impl App for Shell {
         match event {
             Event::Key(key) => self.update_model(Message::Input(key)),
             Event::Paste(_) | Event::Resize(..) => Cmd::None,
-            Event::Msg(Msg::Model(message)) => self.update_model(message),
-            Event::Msg(Msg::Tick) => {
+            Event::Msg(Msg(Inner::Model(message))) => self.update_model(message),
+            Event::Msg(Msg(Inner::Tick)) => {
                 self.ticking = false;
                 self.update_model(Message::Tick)
             }
-            Event::Msg(Msg::Indexed(id, index)) => {
+            Event::Msg(Msg(Inner::Indexed(id, index))) => {
                 let Some(scanning) = self.scanning.as_mut().filter(|s| s.id == id) else {
                     return Cmd::None;
                 };
@@ -546,13 +559,13 @@ impl App for Shell {
                                         Err(anyhow::anyhow!("Location worker stopped"))
                                     })
                                     .map_err(|e| format!("{e:#}"));
-                                Msg::Listed(id, place, listing)
+                                Msg(Inner::Listed(id, place, listing))
                             })
                         })
                         .collect(),
                 )
             }
-            Event::Msg(Msg::Listed(id, place, listing)) => {
+            Event::Msg(Msg(Inner::Listed(id, place, listing))) => {
                 let Some(scanning) = self.scanning.as_mut().filter(|s| s.id == id) else {
                     return Cmd::None;
                 };
@@ -571,7 +584,7 @@ impl App for Shell {
                     }
                 }
             }
-            Event::Msg(Msg::Read(id, place, book)) => {
+            Event::Msg(Msg(Inner::Read(id, place, book))) => {
                 let Some(scanning) = self.scanning.as_mut().filter(|s| s.id == id) else {
                     return Cmd::None;
                 };
@@ -583,8 +596,10 @@ impl App for Shell {
                 let shown = self.show(false);
                 Cmd::Batch(vec![more, shown, self.settle(place)])
             }
-            Event::Msg(Msg::Saved(id)) => self.update_model(Message::CatalogFinished(id, Ok(()))),
-            Event::Msg(Msg::Copied(id, result)) => {
+            Event::Msg(Msg(Inner::Saved(id))) => {
+                self.update_model(Message::CatalogFinished(id, Ok(())))
+            }
+            Event::Msg(Msg(Inner::Copied(id, result))) => {
                 let Some(job) = self.job.as_mut().filter(|job| job.id == id) else {
                     return Cmd::None;
                 };

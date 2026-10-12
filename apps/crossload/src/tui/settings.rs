@@ -71,7 +71,8 @@ pub(super) enum Task {
 }
 #[derive(Debug)]
 pub(crate) enum Outcome {
-    Saved,
+    /// What was saved, normalized: what crossload should start again with.
+    Saved(Defaults),
     Detected(Vec<String>),
     Tested(String),
 }
@@ -400,7 +401,7 @@ pub(super) fn perform(task: Task, context: Context<'_>) -> Result<Outcome> {
                 .store
                 .ok_or_else(|| anyhow::anyhow!("This session has no settings file to save to"))?;
             defaults.save(store)?;
-            Ok(Outcome::Saved)
+            Ok(Outcome::Saved(defaults))
         }
         Task::Detect => Ok(Outcome::Detected(context.kobos.to_vec())),
         Task::Test { address, folder } => {

@@ -47,6 +47,21 @@ pub fn slash(path: &RelPath) -> String {
     }
 }
 
+/// The end of the message for a device or card that is unplugged; a place whose scan fails with
+/// it shows as "Not connected".
+pub const NOT_CONNECTED: &str = "is not connected";
+
+/// Fails with "`what` is not connected" when the tree isn't there right now (an unplugged Kobo
+/// or card). Any other answer is for the caller's own checks.
+pub fn connected(dir: &dyn Dir, what: &str) -> Result<()> {
+    match dir.metadata(&RelPath::root()) {
+        Err(e) if e.kind == DirErrorKind::Unavailable => {
+            anyhow::bail!("{what} {NOT_CONNECTED}")
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Whether the error says the file or directory is not there.
 pub fn missing(e: &anyhow::Error) -> bool {
     e.downcast_ref::<ambit_caps_dir::DirError>()

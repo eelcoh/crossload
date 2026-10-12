@@ -35,6 +35,7 @@ pub fn copy(
         .context("Book failed validation; nothing was copied")?;
     // Never create a missing folder here: an unplugged card must not silently turn a transfer
     // into a copy somewhere else.
+    files::connected(destination, "The destination")?;
     let meta = destination.metadata(folder).with_context(|| {
         "Destination must be an existing directory; mount the SD card and select a folder on it"
     })?;

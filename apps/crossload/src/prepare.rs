@@ -188,6 +188,7 @@ pub fn author_directory(
     folder: &RelPath,
     author: &str,
 ) -> Result<RelPath> {
+    files::connected(destination, "The destination")?;
     ensure!(
         destination.metadata(folder).is_ok_and(|m| m.is_dir),
         "Destination must be an existing mounted-card directory"

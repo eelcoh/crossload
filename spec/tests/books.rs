@@ -5,7 +5,7 @@ use crossload::books::{self, Place, Scan};
 use crossload::cache;
 use crossload_kobo::StoreBook;
 use spec::books::{cbz, epub, pdf, plain};
-use spec::world::{World, BOOKS, CARD, IMPORT};
+use spec::world::{World, BOOKS, IMPORT};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 fn scan(world: &World) -> books::Snapshot {
@@ -198,91 +198,51 @@ fn optimized_reader_copy_groups_with_original_and_original_is_used_for_kobo() {
 #[test]
 fn an_unplugged_card_keeps_import_books_and_unreadable_rows_visible() {
     let mut world = World::new();
+    world.places.kobo = false;
     world
         .import
         .file("good.epub", plain("good", CompressionMethod::Stored));
     world.import.file("broken.epub", b"bad".to_vec());
-    // An unplugged card: the folder is not there.
-    world.card = ambit_caps_sim::SimDir::new();
-    world.card.remove("x");
-    let mut library = world.library();
-    library.reader = Some(crossload::inventory::Destination::Card(
-        crossload::inventory::Card {
-            dir: std::sync::Arc::new(Unplugged),
-            display: CARD.into(),
-        },
-    ));
-    world.places.kobo = false;
+    world
+        .card
+        .file("Author/Book.epub", plain("good", CompressionMethod::Stored));
+    world.card.plugged(false);
+    let library = world.library();
     let snapshot = library.scan();
     assert_eq!(snapshot.books.len(), 2);
     assert!(snapshot.ready(Place::Local));
     assert!(!snapshot.ready(Place::CrossPoint));
+    // Unplugged is not an error with the card: it says so plainly.
+    assert!(snapshot
+        .status
+        .contains(&(Place::CrossPoint, "Not connected".to_string())));
     let broken = snapshot
         .books
         .iter()
         .find(|b| b.title == "broken.epub")
         .unwrap();
     assert!(broken.author.starts_with("Unreadable:"));
-    assert!(books::transfer(&library, broken, Place::Kobo, &|_| {}).is_err());
+    // Nothing is written anywhere else in its place.
+    let good = snapshot.books.iter().find(|b| b.title == "Book").unwrap();
+    let error = books::transfer(&library, good, Place::CrossPoint, &|_| {}).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("is not connected"),
+        "{error:#}"
+    );
+    // Plugged back in, its book is there again.
+    world.card.plugged(true);
+    let snapshot = world.library().scan();
+    assert!(snapshot.books.iter().any(|b| b.has(Place::CrossPoint)));
 }
 
-/// A card that is not mounted: everything is `NotFound`, as `run-crossload`'s mount says.
-struct Unplugged;
-impl ambit_caps_dir::Dir for Unplugged {
-    fn metadata(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-    ) -> Result<ambit_caps_dir::Meta, ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-    fn open(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-    ) -> Result<Box<dyn ambit_caps_dir::File>, ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-    fn list(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-    ) -> Result<Vec<ambit_caps_dir::Entry>, ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-}
-impl ambit_caps_dir::DirWrite for Unplugged {
-    fn create_dir(&self, p: &ambit_caps_dir::RelPath) -> Result<(), ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-    fn create_new(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-        _: &[u8],
-    ) -> Result<(), ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-    fn available_space(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-    ) -> Result<u64, ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-}
-impl ambit_caps_dir::DirModify for Unplugged {
-    fn replace(
-        &self,
-        p: &ambit_caps_dir::RelPath,
-        _: &[u8],
-    ) -> Result<(), ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-    fn remove_file(&self, p: &ambit_caps_dir::RelPath) -> Result<(), ambit_caps_dir::DirError> {
-        Err(gone(p))
-    }
-}
-fn gone(p: &ambit_caps_dir::RelPath) -> ambit_caps_dir::DirError {
-    ambit_caps_dir::DirError::new(
-        ambit_caps_dir::DirErrorKind::NotFound,
-        format!("{p}: not mounted"),
-    )
+#[test]
+fn an_unplugged_kobo_is_not_connected() {
+    let world = World::new();
+    world.kobo_dir.plugged(false);
+    let snapshot = scan(&world);
+    assert!(snapshot
+        .status
+        .contains(&(Place::Kobo, "Not connected".to_string())));
 }
 
 #[test]

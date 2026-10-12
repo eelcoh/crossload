@@ -34,17 +34,16 @@ pub mod profile;
 pub mod sync;
 pub mod tui;
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use ambit_caps::{Clock, Random};
 use ambit_caps_dir::{DirModify, DirWrite, RelPath};
 use ambit_caps_net::{Http, WebSocket};
-use ambit_tui::App;
 use crossload_adobe::Adept;
 use crossload_kobo::Kobo;
 
 pub use books::Place;
+pub use tui::{Crossload, Msg};
 
 /// Settings from the command line and the settings file. Authority is not in here: that's
 /// `init`'s other parameters.
@@ -60,9 +59,6 @@ pub struct Config {
     pub settings_file: String,
     /// Places that were asked for but could not be opened, and why.
     pub unavailable: Vec<(Place, String)>,
-    /// Set when the user saved new settings: the wiring starts the app again with what they
-    /// name.
-    pub relaunch: Arc<AtomicBool>,
 }
 
 /// The capabilities, one per kind of authority:
@@ -91,7 +87,7 @@ pub fn init(
     state: Option<impl DirModify>,
     cache: Option<impl DirModify>,
     config: Config,
-) -> impl App {
+) -> Crossload {
     let clock: Arc<dyn Clock> = Arc::new(clock);
     let options = config.options;
     let link = crosspoint::Link {
@@ -156,5 +152,5 @@ pub fn init(
         clock,
         unavailable,
     };
-    tui::Shell::new(options, library, store, link, config.relaunch)
+    Crossload::new(options, library, store, link)
 }

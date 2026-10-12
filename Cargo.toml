@@ -19,15 +19,15 @@ publish = false
 
 [workspace.dependencies]
 # ambit: one commit for all crates, over https (what the checks trust). See ambit's ADOPTING.md.
-ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }
-ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }
-ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }
-ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }
-ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }   # wiring only
-ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }   # wiring only
-ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }   # wiring only
-ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }   # spec only
-ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "300f401a299edc82d50686a6d83020ac1755fa04" }   # spec only
+ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }
+ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }
+ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }
+ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }
+ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }   # wiring only
+ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }   # wiring only
+ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }   # wiring only
+ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }   # spec only
+ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "08c282eb5b434c3a7491527a14c252af8e7cbcef" }   # spec only
 
 crossload = { path = "apps/crossload" }
 crossload-adobe = { path = "caps/adobe" }

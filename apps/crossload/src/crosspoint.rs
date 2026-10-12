@@ -271,6 +271,17 @@ impl Reader {
     /// Upload `data` as `name` into the folder, verify the reader's copy, and
     /// only then give it its name. Nothing on the reader is ever overwritten.
     pub fn send(&self, name: &str, data: &[u8]) -> Result<Sent> {
+        self.send_with_progress(name, data, &|_| {})
+    }
+
+    /// [`Reader::send`], saying how far it has come: each phase, and the bytes
+    /// uploaded so far.
+    pub fn send_with_progress(
+        &self,
+        name: &str,
+        data: &[u8],
+        progress: &dyn Fn(&str),
+    ) -> Result<Sent> {
         valid_component(name)?;
         let kind = Format::of(name).context("Send requires an .epub, .pdf or .cbz file")?;
         ensure!(
@@ -283,6 +294,7 @@ impl Reader {
             "Book exceeds the 128 MiB transfer limit"
         );
         format::validate(kind, data).context("Book failed validation; nothing was sent")?;
+        progress("Asking the reader for its status…");
         let status = self.status().context(
             "Cannot reach CrossPoint; open File Transfer and use the address shown on the reader",
         )?;
@@ -360,9 +372,10 @@ impl Reader {
             self.address.folder.trim_end_matches('/'),
             staging_name
         );
-        self.upload(&staging_name, data).with_context(|| format!(
+        self.upload(&staging_name, data, progress).with_context(|| format!(
             "Upload failed. No completed EPUB was published. Temporary path: {staging}. The local book is unchanged.{} Check SD-card free space and health if writes keep failing",
             backup.as_ref().map(|p| format!(" Incomplete original preserved at {p}." )).unwrap_or_default()))?;
+        progress("Verifying the reader's copy…");
         self.verify(&staging, data).with_context(|| format!("Upload verification failed; not published as an EPUB. Temporary path: {staging}; local EPUB is unchanged"))?;
         self.rename(&staging, name).with_context(|| format!("Verified upload remains at {staging}; could not publish {remote}. Nothing was overwritten"))?;
         Ok(Sent {
@@ -387,7 +400,7 @@ impl Reader {
         Ok(())
     }
 
-    fn upload(&self, name: &str, data: &[u8]) -> Result<()> {
+    fn upload(&self, name: &str, data: &[u8], progress: &dyn Fn(&str)) -> Result<()> {
         let clock = &self.link.clock;
         let deadline = clock.elapsed() + UPLOAD_DEADLINE;
         let host = self.address.host();
@@ -414,6 +427,8 @@ impl Reader {
                 "Reader did not acknowledge upload start"
             );
             let mut sent = 0;
+            let total = crate::books::size(data.len() as u64);
+            progress(&format!("Uploading to the reader… 0 B of {total}"));
             // Match CrossPoint's browser's 4 KiB frames, but wait for its 64 KiB
             // acknowledgements so network buffering cannot outrun the SD writer.
             for window in data.chunks(65536) {
@@ -427,6 +442,10 @@ impl Reader {
                     control(ws)? == expected,
                     "Reader acknowledged an unexpected byte count"
                 );
+                progress(&format!(
+                    "Uploading to the reader… {} of {total}",
+                    crate::books::size(sent as u64)
+                ));
             }
             ensure!(
                 control(ws)? == "DONE",

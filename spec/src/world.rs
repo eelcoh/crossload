@@ -1,14 +1,12 @@
 //! Sim capabilities for every place crossload works with, scoped as `run-crossload` scopes them,
 //! and the two ways the tests use them: the library functions directly, or the whole terminal
 //! interface under `ambit-tui-sim`.
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use ambit_caps_dir::RelPath;
 use ambit_caps_net::{Origin, Scheme, Scope};
 use ambit_caps_sim::{SeededRandom, SimClock, SimDir, SimHttp, SimWebSocket};
-use ambit_tui::App;
 use ambit_tui_sim::Sim;
 use crossload::books::{Folder, Library, Settings};
 use crossload::crosspoint::{Address, Link, Reader};
@@ -198,11 +196,7 @@ impl World {
     }
 
     /// The whole interface on the sim terminal, with these options.
-    pub fn start_with(
-        &self,
-        options: crossload::tui::Options,
-        relaunch: Arc<AtomicBool>,
-    ) -> Sim<impl App> {
+    pub fn start_with(&self, options: crossload::tui::Options) -> Sim<crossload::Crossload> {
         let reader =
             (self.places.wifi && !self.places.card).then(|| (IP.to_string(), "/".to_string()));
         let app = crossload::init(
@@ -228,14 +222,13 @@ impl World {
                 websocket_port: 81,
                 settings_file: "config.json".into(),
                 unavailable: vec![],
-                relaunch,
             },
         );
         Sim::new(app, self.clock.clone(), 120, 30)
     }
 
     /// The whole interface on the sim terminal.
-    pub fn start(&self) -> Sim<impl App> {
-        self.start_with(self.options(), Arc::new(AtomicBool::new(false)))
+    pub fn start(&self) -> Sim<crossload::Crossload> {
+        self.start_with(self.options())
     }
 }

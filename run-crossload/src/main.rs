@@ -4,11 +4,9 @@
 // here.
 
 mod cli;
-mod mount;
 
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,8 +18,6 @@ use anyhow::{Context, Result};
 use crossload::crosspoint::Address;
 use crossload_adobe_native::NativeAdept;
 use crossload_kobo_native::NativeKobo;
-
-use mount::Mount;
 
 /// The largest book crossload handles; also the reader's whole-file body limit.
 const MAX_BOOK: u64 = 128 * 1024 * 1024;
@@ -298,36 +294,30 @@ fn absolute(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Runs the terminal interface until it quits. When the user saved new settings, crossload starts
-/// again as a new process with `restart`'s arguments, so the folders and devices come from the
-/// saved settings. (A new process rather than a second `run`: ambit's native backend leaves its
-/// input thread waiting on the terminal after `run` returns, and it would swallow the next key.)
-fn run_tui(tui: Tui, restart: &[std::ffi::OsString]) -> Result<()> {
+/// Runs the terminal interface until it quits. When the user saved new settings, it starts
+/// again with what `restart` makes of them: the folders and devices they name, opened afresh.
+fn run_tui(
+    mut tui: Tui,
+    restart: impl Fn(crossload::config::Defaults) -> Result<Tui>,
+) -> Result<()> {
     use std::io::IsTerminal;
     anyhow::ensure!(
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
         "The TUI needs an interactive terminal; use the CLI commands for redirected input/output"
     );
-    let relaunch = Arc::new(AtomicBool::new(false));
-    let app = tui_app(&tui, relaunch.clone())?;
-    ambit_tui_native::run(app, ambit_tui_native::Options::default())?;
-    if relaunch.load(Ordering::Relaxed) {
-        use std::os::unix::process::CommandExt;
-        let error = std::process::Command::new(std::env::current_exe()?)
-            .args(restart)
-            .exec();
-        return Err(error).context("Cannot start crossload again with the saved settings");
+    loop {
+        let app = ambit_tui_native::run(tui_app(&tui)?, ambit_tui_native::Options::default())?;
+        match app.restart() {
+            Some(saved) => tui = restart(saved)?,
+            None => return Ok(()),
+        }
     }
-    Ok(())
 }
 
-fn tui_app(tui: &Tui, relaunch: Arc<AtomicBool>) -> Result<impl ambit_tui::App> {
-    use crossload::Place;
+fn tui_app(tui: &Tui) -> Result<crossload::Crossload> {
     let browse = absolute(&tui.browse);
     let output = absolute(&tui.output);
-    let mut unavailable = vec![];
-    // The books folder is read and added to (archived ACSM requests).
-    let books = folder(&browse);
+    let unavailable = vec![];
     if let Some(device) = &tui.device {
         outside_device(&output, device)?;
     }
@@ -335,7 +325,7 @@ fn tui_app(tui: &Tui, relaunch: Arc<AtomicBool>) -> Result<impl ambit_tui::App> 
     // added to it.
     let import_exists = output.is_dir();
     let opened = crossload::tui::Opened {
-        books: books.is_ok(),
+        books: browse.is_dir(),
         import: import_exists,
         kobo: tui
             .device
@@ -343,16 +333,11 @@ fn tui_app(tui: &Tui, relaunch: Arc<AtomicBool>) -> Result<impl ambit_tui::App> 
             .map(|d| d.join(".kobo/KoboReader.sqlite").is_file()),
         card: tui.copy_to.as_ref().map(|c| c.is_dir()),
     };
-    if let Err(e) = &books {
-        unavailable.push((Place::Local, format!("{e:#}")));
-    }
-    // A missing books or import folder still starts the interface, so it can be fixed in the
-    // settings: the folder is then the path, opened when used, and failing until it exists.
-    let books: Arc<dyn ambit_caps_dir::DirWrite> = match books {
-        Ok(dir) => Arc::new(dir),
-        Err(_) => Arc::new(Mount::new(&browse)),
-    };
-    let import: Arc<dyn ambit_caps_dir::DirWrite> = Arc::new(Mount::creating(&output));
+    // The books folder is read and added to (archived ACSM requests). Opened on each use, so a
+    // folder that isn't there (yet) still starts the interface and can be fixed in the settings.
+    let books = NativeDir::mount(&browse);
+    // The import folder is the one place crossload creates for itself, on the first book added.
+    let import = NativeDir::creating(&output);
     let address = tui
         .send_to
         .as_deref()
@@ -388,8 +373,8 @@ fn tui_app(tui: &Tui, relaunch: Arc<AtomicBool>) -> Result<impl ambit_tui::App> 
         import,
         tui.device
             .as_ref()
-            .map(|device| (Mount::new(device), NativeKobo::new(device))),
-        tui.copy_to.as_ref().map(Mount::new),
+            .map(|device| (NativeDir::mount(device), NativeKobo::new(device))),
+        tui.copy_to.as_ref().map(NativeDir::mount),
         reader_control(http.clone()),
         reader_files(http),
         reader_upload(ws),
@@ -404,7 +389,6 @@ fn tui_app(tui: &Tui, relaunch: Arc<AtomicBool>) -> Result<impl ambit_tui::App> 
             websocket_port: WEBSOCKET_PORT,
             settings_file,
             unavailable,
-            relaunch,
         },
     ))
 }
