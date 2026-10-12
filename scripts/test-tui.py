@@ -60,7 +60,18 @@ class Terminal:
                 self.output += os.read(self.master, 65536)
     def quit(self):
         self.send(b'\x03')
-        assert self.proc.wait(timeout=10) == 0
+        # Keep reading, as a terminal does: an unread pty (small on macOS) blocks the app's
+        # last writes, and it never gets to exit.
+        deadline = time.monotonic() + 10
+        while self.proc.poll() is None:
+            if time.monotonic() > deadline:
+                raise AssertionError(('did not exit after ^C', self.screen().decode()))
+            if select.select([self.master], [], [], .1)[0]:
+                try:
+                    self.output += os.read(self.master, 65536)
+                except OSError:
+                    break
+        assert self.proc.wait(timeout=5) == 0
         assert termios.tcgetattr(self.slave) == self.before, 'terminal settings not restored'
     def close(self):
         if self.proc.poll() is None:
