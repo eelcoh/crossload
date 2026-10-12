@@ -254,12 +254,8 @@ allow_unsafe = true
 
 [pkg.find-msvc-tools]
 allow_unsafe = true
-from.build.allow_apis = [
-    "env",
-    "fs",
-    # Draft (crossload): runs the C compiler for build scripts (cc, cmake), as cc itself may.
-    "process",
-]
+# Draft (crossload): process runs the C compiler for build scripts (cc, cmake), as cc itself may.
+from.build.allow_apis = ["env", "path_fs", "process"]
 
 
 [pkg.zeroize]
@@ -269,7 +265,7 @@ allow_unsafe = true
 allow_unsafe = true
 from.build.allow_apis = [
     "env",
-    "fs",
+    "fs", "path_fs",
     "process",
     "terminate",
 ]
@@ -386,7 +382,7 @@ allow_apis = ["fs"]
 # Never built: zerocopy names it under cfg(any()) only to pin its version. cackle lists it from
 # the metadata anyway.
 # Draft (crossload): uses fs (reported by cargo acl).
-allow_apis = ["fs"]
+allow_apis = ["fs", "path_fs"]
 
 [pkg.zerocopy-derive]
 allow_proc_macro = true
@@ -448,6 +444,28 @@ include = [
     "cap-primitives::fs",
     "cap-std::fs",
     "rustix::fs",
+]
+# A path is a name, not access: building, joining or printing one needs no permission. The path
+# functions that do reach the disk are their own API, `path_fs`, below.
+exclude = [
+    "std::path",
+]
+
+# Asking the disk about a path, through std::path (exists, metadata, listing a folder, following
+# links). Separate from fs only because cackle can't re-include these under the exclude above.
+[api.path_fs]
+include = [
+    "std::path::Path::exists",
+    "std::path::Path::try_exists",
+    "std::path::Path::is_file",
+    "std::path::Path::is_dir",
+    "std::path::Path::is_symlink",
+    "std::path::Path::metadata",
+    "std::path::Path::symlink_metadata",
+    "std::path::Path::canonicalize",
+    "std::path::Path::read_link",
+    "std::path::Path::read_dir",
+    "std::path::absolute",
 ]
 
 [api.process]
@@ -550,7 +568,7 @@ allow_unsafe = true
 
 [pkg.clap_builder]
 # Draft: uses env; uses fs; uses terminate (reported by cargo acl).
-allow_apis = ["env", "fs", "terminate"]
+allow_apis = ["env", "terminate"]
 
 [pkg.clap_derive]
 # Draft: a proc macro (build-time code generation); uses env (reported by cargo acl).
@@ -564,7 +582,7 @@ allow_unsafe = true
 [pkg.cmake]
 # Draft: uses env; uses fs; uses process; uses unsafe (reported by cargo acl).
 allow_unsafe = true
-allow_apis = ["env", "fs", "process"]
+allow_apis = ["env", "fs", "path_fs", "process"]
 
 [pkg.comfy-table]
 # Draft: uses unsafe (reported by cargo acl).
@@ -591,16 +609,16 @@ allow_unsafe = true
 # Draft: the private ADEPT state directory, 0700/0600 (fs); libgourou (C++) behind one extern "C" call (unsafe); its build compiles libgourou, libzip and pugixml against zlib, OpenSSL and curl headers from other crates' build outputs, which the per-crate sandbox hides, so the build script runs unsandboxed (env, fs) (reported by cargo acl).
 allow_unsafe = true
 build.sandbox.kind = "Disabled"
-allow_apis = ["fs"]
-build.allow_apis = ["env", "fs"]
+allow_apis = ["fs", "path_fs"]
+build.allow_apis = ["env"]
 
 [pkg.crossload-cli]
 # Draft: the wiring and the command line: opens the folders and settings file it grants (fs), reads HOME, XDG_* and NO_COLOR (env), parses reader IP addresses into scopes (net types), sets the exit code (process) (reported by cargo acl).
-allow_apis = ["env", "fs", "net", "process"]
+allow_apis = ["env", "fs", "path_fs", "net", "process"]
 
 [pkg.crossload-kobo-native]
 # Draft: reads the Kobo database and copies it into a private temporary snapshot (fs) (reported by cargo acl).
-allow_apis = ["fs"]
+allow_apis = ["fs", "path_fs"]
 
 [pkg.crossterm_winapi]
 # Draft: uses unsafe (reported by cargo acl).
@@ -609,7 +627,7 @@ allow_unsafe = true
 [pkg.curl-sys]
 # Draft: build script compiles C against headers in other crates' build outputs (zlib, OpenSSL, curl), which the per-crate sandbox hides, so it runs unsandboxed; build script uses env, fs, process (reported by cargo acl).
 build.sandbox.kind = "Disabled"
-build.allow_apis = ["env", "fs", "process"]
+build.allow_apis = ["env", "fs", "path_fs", "process"]
 
 [pkg.darling_core]
 # Draft: uses unsafe (reported by cargo acl).
@@ -696,9 +714,8 @@ allow_unsafe = true
 allow_unsafe = true
 
 [pkg.image]
-# Draft: uses fs; uses unsafe (reported by cargo acl).
+# Draft: uses unsafe (reported by cargo acl). It handles paths but opens nothing here.
 allow_unsafe = true
-allow_apis = ["fs"]
 
 [pkg.indexmap]
 # Draft: uses unsafe (reported by cargo acl).
@@ -711,7 +728,7 @@ allow_unsafe = true
 [pkg.libm]
 # Draft: build script emits rustc-env; build script uses env, fs; uses unsafe (reported by cargo acl).
 allow_unsafe = true
-build.allow_apis = ["env", "fs"]
+build.allow_apis = ["env"]
 build.allow_build_instructions = ["cargo:rustc-env=CFG_CARGO_FEATURES=*", "cargo:rustc-env=CFG_OPT_LEVEL=*", "cargo:rustc-env=CFG_TARGET_FEATURES=*"]
 
 [pkg.libsqlite3-sys]
@@ -771,17 +788,17 @@ allow_proc_macro = true
 [pkg.openssl-probe]
 # Draft: uses env; uses fs; uses unsafe (reported by cargo acl).
 allow_unsafe = true
-allow_apis = ["env", "fs"]
+allow_apis = ["env", "path_fs"]
 
 [pkg.openssl-src]
 # Draft: uses env; uses fs; uses process; uses terminate (reported by cargo acl).
-allow_apis = ["env", "fs", "process", "terminate"]
+allow_apis = ["env", "fs", "path_fs", "process", "terminate"]
 
 [pkg.openssl-sys]
 # Draft: build script emits conf; build script emits include; build script emits rustc-link-lib; build script emits rustc-link-search; build script emits version_number; build script uses env, fs, process; uses terminate; uses unsafe (reported by cargo acl).
 allow_unsafe = true
 allow_apis = ["terminate"]
-build.allow_apis = ["env", "fs", "process"]
+build.allow_apis = ["env", "fs", "path_fs", "process"]
 # Draft: vendored and root tell crates that link OpenSSL that it was built from source, and where;
 # emitted when the OpenSSL source build succeeds (it needs a complete Perl).
 build.allow_build_instructions = ["cargo:conf=*", "cargo:include=*", "cargo:root=*", "cargo:rustc-link-lib=static=crypto", "cargo:rustc-link-lib=static=ssl", "cargo:rustc-link-search=native=*", "cargo:vendored=1", "cargo:version_number=*"]
@@ -792,7 +809,7 @@ allow_unsafe = true
 
 [pkg.pkg-config]
 # Draft: uses env; uses fs; uses process (reported by cargo acl).
-allow_apis = ["env", "fs", "process"]
+allow_apis = ["env", "path_fs", "process"]
 
 [pkg.potential_utf]
 # Draft: uses unsafe (reported by cargo acl).
@@ -821,8 +838,6 @@ allow_unsafe = true
 [pkg.rusqlite]
 # Draft: uses fs; uses unsafe (reported by cargo acl).
 allow_unsafe = true
-allow_apis = ["fs"]
-
 [pkg.rustls]
 # Draft: uses unsafe (reported by cargo acl).
 allow_unsafe = true
@@ -899,7 +914,7 @@ allow_unsafe = true
 
 [pkg.vcpkg]
 # Draft: uses env; uses fs (reported by cargo acl).
-allow_apis = ["env", "fs"]
+allow_apis = ["env", "fs", "path_fs"]
 
 [pkg.wasi]
 # Draft: uses unsafe (reported by cargo acl).
