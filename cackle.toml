@@ -1,8 +1,8 @@
-# Reviewed and approved by the owner on 2026-10-12, except what is marked "PENDING (2026-10-13)":
-# changes from moving the command line into the app (ambit 14a65c8), not yet approved. Removed
-# then, because cackle fails on them: clap_derive, anstream, anstyle-parse, anstyle-query,
-# anstyle-wincon and utf8parse (no longer built: no derive, no colour), and clap_builder's
-# grants (env and terminate, no longer used). Two parts:
+# Reviewed and approved by the owner on 2026-10-12; the changes from moving the command line into
+# the app (ambit 14a65c8) approved on 2026-10-13. Removed then, because cackle fails on them:
+# clap_derive, anstream, anstyle-parse, anstyle-query, anstyle-wincon and utf8parse (no longer
+# built: no derive, no colour), and clap_builder's grants (env and terminate, no longer used).
+# Two parts:
 # - Copied from ambit's cackle.toml at 300f401: reviewed there for ambit's crates and their
 #   dependencies. Entries for crates crossload doesn't build, and grants nothing here uses, were
 #   removed (cackle fails on both). Where crossload needs more of one of these crates, the
@@ -240,9 +240,8 @@ allow_unsafe = true
 
 [pkg.ambit-caps-native]
 
-# PENDING (2026-10-13): copied from ambit's cackle.toml at 14a65c8. The cli backend reads the
-# command line and NO_COLOR, and ends the program when an argument isn't text. Wiring only: the
-# app depends on ambit-cli.
+# Copied from ambit's cackle.toml at 14a65c8. The cli backend reads the command line and NO_COLOR,
+# and ends the program when an argument isn't text. Wiring only: the app depends on ambit-cli.
 [pkg.ambit-cli-native]
 allow_apis = [
     "env",
