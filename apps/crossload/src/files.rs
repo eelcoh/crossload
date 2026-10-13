@@ -68,6 +68,12 @@ pub fn missing(e: &anyhow::Error) -> bool {
         .is_some_and(|e| e.kind == DirErrorKind::NotFound)
 }
 
+/// Whether `e` says the folder itself isn't there (an unplugged device, a folder not made yet).
+pub fn unavailable(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<ambit_caps_dir::DirError>()
+        .is_some_and(|e| e.kind == DirErrorKind::Unavailable)
+}
+
 /// The entry in `parent` whose name equals `name` ignoring case, as FAT would see it.
 pub fn find_folded(
     dir: &dyn Dir,

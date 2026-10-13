@@ -11,8 +11,12 @@ Tears and Tokio are gone. The workspace follows ambit's layout:
   the reader as two `Http`s and a `WebSocket`, the Kobo database and ADEPT
   fulfilment as crossload's own capabilities, the clock and randomness).
 - `run-crossload/` (human-owned) is the wiring: it picks the folders, scopes and
-  ports from arguments and settings, and runs the command line, which calls the
-  app's functions with native capabilities until ambit has a cli platform.
+  ports from arguments and settings. The command line is the app's too
+  (`crossload::cli`, on ambit's cli platform since 2026-10-13): the wiring gives it
+  one opener per kind of name (a book file, an ACSM's folder, `--browse`,
+  `--output`, a card, a Kobo, a reader, a catalogue, an activation), and it opens
+  only what the user typed or saved for that kind. It hands back an exit code, or
+  the settings to start the terminal interface with.
 - `caps/kobo`, `caps/adobe` (traits and sims) and `caps/kobo-native`,
   `caps/adobe-native` (SQLite and libgourou, the C/C++ and the `unsafe`) are
   human-owned capability crates.

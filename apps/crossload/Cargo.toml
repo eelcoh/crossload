@@ -11,8 +11,11 @@ publish.workspace = true
 ambit-caps.workspace = true
 ambit-caps-dir.workspace = true
 ambit-caps-net.workspace = true
+ambit-cli.workspace = true
 ambit-tui.workspace = true
 anyhow.workspace = true
+clap.workspace = true
+comfy-table.workspace = true
 crossload-adobe.workspace = true
 crossload-kobo.workspace = true
 image.workspace = true
@@ -28,3 +31,4 @@ zip.workspace = true
 
 [dev-dependencies]
 ambit-caps-sim.workspace = true
+ambit-cli-sim.workspace = true

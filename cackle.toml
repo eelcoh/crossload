@@ -1,4 +1,8 @@
-# Reviewed and approved by the owner on 2026-10-12. Two parts:
+# Reviewed and approved by the owner on 2026-10-12, except what is marked "PENDING (2026-10-13)":
+# changes from moving the command line into the app (ambit 14a65c8), not yet approved. Removed
+# then, because cackle fails on them: clap_derive, anstream, anstyle-parse, anstyle-query,
+# anstyle-wincon and utf8parse (no longer built: no derive, no colour), and clap_builder's
+# grants (env and terminate, no longer used). Two parts:
 # - Copied from ambit's cackle.toml at 300f401: reviewed there for ambit's crates and their
 #   dependencies. Entries for crates crossload doesn't build, and grants nothing here uses, were
 #   removed (cackle fails on both). Where crossload needs more of one of these crates, the
@@ -235,6 +239,15 @@ allow_unsafe = true
 allow_unsafe = true
 
 [pkg.ambit-caps-native]
+
+# PENDING (2026-10-13): copied from ambit's cackle.toml at 14a65c8. The cli backend reads the
+# command line and NO_COLOR, and ends the program when an argument isn't text. Wiring only: the
+# app depends on ambit-cli.
+[pkg.ambit-cli-native]
+allow_apis = [
+    "env",
+    "terminate",
+]
 
 [pkg.crossterm]
 allow_unsafe = true
@@ -492,24 +505,7 @@ allow_unsafe = true
 # uses unsafe (reported by cargo acl).
 allow_unsafe = true
 
-[pkg.anstream]
-# uses unsafe (reported by cargo acl).
-allow_unsafe = true
-
 [pkg.anstyle]
-# uses unsafe (reported by cargo acl).
-allow_unsafe = true
-
-[pkg.anstyle-parse]
-# uses unsafe (reported by cargo acl).
-allow_unsafe = true
-
-[pkg.anstyle-query]
-# uses env; uses unsafe (reported by cargo acl).
-allow_unsafe = true
-allow_apis = ["env"]
-
-[pkg.anstyle-wincon]
 # uses unsafe (reported by cargo acl).
 allow_unsafe = true
 
@@ -566,16 +562,8 @@ allow_unsafe = true
 # uses unsafe (reported by cargo acl).
 allow_unsafe = true
 
-[pkg.clap_builder]
-# uses env; uses fs; uses terminate (reported by cargo acl).
-allow_apis = ["env", "terminate"]
-
-[pkg.clap_derive]
-# a proc macro (build-time code generation); uses env (reported by cargo acl).
-allow_proc_macro = true
-allow_apis = ["env"]
-
 [pkg.clap_lex]
+# Now in the app's tree, as in ambit's: small text conversions.
 # uses unsafe (reported by cargo acl).
 allow_unsafe = true
 
@@ -905,10 +893,6 @@ allow_unsafe = true
 allow_unsafe = true
 
 [pkg.utf8_iter]
-# uses unsafe (reported by cargo acl).
-allow_unsafe = true
-
-[pkg.utf8parse]
 # uses unsafe (reported by cargo acl).
 allow_unsafe = true
 

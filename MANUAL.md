@@ -244,7 +244,8 @@ establish that an entry is a complete, DRM-free book.
 The output directory is created as needed. Each filename contains the title and
 a short hash of the book ID. Existing files are never overwritten. The tool reads
 the device and works with temporary database copies, including any WAL data. It
-rejects output directories inside the Kobo. Stop other software syncing the device
+rejects output directories inside the Kobo: for every command, `--output` inside a
+Kobo named with `--device` or saved as the default device is refused. Stop other software syncing the device
 before importing; a change detected during the database copy is reported as an error.
 
 ## OPDS catalogues

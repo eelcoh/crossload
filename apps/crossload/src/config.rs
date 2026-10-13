@@ -48,7 +48,10 @@ pub struct Store {
 pub fn load(store: &Store) -> Result<Defaults> {
     let bytes = match crate::files::read(&*store.dir, &store.file, 65536) {
         Ok(bytes) => bytes,
-        Err(e) if crate::files::missing(&e) => return Ok(Defaults::default()),
+        // No settings folder yet (it is made on the first save) is no settings either.
+        Err(e) if crate::files::missing(&e) || crate::files::unavailable(&e) => {
+            return Ok(Defaults::default())
+        }
         Err(e) => {
             return Err(e).with_context(|| format!("Cannot read configuration {}", store.display))
         }

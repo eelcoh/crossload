@@ -19,15 +19,18 @@ publish = false
 
 [workspace.dependencies]
 # ambit: one commit for all crates, over https (what the checks trust). See ambit's ADOPTING.md.
-ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }
-ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }
-ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }
-ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }
-ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }   # wiring only
-ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }   # wiring only
-ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }   # wiring only
-ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }   # spec only
-ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "7af49981dc9a13cd338a54a2b1b85c834fcc6d02" }   # spec only
+ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
+ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
+ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
+ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
+ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
+ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
+ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
+ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # spec only
+ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # spec only
+ambit-cli             = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
+ambit-cli-native      = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
+ambit-cli-sim         = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # tests only
 
 crossload = { path = "apps/crossload" }
 crossload-adobe = { path = "caps/adobe" }
@@ -39,8 +42,10 @@ crossload-kobo-native = { path = "caps/kobo-native" }
 ratatui-widgets = { version = "0.3.2", default-features = false }
 
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-comfy-table = "8"
+# The builder only, rendering to text: nothing asked of the terminal or the environment.
+clap = { version = "4.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
+# The width comes from the platform (no tty feature, no crossterm).
+comfy-table = { version = "8", default-features = false }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 lopdf = { version = "0.45", default-features = false }
 roxmltree = "0.20"

@@ -3,8 +3,8 @@
 //! All authority comes in through [`init`], one capability per kind: the folders it may read and
 //! add to, the reader's card (the one place it may delete from), the Kobo's mount and database,
 //! the reader over Wi-Fi, ACSM fulfilment, its own settings, state and cache folders, the clock
-//! and randomness. The library functions below take the same capabilities, so the command line
-//! (in the wiring, until ambit has a cli platform) runs the same code with native ones.
+//! and randomness. The command line ([`cli`], on ambit's cli platform) gets its capabilities from
+//! its own `init`: only what the user named on it, and the defaults saved for each kind.
 #![forbid(
     unsafe_code,
     clippy::disallowed_methods,
@@ -16,6 +16,7 @@
 pub mod acsm;
 pub mod books;
 pub mod cache;
+pub mod cli;
 pub mod config;
 pub mod copy;
 pub mod crosspoint;

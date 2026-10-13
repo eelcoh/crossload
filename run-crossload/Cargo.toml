@@ -1,6 +1,6 @@
 [package]
 name = "crossload-cli"
-description = "Wiring: which folders, devices and endpoints crossload gets, with which scope; and the command line, which runs the app's functions with native capabilities until ambit has a cli platform. Human-owned."
+description = "Wiring: which folders, devices and endpoints crossload gets, with which scope, on the cli and tui platforms. Human-owned."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,17 +21,16 @@ ambit-caps-dir.workspace = true
 ambit-caps-dir-native.workspace = true
 ambit-caps-net.workspace = true
 ambit-caps-net-native.workspace = true
+ambit-cli.workspace = true
+ambit-cli-native.workspace = true
 ambit-tui.workspace = true
 ambit-tui-native.workspace = true
 anyhow.workspace = true
-clap.workspace = true
-comfy-table.workspace = true
 crossload.workspace = true
 crossload-adobe.workspace = true
 crossload-adobe-native.workspace = true
 crossload-kobo.workspace = true
 crossload-kobo-native.workspace = true
-serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

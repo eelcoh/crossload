@@ -1,21 +1,21 @@
 // Wiring: which folders, devices and endpoints crossload gets, and with which scope. This file is
 // the review surface for what the app can do; everything it does goes through `crossload::init`
-// or, for the command line (`cli.rs`), through the app's functions with the capabilities built
-// here.
-
-mod cli;
+// (the terminal interface) or `crossload::cli::init` (the command line), with what is opened here.
 
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ambit_caps_dir::RelPath;
+use ambit_caps_dir::{OneFile, RelPath};
 use ambit_caps_dir_native::NativeDir;
-use ambit_caps_net::{Origin, Scheme, Scope};
+use ambit_caps_net::{Http, Origin, Scheme, Scope};
 use ambit_caps_net_native::{HttpOptions, NativeHttp, NativeWebSocket, WsOptions};
+use ambit_cli::Args;
 use anyhow::{Context, Result};
-use crossload::crosspoint::Address;
+use crossload::cli::{Done, Own, Request};
+use crossload::crosspoint::{Address, Link};
 use crossload_adobe_native::NativeAdept;
 use crossload_kobo_native::NativeKobo;
 
@@ -197,13 +197,43 @@ impl Paths {
         Ok((own_folder(parent)?, name.to_owned()))
     }
 
+    /// The settings file for the command line. Its folder is made when settings are first saved,
+    /// so a command that only reads (or `--help`) leaves nothing behind.
     fn settings_store(&self) -> Result<crossload::config::Store> {
-        let (dir, file) = self.settings()?;
+        let parent = self
+            .config
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let name = self
+            .config
+            .file_name()
+            .and_then(|n| n.to_str())
+            .context("The settings file needs a plain file name")?;
         Ok(crossload::config::Store {
-            dir: Arc::new(dir),
-            file: RelPath::new([file.as_str()])?,
+            dir: Arc::new(NativeDir::creating(parent)),
+            file: RelPath::new([name])?,
             display: self.config.display().to_string(),
             home: self.home.as_ref().map(|h| h.display().to_string()),
+        })
+    }
+
+    /// The command line's own: settings (read now), the record of copies and the cache (their
+    /// folders made on the first write), and the activation.
+    fn own(&self) -> Result<Own> {
+        let settings = self.settings_store()?;
+        Ok(Own {
+            defaults: crossload::config::load(&settings)?,
+            settings,
+            history: Some(crossload::history::Record {
+                dir: Arc::new(NativeDir::creating(&self.state)),
+                file: RelPath::new([crossload::history::FILE])?,
+            }),
+            cache: Some(crossload::cache::Store {
+                dir: Arc::new(NativeDir::creating(&self.cache)),
+                file: RelPath::new([crossload::cache::FILE])?,
+            }),
+            adept: Arc::new(NativeAdept::new(&self.adept)),
         })
     }
 }
@@ -251,7 +281,7 @@ fn detect_in(roots: &[PathBuf]) -> Vec<String> {
     devices
 }
 
-/// What the terminal interface is started with.
+/// What the terminal interface is started with: the command line's choices, made into paths.
 struct Tui {
     paths: Paths,
     browse: PathBuf,
@@ -266,18 +296,18 @@ struct Tui {
 }
 
 /// Books imported from a Kobo must not land back on it. Checked through symlinks, on the part
-/// of the path that exists, before anything is created.
+/// of the path that exists, before anything is created. A Kobo that isn't mounted can't be
+/// written into.
 fn outside_device(output: &Path, device: &Path) -> Result<()> {
+    let Ok(device) = device.canonicalize() else {
+        return Ok(());
+    };
     anyhow::ensure!(
         !output
             .components()
             .any(|c| c == std::path::Component::ParentDir),
         "Output path must not contain .."
     );
-    let Ok(device) = device.canonicalize() else {
-        // Not mounted: nothing can be written into it.
-        return Ok(());
-    };
     let output = absolute(output);
     let ancestor = output
         .ancestors()
@@ -393,12 +423,225 @@ fn tui_app(tui: &Tui) -> Result<crossload::Crossload> {
     ))
 }
 
-fn main() -> std::process::ExitCode {
-    match cli::run() {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("Error: {}", cli::printable(&format!("{error:#}")));
-            std::process::ExitCode::FAILURE
+impl Tui {
+    /// Where the command line's choices are. The books folder is where the program was started,
+    /// unless given; the import folder is the books folder, unless given.
+    fn new(paths: Paths, asked: crossload::cli::Tui) -> Result<Self> {
+        let browse = match &asked.browse {
+            Some(browse) => PathBuf::from(browse),
+            None => std::env::current_dir()?,
+        };
+        Ok(Self {
+            paths,
+            output: asked
+                .output
+                .as_ref()
+                .map_or_else(|| browse.clone(), PathBuf::from),
+            browse,
+            device: asked.device.as_ref().map(PathBuf::from),
+            send_to: asked.send_to.clone(),
+            copy_to: asked.copy_to.as_ref().map(PathBuf::from),
+            folder: asked.folder.clone(),
+            first_run: asked.first_run,
+            defaults: asked.defaults,
+            settings: asked.settings,
+        })
+    }
+}
+
+// The command line. What each kind of name on it opens as; the app opens only names the user
+// typed, and the defaults saved for that kind.
+
+/// The values given for `option` on the command line, as `--option value` or `--option=value`,
+/// before any `--`. The settings and the activation are opened before the app runs, and the
+/// output opener needs the Kobos, so the wiring reads these itself; the app declares them too.
+fn typed(args: &Args, option: &str) -> Vec<String> {
+    let mut values = vec![];
+    let mut list = args.list().iter().skip(1);
+    while let Some(arg) = list.next() {
+        if arg == "--" {
+            break;
+        } else if arg == option {
+            values.extend(list.next().cloned());
+        } else if let Some(value) = arg
+            .strip_prefix(option)
+            .and_then(|rest| rest.strip_prefix('='))
+        {
+            values.push(value.to_owned());
+        }
+    }
+    values
+}
+
+fn parent_of(path: &Path) -> &Path {
+    path.parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+}
+
+/// A book to copy, send or optimize: that one file, read. The folder it is in stays out of reach.
+fn book_file(value: &str) -> Result<OneFile, String> {
+    let path = Path::new(value);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Book filename must be UTF-8")?;
+    let dir = folder(parent_of(path)).map_err(|e| format!("{e:#}"))?;
+    OneFile::new(dir, name).map_err(|e| e.to_string())
+}
+
+/// An ACSM file: its folder, read and added to, because a fulfilled request is archived next to
+/// it under a new name. Nothing in that folder is changed or removed.
+fn acsm_request(value: &str) -> Result<Request, String> {
+    let path = Path::new(value);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("ACSM filename must be UTF-8")?;
+    let parent = parent_of(path);
+    Ok(Request {
+        folder: Arc::new(folder(parent).map_err(|e| format!("{e:#}"))?),
+        name: RelPath::new([name]).map_err(|e| e.to_string())?,
+        shown: parent.display().to_string(),
+    })
+}
+
+/// `--browse`: the books folder, read and added to (archived ACSM requests). Opened on each use:
+/// it may come and go.
+fn books_folder(value: &str) -> Result<crossload::books::Folder, String> {
+    Ok(crossload::books::Folder {
+        display: absolute(Path::new(value)).display().to_string(),
+        dir: Arc::new(NativeDir::mount(value)),
+    })
+}
+
+/// `--output`: a folder books are added to, made on the first write. Refused inside any of
+/// `kobos`, so books imported from a Kobo never land on it.
+fn output_folder(
+    kobos: Vec<PathBuf>,
+) -> impl Fn(&str) -> Result<crossload::books::Folder, String> + Send + Sync + 'static {
+    move |value| {
+        for kobo in &kobos {
+            outside_device(Path::new(value), kobo).map_err(|e| format!("{e:#}"))?;
+        }
+        Ok(crossload::books::Folder {
+            display: absolute(Path::new(value)).display().to_string(),
+            dir: Arc::new(NativeDir::creating(value)),
+        })
+    }
+}
+
+/// `--copy-to`, `copy --to`: the reader's mounted card, read and added to. Opened on each use;
+/// the app asks whether it is there before copying. (Its type also allows removing, which the
+/// terminal interface offers; no command removes anything.)
+fn card(value: &str) -> Result<crossload::inventory::Card, String> {
+    Ok(crossload::inventory::Card {
+        display: absolute(Path::new(value)).display().to_string(),
+        dir: Arc::new(NativeDir::mount(value)),
+    })
+}
+
+/// `--device`: a mounted Kobo. Its mount, opened on each use (read; copies to the Kobo are
+/// added), and its database, read.
+fn kobo(value: &str) -> Result<crossload::kobo::Device, String> {
+    Ok(crossload::kobo::Device {
+        display: absolute(Path::new(value)).display().to_string(),
+        dir: Arc::new(NativeDir::mount(value)),
+        db: Arc::new(NativeKobo::new(value)),
+    })
+}
+
+/// `--to`, `--send-to`: the reader at that address over Wi-Fi, scoped as `reader_scope` says.
+fn reader(value: &str) -> Result<Link, String> {
+    let address = Address::parse(value, "/").map_err(|e| format!("{e:#}"))?;
+    let (http, ws) = reader_scope(Some(&address));
+    Ok(Link {
+        control: Arc::new(reader_control(http.clone())),
+        files: Arc::new(reader_files(http)),
+        upload: Arc::new(reader_upload(ws)),
+        clock: Arc::new(ambit_cli_native::StdClock::new()),
+        random: Arc::new(ambit_cli_native::OsRandom),
+        websocket_port: WEBSOCKET_PORT,
+    })
+}
+
+/// A catalogue's address, or a book's in one: HTTP to it, the saved catalogue and the Palace
+/// Bookshelf, as `catalogues` scopes them.
+fn catalogue(
+    saved: Option<String>,
+) -> impl Fn(&str) -> Result<Arc<dyn Http>, String> + Send + Sync + 'static {
+    move |value| {
+        let mut urls = vec![value, crossload::opds::BOOKSHELF];
+        urls.extend(saved.as_deref());
+        Ok(Arc::new(catalogues(&urls)) as Arc<dyn Http>)
+    }
+}
+
+/// `adobe setup --from`: an exported activation folder or ZIP, read once.
+fn activation(value: &str) -> Result<crossload_adobe::Activation, String> {
+    crossload_adobe_native::read_activation(Path::new(value)).map_err(|e| e.0)
+}
+
+fn main() -> ExitCode {
+    let args = ambit_cli_native::args();
+    let config = typed(&args, "--config").pop().map(PathBuf::from);
+    let state_dir = typed(&args, "--state-dir").pop().map(PathBuf::from);
+    let paths = Paths::new(config.clone(), state_dir.clone());
+    let own = match &paths {
+        Ok(paths) => paths.own().map_err(|e| format!("{e:#}")),
+        Err(e) => Err(format!("{e:#}")),
+    };
+    let saved = own
+        .as_ref()
+        .map(|own| own.defaults.clone())
+        .unwrap_or_default();
+    // Saved defaults count as named, each for its own kind only. The books folder is where the
+    // program was started, unless given; the Bookshelf is the catalogue unless one is given.
+    let kobos = typed(&args, "--device")
+        .into_iter()
+        .chain(saved.device.clone())
+        .map(PathBuf::from)
+        .collect();
+    let app = crossload::cli::init(
+        ambit_cli_native::StdClock::new(),
+        args.named(book_file),
+        args.named(acsm_request),
+        args.named(books_folder)
+            .also(saved.browse.clone())
+            .also(["."]),
+        args.named(output_folder(kobos)).also(saved.output.clone()),
+        args.named(card).also(saved.copy_to.clone()),
+        args.named(kobo).also(saved.device.clone()),
+        args.named(reader).also(saved.reader.clone()),
+        args.named(catalogue(saved.catalog.clone()))
+            .also(saved.catalog.clone())
+            .also([crossload::opds::BOOKSHELF]),
+        args.named(activation),
+        own,
+    );
+    match ambit_cli_native::run(app, &args) {
+        Done::Exit(exit) => ExitCode::from(exit.0),
+        Done::Tui(asked) => {
+            let result = paths
+                .and_then(|paths| Tui::new(paths, asked.clone()))
+                .and_then(|tui| {
+                    run_tui(tui, |saved| {
+                        Tui::new(
+                            Paths::new(config.clone(), state_dir.clone())?,
+                            asked.restart(saved)?,
+                        )
+                    })
+                });
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!(
+                        "Error: {}",
+                        crossload::cli::printable(&format!("{error:#}"))
+                    );
+                    ExitCode::FAILURE
+                }
+            }
         }
     }
 }

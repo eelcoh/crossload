@@ -3,7 +3,19 @@
 # Checked by `cargo ambit check`.
 #
 # Drafted by the ambit migration (2026-10-11) from what `cargo ambit check` reported, grouped by
-# why each crate is here. Reviewed and approved by the owner on 2026-10-12.
+# why each crate is here. Reviewed and approved by the owner on 2026-10-12, except the group
+# marked PENDING below.
+
+# PENDING (2026-10-13), not yet approved: the command line, moved into the app (ambit 14a65c8).
+# ambit's cli contract; clap's builder (no derive, no colour, no environment) with its parts; and
+# comfy-table without its terminal feature (the width comes from the platform). clap's
+# suggestions also use strsim, listed below with the build-time crates.
+ambit-cli
+clap
+clap_builder
+clap_lex
+anstyle
+comfy-table
 
 # ambit: the platform and the capability traits (the platform's own crates)
 ambit-caps
