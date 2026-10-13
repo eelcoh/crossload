@@ -33,6 +33,7 @@ crossload-kobo.workspace = true
 crossload-kobo-native.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile.workspace = true
 aes = "0.8"
 base64 = "0.22"
