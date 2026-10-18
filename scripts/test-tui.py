@@ -40,7 +40,9 @@ class Terminal:
                     values = token[2:-1].split(';')
                     row = int(values[0] or 1)
                     col = int(values[1] or 1) if len(values) > 1 else 1
-                elif token == '\x1b[2J':
+                elif token in ('\x1b[2J', '\x1b[?1049h'):
+                    # Entering the alternate screen starts from a blank one too: what was printed
+                    # before (a lock that is only partly enforced says so) isn't on it.
                     cells.clear()
             elif token == '\r':
                 col = 1
