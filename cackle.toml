@@ -1,8 +1,8 @@
 # Reviewed and approved by the owner on 2026-10-12; the changes from moving the command line into
-# the app (ambit 14a65c8) approved on 2026-10-13. Removed then, because cackle fails on them:
-# clap_derive, anstream, anstyle-parse, anstyle-query, anstyle-wincon and utf8parse (no longer
-# built: no derive, no colour), and clap_builder's grants (env and terminate, no longer used).
-# Two parts:
+# the app (ambit 14a65c8) approved on 2026-10-13; ambit 3398b1e and the lock on 2026-10-18.
+# Removed on 2026-10-13, because cackle fails on them: clap_derive, anstream, anstyle-parse,
+# anstyle-query, anstyle-wincon and utf8parse (no longer built: no derive, no colour), and
+# clap_builder's grants (env and terminate, no longer used). Two parts:
 # - Copied from ambit's cackle.toml at 300f401: reviewed there for ambit's crates and their
 #   dependencies. Entries for crates crossload doesn't build, and grants nothing here uses, were
 #   removed (cackle fails on both). Where crossload needs more of one of these crates, the
@@ -304,9 +304,8 @@ allow_unsafe = true
 # connections through ureq.
 [pkg.ambit-caps-net-native]
 
-# PENDING (2026-10-18), not yet approved: copied from ambit's cackle.toml at 3398b1e. The
-# WebSocket (the reader's upload) has its own crate since the split; it was in
-# ambit-caps-net-native before. Wiring only.
+# Copied from ambit's cackle.toml at 3398b1e. The WebSocket (the reader's upload) has its own
+# crate since the split; it was in ambit-caps-net-native before. Wiring only.
 [pkg.ambit-caps-ws-native]
 allow_apis = [
     "net",
@@ -388,7 +387,7 @@ from.test.allow_apis = [
 # crossload: uses fs (reported by cargo acl).
 allow_apis = ["fs"]
 
-# PENDING (2026-10-18), not yet approved: copied from ambit's cackle.toml at 3398b1e.
+# Copied from ambit's cackle.toml at 3398b1e.
 # Lockdown (ambit-lockdown): locks the program on Linux. Not in the app: the wiring applies it,
 # and the native capabilities say what they need. landlock and seccompiler make the system calls
 # (unsafe); landlock opens the granted paths to name them to the kernel (fs); ambit-lockdown
@@ -478,7 +477,7 @@ include = [
     "cap-std::net",
     "mio::net",
 ]
-# PENDING (2026-10-18): landlock's own `net` module describes rules for the kernel; it opens
+# landlock's own `net` module describes rules for the kernel; it opens
 # nothing (as in ambit's cackle.toml).
 no_auto_detect = ["landlock"]
 
@@ -493,7 +492,7 @@ include = [
 exclude = [
     "std::path",
 ]
-# PENDING (2026-10-18): landlock's own `fs` module describes rules for the kernel; the paths it
+# landlock's own `fs` module describes rules for the kernel; the paths it
 # opens to name them show up as `fs` uses of landlock (granted above).
 no_auto_detect = ["landlock"]
 
@@ -639,8 +638,7 @@ allow_apis = ["env", "fs", "path_fs", "net", "process"]
 
 [pkg.crossload-kobo-native]
 # reads the Kobo database and copies it into a private temporary snapshot (fs) (reported by cargo acl).
-# PENDING (2026-10-18), not yet approved: env, to name the temporary folder (TMPDIR) in what it
-# asks of the program's lock.
+# env, to name the temporary folder (TMPDIR) in what it asks of the program's lock.
 allow_apis = ["env", "fs", "path_fs"]
 
 [pkg.crossterm_winapi]
