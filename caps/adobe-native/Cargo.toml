@@ -8,6 +8,7 @@ publish.workspace = true
 build = "build.rs"
 
 [dependencies]
+ambit-lockdown.workspace = true
 crossload-adobe.workspace = true
 curl-sys = { version = "0.4", features = ["static-curl", "static-ssl"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }

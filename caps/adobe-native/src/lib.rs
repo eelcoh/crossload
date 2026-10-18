@@ -101,6 +101,29 @@ pub struct NativeAdept {
     root: PathBuf,
 }
 
+/// What fulfilment reaches, for the program's lock: the state directory; name lookups and
+/// HTTPS and HTTP, on any host (curl talks to Adobe's servers and the ones an ACSM names, and
+/// follows their redirects); the certificates openssl-probe finds; and `/tmp`, where libgourou
+/// keeps its cookie jar for each call (`mkstemp`, a fixed folder: not `TMPDIR`). A state
+/// directory that isn't there yet isn't covered: the wiring makes it first where it will be
+/// written.
+impl ambit_lockdown::Grants for NativeAdept {
+    fn grants(&self) -> Vec<ambit_lockdown::Grant> {
+        use ambit_lockdown::Grant;
+        let certs = openssl_probe::probe();
+        let mut grants = vec![
+            Grant::ReadWrite(self.root.clone()),
+            Grant::Resolve,
+            Grant::Connect(443),
+            Grant::Connect(80),
+            Grant::ReadWrite(PathBuf::from("/tmp")),
+        ];
+        grants.extend(certs.cert_file.into_iter().map(Grant::Read));
+        grants.extend(certs.cert_dir.into_iter().map(Grant::Read));
+        grants
+    }
+}
+
 /// The state directory, locked for one call.
 struct Store {
     root: PathBuf,

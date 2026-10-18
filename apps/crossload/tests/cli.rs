@@ -607,3 +607,77 @@ fn tui_hands_back_what_to_start_and_a_save_starts_it_again_with_the_saved_places
     assert!(again.settings.optimize.is_none());
     assert!(!again.first_run);
 }
+
+/// What each command line writes, for the wiring to make before it locks the program: nothing
+/// for help, a mistake, or a command that only reads.
+#[test]
+fn a_command_line_says_what_it_will_write() {
+    use crossload::cli::{writes, Writes};
+    let saved = crossload::config::Defaults {
+        output: Some("/saved".into()),
+        ..Default::default()
+    };
+    let of = |line: &str| {
+        let mut list = vec!["crossload".to_owned()];
+        list.extend(line.split_whitespace().map(str::to_owned));
+        writes(&list, &saved)
+    };
+    let nothing = Writes::default();
+    for line in [
+        "--help",
+        "copy --help",
+        "nonsense",
+        "config show",
+        "history",
+        "copy book.epub --to /card",
+        "send book.epub --to 192.168.1.7",
+        "catalog browse",
+        "kobo list",
+        "kobo shelves",
+        "kobo sync",
+        "kobo notes --output /notes --json",
+    ] {
+        assert_eq!(of(line), nothing, "{line}");
+    }
+    assert!(of("tui").tui);
+    assert!(of("config set --kepub true").settings);
+    assert!(of("config unset kepub").settings);
+    assert_eq!(
+        of("books"),
+        Writes {
+            cache: true,
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        of("sync --from local --to crosspoint --apply"),
+        Writes {
+            cache: true,
+            history: true,
+            output: Some("/saved".into()),
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        of("import book.acsm --output /typed"),
+        Writes {
+            activation: true,
+            output: Some("/typed".into()),
+            ..Default::default()
+        }
+    );
+    assert!(of("adobe status").activation);
+    for line in [
+        "optimize book.epub",
+        "catalog get https://example.org/book.epub",
+        "kobo import id",
+        "kobo sync --apply",
+    ] {
+        assert_eq!(of(line).output.as_deref(), Some("/saved"), "{line}");
+    }
+    assert_eq!(of("kobo notes").output, None);
+    assert_eq!(
+        of("kobo notes --output /notes").output.as_deref(),
+        Some("/notes")
+    );
+}

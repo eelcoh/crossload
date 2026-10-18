@@ -621,6 +621,7 @@ name = "crossload-adobe-native"
 version = "0.2.0"
 dependencies = [
  "aes 0.8.4",
+ "ambit-lockdown",
  "base64 0.22.1",
  "cc",
  "cmake",
@@ -651,6 +652,7 @@ dependencies = [
  "ambit-caps-ws-native",
  "ambit-cli",
  "ambit-cli-native",
+ "ambit-lockdown",
  "ambit-tui",
  "ambit-tui-native",
  "anyhow",
@@ -683,6 +685,7 @@ dependencies = [
 name = "crossload-kobo-native"
 version = "0.2.0"
 dependencies = [
+ "ambit-lockdown",
  "crossload-kobo",
  "flamberge-keys",
  "flamberge-schemes",

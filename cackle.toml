@@ -406,6 +406,14 @@ allow_unsafe = true
 
 [pkg.landlock]
 allow_unsafe = true
+allow_apis = [
+    "fs",
+]
+
+[pkg.ambit-lockdown]
+allow_apis = [
+    "fs",
+]
 
 [pkg.ambit-caps-dir-native]
 
@@ -631,7 +639,9 @@ allow_apis = ["env", "fs", "path_fs", "net", "process"]
 
 [pkg.crossload-kobo-native]
 # reads the Kobo database and copies it into a private temporary snapshot (fs) (reported by cargo acl).
-allow_apis = ["fs", "path_fs"]
+# PENDING (2026-10-18), not yet approved: env, to name the temporary folder (TMPDIR) in what it
+# asks of the program's lock.
+allow_apis = ["env", "fs", "path_fs"]
 
 [pkg.crossterm_winapi]
 # uses unsafe (reported by cargo acl).

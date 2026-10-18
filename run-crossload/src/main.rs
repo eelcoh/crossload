@@ -1,6 +1,10 @@
 // Wiring: which folders, devices and endpoints crossload gets, and with which scope. This file is
 // the review surface for what the app can do; everything it does goes through `crossload::init`
 // (the terminal interface) or `crossload::cli::init` (the command line), with what is opened here.
+// On Linux the program is then locked to what was opened (`lock_cli`, `run_tui`): the operating
+// system refuses the rest.
+
+mod lock;
 
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -14,6 +18,7 @@ use ambit_caps_net::{Http, Origin, Scheme, Scope};
 use ambit_caps_net_native::{HttpOptions, NativeHttp};
 use ambit_caps_ws_native::{NativeWebSocket, WsOptions};
 use ambit_cli::Args;
+use ambit_lockdown::{Grant, Grants, Lockdown, Locked};
 use anyhow::{Context, Result};
 use crossload::cli::{Done, Own, Request};
 use crossload::crosspoint::{Address, Link};
@@ -327,25 +332,67 @@ fn absolute(path: &Path) -> PathBuf {
 
 /// Runs the terminal interface until it quits. When the user saved new settings, it starts
 /// again with what `restart` makes of them: the folders and devices they name, opened afresh.
+///
+/// Locked before it first starts, to what it opened then and the places devices appear. A lock
+/// can't be widened, so settings that need more end the program instead, with the message
+/// returned here: starting it again opens them.
 fn run_tui(
     mut tui: Tui,
     restart: impl Fn(crossload::config::Defaults) -> Result<Tui>,
-) -> Result<()> {
+) -> Result<Option<String>> {
     use std::io::IsTerminal;
     anyhow::ensure!(
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
         "The TUI needs an interactive terminal; use the CLI commands for redirected input/output"
     );
+    let mut held = None;
     loop {
-        let app = ambit_tui_native::run(tui_app(&tui)?, ambit_tui_native::Options::default())?;
+        let (app, grants) = tui_app(&tui)?;
+        match &held {
+            None => {
+                // The import folder is made now, if it isn't there, so the lock covers it.
+                let output = absolute(&tui.output);
+                let lock = if output.is_dir() {
+                    Lockdown::new()
+                } else {
+                    Lockdown::new().make(&output)?
+                };
+                let lock = lock.allow(&grants);
+                let (asked, holds) = (lock.grants().to_vec(), lock::held(lock.grants()));
+                let locked = lock.apply()?;
+                if let Some(warning) = locked.warning() {
+                    eprintln!("crossload: {warning}");
+                }
+                // Where nothing is locked (macOS), new settings are opened as before.
+                held = Some((!matches!(locked, Locked::Not(_))).then_some((asked, holds)));
+            }
+            Some(None) => {}
+            Some(Some((asked, held))) => {
+                // What the lock asked for, and didn't get because it wasn't there, isn't new.
+                let wanted: Vec<Grant> =
+                    grants.into_iter().filter(|g| !asked.contains(g)).collect();
+                let missing = lock::uncovered(held, &wanted);
+                if !missing.is_empty() {
+                    let needs: Vec<String> = missing.iter().map(lock::describe).collect();
+                    return Ok(Some(format!(
+                        "Settings saved. They need {}, which this run of crossload can't reach. \
+                         Start crossload again to use them.",
+                        needs.join(", ")
+                    )));
+                }
+            }
+        }
+        let app = ambit_tui_native::run(app, ambit_tui_native::Options::default())?;
         match app.restart() {
             Some(saved) => tui = restart(saved)?,
-            None => return Ok(()),
+            None => return Ok(None),
         }
     }
 }
 
-fn tui_app(tui: &Tui) -> Result<crossload::Crossload> {
+/// The terminal interface, and what it reaches: for the lock, and to check new settings against
+/// it.
+fn tui_app(tui: &Tui) -> Result<(crossload::Crossload, Vec<Grant>)> {
     let browse = absolute(&tui.browse);
     let output = absolute(&tui.output);
     let unavailable = vec![];
@@ -397,22 +444,66 @@ fn tui_app(tui: &Tui) -> Result<crossload::Crossload> {
         opened,
         color: std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty()),
     };
-    Ok(crossload::init(
+    let kobo = tui
+        .device
+        .as_ref()
+        .map(|device| (NativeDir::mount(device), NativeKobo::new(device)));
+    let card = tui.copy_to.as_ref().map(NativeDir::mount);
+    let (control, files, upload) = (
+        reader_control(http.clone()),
+        reader_files(http),
+        reader_upload(ws),
+    );
+    let adept = NativeAdept::new(&paths.adept);
+    let (state, cache) = (own_folder(&paths.state).ok(), own_folder(&paths.cache).ok());
+
+    // What it reaches. The folders it names, also before they are there (a card or Kobo not
+    // plugged in yet, the import folder): a lock covers what's there when it's applied, so those
+    // tell a restart whether the lock still covers them. The places devices appear while it runs.
+    // And the temporary folder a Kobo's database is read through, so a Kobo chosen later can be.
+    let mut grants = vec![
+        Grant::Terminal,
+        Grant::ReadWrite(browse.clone()),
+        Grant::ReadWrite(output.clone()),
+        Grant::ReadWrite(std::env::temp_dir()),
+    ];
+    grants.extend(lock::media());
+    for path in tui.device.iter().chain(&tui.copy_to) {
+        grants.push(Grant::ReadWrite(absolute(path)));
+    }
+    if let Some((dir, db)) = &kobo {
+        grants.extend(dir.grants());
+        grants.extend(db.grants());
+    }
+    for caps in [
+        &books as &dyn Grants,
+        &import,
+        &card,
+        &control,
+        &files,
+        &upload,
+        &adept,
+        &settings_dir,
+        &state,
+        &cache,
+    ] {
+        grants.extend(caps.grants());
+    }
+
+    let app = crossload::init(
         ambit_tui_native::StdClock::new(),
         ambit_tui_native::OsRandom,
         books,
         import,
-        tui.device
-            .as_ref()
-            .map(|device| (NativeDir::mount(device), NativeKobo::new(device))),
-        tui.copy_to.as_ref().map(NativeDir::mount),
-        reader_control(http.clone()),
-        reader_files(http),
-        reader_upload(ws),
-        NativeAdept::new(&paths.adept),
+        kobo,
+        card,
+        control,
+        files,
+        upload,
+        adept,
         Some(settings_dir),
-        own_folder(&paths.state).ok(),
-        own_folder(&paths.cache).ok(),
+        state,
+        cache,
         crossload::Config {
             options,
             settings: tui.settings.clone(),
@@ -421,7 +512,8 @@ fn tui_app(tui: &Tui) -> Result<crossload::Crossload> {
             settings_file,
             unavailable,
         },
-    ))
+    );
+    Ok((app, grants))
 }
 
 impl Tui {
@@ -583,6 +675,119 @@ fn activation(value: &str) -> Result<crossload_adobe::Activation, String> {
     crossload_adobe_native::read_activation(Path::new(value)).map_err(|e| e.0)
 }
 
+/// The command line's lock: what it may open, as each kind's opener opens it. Files, ACSM
+/// requests and catalogues as the app's `Named` would open them (every word typed, since a
+/// positional name could be any of them); the books folder, output, card, Kobo and reader only
+/// as typed after their options or saved, since only those are opened as one. Crossload's own
+/// folders and the activation. The folders the command writes to are made first. Not for the
+/// terminal interface.
+fn lock_cli(
+    args: &Args,
+    paths: Option<&Paths>,
+    saved: &crossload::config::Defaults,
+    kobos: &[PathBuf],
+) -> Result<()> {
+    let writes = crossload::cli::writes(args.list(), saved);
+    if writes.tui {
+        // Locked by `run_tui`, to what it opens: a lock can only narrow.
+        return Ok(());
+    }
+    let given = |options: &[&str], saved: &[&Option<String>]| -> Vec<String> {
+        options
+            .iter()
+            .flat_map(|option| typed(args, option))
+            .chain(saved.iter().filter_map(|s| (*s).clone()))
+            .collect()
+    };
+    let mut lock = Lockdown::new();
+
+    lock = lock.allow(&args.named(book_file).open_all());
+    // An ACSM's folder is opened for a file only.
+    lock = lock.allow(
+        &args
+            .named(|value| match Path::new(value).is_file() {
+                true => folder(parent_of(Path::new(value))).map_err(|e| e.to_string()),
+                false => Err("not a file".into()),
+            })
+            .open_all(),
+    );
+    let saved_catalog = saved.catalog.clone();
+    lock = lock.allow(
+        &args
+            .named(move |value| {
+                let mut urls = vec![value, crossload::opds::BOOKSHELF];
+                urls.extend(saved_catalog.as_deref());
+                Ok(catalogues(&urls))
+            })
+            .also(saved.catalog.clone())
+            .also([crossload::opds::BOOKSHELF])
+            .open_all(),
+    );
+    for value in given(&["--from"], &[]) {
+        lock = lock.allow(&Grant::Read(PathBuf::from(value)));
+    }
+
+    let mut browse = given(&["--browse"], &[&saved.browse]);
+    browse.push(".".into());
+    for value in browse {
+        lock = lock.allow(&NativeDir::mount(value));
+    }
+    let output = output_folder(kobos.to_vec());
+    for value in given(&["--output"], &[&saved.output]) {
+        if output(&value).is_ok() {
+            lock = lock.allow(&NativeDir::creating(value));
+        }
+    }
+    for value in given(&["--copy-to", "--to"], &[&saved.copy_to]) {
+        lock = lock.allow(&NativeDir::mount(value));
+    }
+    for value in given(&["--device"], &[&saved.device]) {
+        lock = lock
+            .allow(&NativeDir::mount(&value))
+            .allow(&NativeKobo::new(&value));
+    }
+    for value in given(&["--to", "--send-to"], &[&saved.reader]) {
+        if let Ok(address) = Address::parse(&value, "/") {
+            let (http, ws) = reader_scope(Some(&address));
+            lock = lock.allow(&reader_control(http)).allow(&reader_upload(ws));
+        }
+    }
+
+    if let Some(paths) = paths {
+        let parent = paths
+            .config
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        for (dir, write) in [
+            (parent, writes.settings),
+            (&paths.state, writes.history),
+            (&paths.cache, writes.cache),
+        ] {
+            lock = match write {
+                true => lock.make(dir)?,
+                false => lock.allow(&NativeDir::creating(dir)),
+            };
+        }
+        if writes.activation {
+            // Private, as the activation makes it.
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&paths.adept)
+                .with_context(|| format!("Cannot create {}", paths.adept.display()))?;
+        }
+        lock = lock.allow(&NativeAdept::new(&paths.adept));
+    }
+    // Made only where the app would accept it: never inside a Kobo.
+    if let Some(value) = writes.output.filter(|value| output(value).is_ok()) {
+        lock = lock.make(value)?;
+    }
+    lock.apply_or_warn("crossload")?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let args = ambit_cli_native::args();
     let config = typed(&args, "--config").pop().map(PathBuf::from);
@@ -598,11 +803,18 @@ fn main() -> ExitCode {
         .unwrap_or_default();
     // Saved defaults count as named, each for its own kind only. The books folder is where the
     // program was started, unless given; the Bookshelf is the catalogue unless one is given.
-    let kobos = typed(&args, "--device")
+    let kobos: Vec<PathBuf> = typed(&args, "--device")
         .into_iter()
         .chain(saved.device.clone())
         .map(PathBuf::from)
         .collect();
+    if let Err(error) = lock_cli(&args, paths.as_ref().ok(), &saved, &kobos) {
+        eprintln!(
+            "Error: {}",
+            crossload::cli::printable(&format!("{error:#}"))
+        );
+        return ExitCode::FAILURE;
+    }
     let app = crossload::cli::init(
         ambit_cli_native::StdClock::new(),
         args.named(book_file),
@@ -634,7 +846,11 @@ fn main() -> ExitCode {
                     })
                 });
             match result {
-                Ok(()) => ExitCode::SUCCESS,
+                Ok(None) => ExitCode::SUCCESS,
+                Ok(Some(message)) => {
+                    eprintln!("{message}");
+                    ExitCode::SUCCESS
+                }
                 Err(error) => {
                     eprintln!(
                         "Error: {}",

@@ -176,6 +176,76 @@ pub fn init(
     }
 }
 
+/// What a command line will write, for the wiring: on Linux it locks the program before the
+/// command runs, and a lock covers only folders that are there, so it makes these first. Nothing
+/// for a command line that asks for help or doesn't parse. `defaults` are the saved settings.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Writes {
+    /// The terminal interface: the wiring opens and locks it itself.
+    pub tui: bool,
+    /// The settings file's folder.
+    pub settings: bool,
+    /// The record of copies.
+    pub history: bool,
+    pub cache: bool,
+    /// The activation's state directory: setting it up, checking it (which makes it, as it always
+    /// has) and fulfilling an ACSM.
+    pub activation: bool,
+    /// The folder books are added to, as typed or saved.
+    pub output: Option<String>,
+}
+
+pub fn writes(args: &[String], defaults: &config::Defaults) -> Writes {
+    let Ok(matches) = args::command().try_get_matches_from(args) else {
+        return Writes::default();
+    };
+    let output = |typed: Option<String>| typed.or(defaults.output.clone());
+    let mut writes = Writes::default();
+    match args::parse(&matches).command {
+        Cmd::Tui { .. } => writes.tui = true,
+        Cmd::Config(ConfigCommand::Set { .. } | ConfigCommand::Unset { .. }) => {
+            writes.settings = true
+        }
+        // Listing the library keeps what it learnt about each book.
+        Cmd::Books { .. } => writes.cache = true,
+        // Copying to the computer, or converting a PDF on the way to the reader, adds to the
+        // import folder; every copy is recorded.
+        Cmd::Sync { library, apply, .. } => {
+            writes.cache = true;
+            if apply {
+                writes.history = true;
+                writes.output = output(library.output);
+            }
+        }
+        Cmd::Optimize { output: typed, .. }
+        | Cmd::Catalog(CatalogCommand::Get { output: typed, .. })
+        | Cmd::Kobo(KoboCommand::Import { output: typed, .. }) => writes.output = output(typed),
+        Cmd::Import { output: typed, .. } => {
+            writes.output = output(typed);
+            writes.activation = true;
+        }
+        Cmd::Adobe(_) => writes.activation = true,
+        Cmd::Kobo(KoboCommand::Sync {
+            output: typed,
+            apply: true,
+            ..
+        }) => writes.output = output(typed),
+        // Notes go to a folder only when one is typed (the saved one isn't used), and not as JSON.
+        Cmd::Kobo(KoboCommand::Notes {
+            output: typed,
+            json: false,
+            ..
+        }) => writes.output = typed,
+        Cmd::Config(ConfigCommand::Show)
+        | Cmd::History { .. }
+        | Cmd::Copy { .. }
+        | Cmd::Send { .. }
+        | Cmd::Catalog(_)
+        | Cmd::Kobo(_) => {}
+    }
+    writes
+}
+
 struct Cli {
     clock: Arc<dyn Clock>,
     files: Named<OneFile>,

@@ -58,6 +58,24 @@ class Terminal:
                 raise AssertionError((needle, self.output[-2000:]))
             if select.select([self.master], [], [], .1)[0]:
                 self.output += os.read(self.master, 65536)
+    def locked(self):
+        """On Linux the program is locked while it runs: seccomp filters it."""
+        if sys.platform.startswith('linux'):
+            status = Path(f'/proc/{self.proc.pid}/status').read_text()
+            assert 'Seccomp:\t2' in status, status
+    def ended(self, needle):
+        """The program ends by itself, saying `needle`, and leaves the terminal as it was."""
+        deadline = time.monotonic() + 15
+        while self.proc.poll() is None or needle not in self.output:
+            if time.monotonic() > deadline:
+                raise AssertionError((needle, self.output[-2000:]))
+            if select.select([self.master], [], [], .1)[0]:
+                try:
+                    self.output += os.read(self.master, 65536)
+                except OSError:
+                    break
+        assert self.proc.wait(timeout=5) == 0
+        assert termios.tcgetattr(self.slave) == self.before, 'terminal settings not restored'
     def quit(self):
         self.send(b'\x03')
         # Keep reading, as a terminal does: an unread pty (small on macOS) blocks the app's
@@ -80,7 +98,9 @@ class Terminal:
         os.close(self.master)
         os.close(self.slave)
 
-with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
+# Beside the binary, not in the system's temporary folder: the locked program may write there (an
+# activation's cookie jar, a Kobo's snapshot), so what it reaches here it reaches as named.
+with tempfile.TemporaryDirectory(prefix='crossload-tui-', dir=binary.parent.parent) as tmp:
     root = Path(tmp)
     books = root / 'books'
     books.mkdir()
@@ -97,7 +117,8 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
             z.writestr(name, data)
     original = source.read_bytes()
     # Setup works without --output and saves only after its explicit action.
-    setup_config = root / 'setup.json'
+    # In a folder of its own: the settings folder is reachable, and the import folder isn't in it.
+    setup_config = root / 'settings' / 'setup.json'
     setup_args = ['--config', str(setup_config), 'tui', '--browse', str(books)]
     t = Terminal(setup_args)
     try:
@@ -114,16 +135,37 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         # nothing answers on, so this test never reaches a reader that happens
         # to be on the network. Then save with Ctrl+S from where we stand,
         # rather than walking down to the last row.
+        t.locked()
         t.send(b'\t\r\x15' + str(root / 'setup-imports').encode() + b'\r')
         t.send(b'\t\r\x15127.0.0.1:9\r')
-        # Saving starts the interface again with the saved folders.
+        # Saving starts the interface again with the saved folders, but the lock, made for what
+        # was opened at the start, can't take the new import folder and reader: it says so and
+        # ends.
         t.send(b'\x13')
-        t.expect(b'Library ready.')
+        t.ended(b'Start crossload again to use them.')
+        assert b'writing to ' + str(root / 'setup-imports').encode() in t.output
+        assert b'connecting to port 9' in t.output
         saved = json.loads(setup_config.read_text())
         assert saved['browse'] == str(books)
         assert saved['output'] == str(root / 'setup-imports')
         assert saved['reader'] == '127.0.0.1:9'
         assert not (root / 'setup-imports').exists()
+    finally:
+        t.close()
+    # Started again, it opens what the settings name.
+    t = Terminal(setup_args)
+    try:
+        t.expect(b'Library ready.')
+        t.locked()
+        # Saving what the lock already covers starts it again in the same run.
+        t.send(b',')
+        t.expect(b'Test reader connection')
+        t.send(b'\x13')
+        time.sleep(1.5)
+        assert t.proc.poll() is None, t.output[-2000:]
+        assert b'Start crossload again' not in t.output
+        t.expect(b'Library ready.')
+        t.locked()
         t.send(b'?')
         t.expect(b'Sort by title, then author, then series')
         t.send(b'\x1b')
@@ -159,6 +201,7 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
     t = Terminal(args)
     try:
         t.expect(b'Library ready.')
+        t.locked()
         t.send(b'/Test\r\r')
         t.expect(b'Copy to')
         assert not (card / 'Test Author/Test Book.epub').exists()
@@ -189,4 +232,4 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-') as tmp:
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
     finally:
         t.close()
-print('TUI PTY passed: setup/settings and restart, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.')
+print('TUI PTY passed: locked (Linux), setup/settings and restart, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.')

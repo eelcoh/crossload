@@ -442,6 +442,13 @@ on your corporate Mac; Wi-Fi transfer remains the alternative.
 | Existing output file | The importer never overwrites files. Choose another output directory if you need another copy. |
 | EPUB validation fails | The input may be incomplete, still encrypted, or use an unsupported format/encoding. No output EPUB is saved. |
 | Several entries share a title | Check `SOURCE` and `TYPE`; use `--json` to inspect sideloaded paths. Every separate file has its own ID. |
+| "Settings saved. They need …, which this run of crossload can't reach" | Start crossload again. On Linux the terminal interface is locked to the folders, devices and reader it opened at the start, and a lock can't be widened; the new settings are saved and are opened on the next start. |
+| A Kobo or card plugged in while the terminal interface runs can't be written to | On Linux it is locked to where devices are mounted (`/run/media/$USER`, `/media/$USER`) as they were when it started. If nothing had been mounted since the computer started, that folder didn't exist yet: start crossload again. |
+
+On Linux crossload runs locked (Landlock and seccomp): it can reach only the files, folders,
+devices and network ports it opened for the command or the terminal interface, and it can't
+start other programs. A command that writes to an output, state or settings folder that doesn't
+exist yet creates it before it starts. Nothing is locked on macOS.
 
 Run `crossload --help` or `crossload kobo import --help` for command options. Errors
 are printed to stderr and return a nonzero exit status. JSON list output goes

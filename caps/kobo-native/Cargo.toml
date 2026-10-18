@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+ambit-lockdown.workspace = true
 crossload-kobo.workspace = true
 flamberge-keys = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }
 flamberge-schemes = { git = "https://github.com/kessriga/flamberge", rev = "eff8713bd51e7f8811b9695507abb0d0dc2eda80" }

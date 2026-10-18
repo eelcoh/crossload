@@ -377,3 +377,51 @@ fn the_state_directory_is_private() {
         0o700
     );
 }
+
+/// The program, locked (Linux), sets up an activation, checks it, and imports an ACSM through
+/// libgourou: the state directory is made before the lock, the request's folder and the output
+/// are what the command named, and libgourou's cookie jar is in `/tmp`. Fulfilment's network half
+/// isn't reached: the receipt and the download are already in the state directory.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_locked_program_sets_up_and_imports() {
+    let fixture = Fixture::new();
+    // Outside the system's temporary folder, which the lock allows for the cookie jar.
+    let place = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let home = place.path().join("home");
+    let run = |args: &[&str]| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_crossload"))
+            .current_dir(place.path())
+            .env("HOME", &home)
+            .env("XDG_CONFIG_HOME", home.join("config"))
+            .env("XDG_STATE_HOME", home.join("state"))
+            .env("XDG_CACHE_HOME", home.join("cache"))
+            .env("XDG_DATA_HOME", home.join("data"))
+            .args(args)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{args:?}: {stderr}");
+        assert!(!stderr.contains("lockdown"), "{stderr}");
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+    run(&[
+        "adobe",
+        "setup",
+        "--from",
+        fixture.dir.path().to_str().unwrap(),
+    ]);
+    let state = home.join("data/xteink");
+    assert!(state.join("activation/activation.xml").is_file());
+    assert!(run(&["adobe", "status"]).contains("locally valid"));
+    fixture.cache(&state, false);
+    fs::create_dir(place.path().join("requests")).unwrap();
+    fs::write(place.path().join("requests/book.acsm"), ACSM).unwrap();
+    run(&["import", "requests/book.acsm", "--output", "imports"]);
+    let books: Vec<_> = fs::read_dir(place.path().join("imports"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(books.len(), 1, "{books:?}");
+    epub::validate(&fs::read(&books[0]).unwrap()).unwrap();
+}

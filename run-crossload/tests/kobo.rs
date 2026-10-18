@@ -88,7 +88,10 @@ struct Device {
 
 impl Device {
     fn new(encrypted: bool, wal: bool, fonts: bool) -> Self {
-        let dir = tempfile::tempdir().unwrap();
+        Self::new_in(&std::env::temp_dir(), encrypted, wal, fonts)
+    }
+    fn new_in(parent: &Path, encrypted: bool, wal: bool, fonts: bool) -> Self {
+        let dir = tempfile::tempdir_in(parent).unwrap();
         fs::create_dir_all(dir.path().join(".kobo/kepub")).unwrap();
         fs::create_dir(dir.path().join(".adobe-digital-editions")).unwrap();
         fs::write(
@@ -1083,4 +1086,51 @@ fn listing_by_collection_filters_the_books_and_names_the_collections_on_a_typo()
         "{complaint}"
     );
     assert!(complaint.contains("Science Fiction"), "{complaint}");
+}
+
+/// The program, locked (Linux), lists a Kobo's books and imports one into an output folder it
+/// makes: it reads the database (and its write-ahead log) through a snapshot in the temporary
+/// folder, and the device as named. The device is outside the system's temporary folder, which
+/// the lock allows for the snapshot.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_locked_program_lists_and_imports() {
+    let place = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let device = Device::new_in(place.path(), true, true, false);
+    let run = |args: &[&std::ffi::OsStr]| {
+        let output = cli("crossload")
+            .env("HOME", place.path().join("home"))
+            .env("XDG_CONFIG_HOME", place.path().join("home/config"))
+            .env("XDG_STATE_HOME", place.path().join("home/state"))
+            .env("XDG_CACHE_HOME", place.path().join("home/cache"))
+            .env("XDG_DATA_HOME", place.path().join("home/data"))
+            .args(args)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{args:?}: {stderr}");
+        assert!(!stderr.contains("lockdown"), "{stderr}");
+        output.stdout
+    };
+    let device_path = device.path().as_os_str();
+    let listed = run(&[
+        "kobo".as_ref(),
+        "list".as_ref(),
+        "--json".as_ref(),
+        "--device".as_ref(),
+        device_path,
+    ]);
+    let books: serde_json::Value = serde_json::from_slice(&listed).unwrap();
+    assert_eq!(books[0]["id"], ID);
+    let output = place.path().join("imports");
+    run(&[
+        "kobo".as_ref(),
+        "import".as_ref(),
+        ID.as_ref(),
+        "--device".as_ref(),
+        device_path,
+        "--output".as_ref(),
+        output.as_os_str(),
+    ]);
+    assert_eq!(fs::read_dir(&output).unwrap().count(), 1);
 }

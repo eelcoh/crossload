@@ -16,7 +16,7 @@ What each program built here contains, and what runs while it's built. Generated
 | crossload-adobe | 0.2.0 | workspace | - |  | - |
 | crossload-adobe-native | 0.2.0 | workspace | - | unsafe, fs, path_fs | env |
 | crossload-kobo | 0.2.0 | workspace | - |  | - |
-| crossload-kobo-native | 0.2.0 | workspace | - | fs, path_fs | - |
+| crossload-kobo-native | 0.2.0 | workspace | - | env, fs, path_fs | - |
 | adler2 | 2.0.1 | crates.io | 402 |  | - |
 | aes | 0.8.4 | crates.io | 5,617 | unsafe | - |
 | aes | 0.9.3 | crates.io | 3,635 | unsafe | - |
@@ -35,7 +35,7 @@ What each program built here contains, and what runs while it's built. Generated
 | ambit-caps-ws-native | 0.1.0 | git github.com/eelcoh/ambit | 157 | net | - |
 | ambit-cli | 0.1.0 | git github.com/eelcoh/ambit | 236 |  | - |
 | ambit-cli-native | 0.1.0 | git github.com/eelcoh/ambit | 53 | env, terminate | - |
-| ambit-lockdown | 0.1.0 | git github.com/eelcoh/ambit | 339 |  | - |
+| ambit-lockdown | 0.1.0 | git github.com/eelcoh/ambit | 339 | fs | - |
 | ambit-tui | 0.1.0 | git github.com/eelcoh/ambit | 158 |  | - |
 | ambit-tui-native | 0.1.0 | git github.com/eelcoh/ambit | 352 |  | - |
 | anstyle | 1.0.14 | crates.io | 1,472 | unsafe | - |
@@ -141,7 +141,7 @@ What each program built here contains, and what runs while it's built. Generated
 | itertools | 0.14.0 | crates.io | 13,422 | unsafe | - |
 | itoa | 1.0.18 | crates.io | 433 | unsafe | - |
 | kasuari | 0.4.12 | crates.io | 2,739 |  | - |
-| landlock | 0.4.7 | crates.io | 5,729 | unsafe | - |
+| landlock | 0.4.7 | crates.io | 5,729 | unsafe, fs | - |
 | lazy_static | 1.5.0 | crates.io | 240 | unsafe | - |
 | libc | 0.2.189 | crates.io | 118,633 | unsafe | env, process |
 | libm | 0.2.16 | crates.io | 18,036 | unsafe | env |

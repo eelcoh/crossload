@@ -94,6 +94,22 @@ impl NativeKobo {
     }
 }
 
+/// What reading the database reaches, for the program's lock: the database and its write-ahead
+/// log, read, and the temporary folder the snapshot is made in (`TMPDIR`, or `/tmp`), read and
+/// written. Nothing else on the device: the wiring grants the device itself, if it gives the app
+/// one.
+impl ambit_lockdown::Grants for NativeKobo {
+    fn grants(&self) -> Vec<ambit_lockdown::Grant> {
+        use ambit_lockdown::Grant;
+        let database = self.root.join(".kobo/KoboReader.sqlite");
+        vec![
+            Grant::Read(wal(&database)),
+            Grant::Read(database),
+            Grant::ReadWrite(std::env::temp_dir()),
+        ]
+    }
+}
+
 fn wal(database: &Path) -> PathBuf {
     database.with_file_name("KoboReader.sqlite-wal")
 }
