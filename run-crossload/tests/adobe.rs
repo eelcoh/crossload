@@ -402,7 +402,7 @@ fn the_locked_program_sets_up_and_imports() {
             .unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         assert!(output.status.success(), "{args:?}: {stderr}");
-        assert!(!stderr.contains("lockdown"), "{stderr}");
+        assert!(!stderr.contains("lockdown: not enforced"), "{stderr}");
         String::from_utf8_lossy(&output.stdout).into_owned()
     };
     run(&[

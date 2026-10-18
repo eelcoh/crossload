@@ -45,7 +45,7 @@ fn succeeds(command: &mut Command) -> String {
     let output = command.output().unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     assert!(output.status.success(), "{stderr}");
-    assert!(!stderr.contains("lockdown"), "{stderr}");
+    assert!(!stderr.contains("lockdown: not enforced"), "{stderr}");
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 

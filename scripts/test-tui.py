@@ -138,13 +138,17 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-', dir=binary.parent.pare
         t.locked()
         t.send(b'\t\r\x15' + str(root / 'setup-imports').encode() + b'\r')
         t.send(b'\t\r\x15127.0.0.1:9\r')
-        # Saving starts the interface again with the saved folders, but the lock, made for what
-        # was opened at the start, can't take the new import folder and reader: it says so and
-        # ends.
+        # Saving starts the interface again with the saved folders. On Linux the lock, made for
+        # what was opened at the start, can't take the new import folder and reader: it says so
+        # and ends. Elsewhere nothing is locked, and it starts again with them.
         t.send(b'\x13')
-        t.ended(b'Start crossload again to use them.')
-        assert b'writing to ' + str(root / 'setup-imports').encode() in t.output
-        assert b'connecting to port 9' in t.output
+        if sys.platform.startswith('linux'):
+            t.ended(b'Start crossload again to use them.')
+            assert b'writing to ' + str(root / 'setup-imports').encode() in t.output
+            assert b'connecting to port 9' in t.output
+        else:
+            t.expect(b'Library ready.')
+            t.quit()
         saved = json.loads(setup_config.read_text())
         assert saved['browse'] == str(books)
         assert saved['output'] == str(root / 'setup-imports')
