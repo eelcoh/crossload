@@ -21,6 +21,7 @@ ambit-caps-dir.workspace = true
 ambit-caps-dir-native.workspace = true
 ambit-caps-net.workspace = true
 ambit-caps-net-native.workspace = true
+ambit-caps-ws-native.workspace = true
 ambit-cli.workspace = true
 ambit-cli-native.workspace = true
 ambit-tui.workspace = true

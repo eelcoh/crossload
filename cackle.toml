@@ -101,12 +101,6 @@ allow_unsafe = true
 [pkg.smallvec]
 allow_unsafe = true
 
-[pkg.redb]
-build.allow_apis = [
-    "env",
-]
-allow_unsafe = true
-
 [pkg.tracing-subscriber]
 allow_unsafe = true
 
@@ -306,7 +300,14 @@ allow_unsafe = true
 [pkg.percent-encoding]
 allow_unsafe = true
 
+# Since ambit 3398b1e the WebSocket has its own crate (below); this one's HTTP opens its
+# connections through ureq.
 [pkg.ambit-caps-net-native]
+
+# PENDING (2026-10-18), not yet approved: copied from ambit's cackle.toml at 3398b1e. The
+# WebSocket (the reader's upload) has its own crate since the split; it was in
+# ambit-caps-net-native before. Wiring only.
+[pkg.ambit-caps-ws-native]
 allow_apis = [
     "net",
 ]
@@ -387,6 +388,25 @@ from.test.allow_apis = [
 # crossload: uses fs (reported by cargo acl).
 allow_apis = ["fs"]
 
+# PENDING (2026-10-18), not yet approved: copied from ambit's cackle.toml at 3398b1e.
+# Lockdown (ambit-lockdown): locks the program on Linux. Not in the app: the wiring applies it,
+# and the native capabilities say what they need. landlock and seccompiler make the system calls
+# (unsafe); landlock opens the granted paths to name them to the kernel (fs); ambit-lockdown
+# makes a folder before locking (fs) and reads which machine it runs on (env::consts, no
+# environment).
+[pkg.enumflags2_derive]
+allow_proc_macro = true
+allow_unsafe = true
+
+[pkg.enumflags2]
+allow_unsafe = true
+
+[pkg.seccompiler]
+allow_unsafe = true
+
+[pkg.landlock]
+allow_unsafe = true
+
 [pkg.ambit-caps-dir-native]
 
 # --- WebSocket (tungstenite and what it pulls in) ----------------------------------------------
@@ -450,6 +470,9 @@ include = [
     "cap-std::net",
     "mio::net",
 ]
+# PENDING (2026-10-18): landlock's own `net` module describes rules for the kernel; it opens
+# nothing (as in ambit's cackle.toml).
+no_auto_detect = ["landlock"]
 
 [api.fs]
 include = [
@@ -462,6 +485,9 @@ include = [
 exclude = [
     "std::path",
 ]
+# PENDING (2026-10-18): landlock's own `fs` module describes rules for the kernel; the paths it
+# opens to name them show up as `fs` uses of landlock (granted above).
+no_auto_detect = ["landlock"]
 
 # Asking the disk about a path, through std::path (exists, metadata, listing a folder, following
 # links). Separate from fs only because cackle can't re-include these under the exclude above.

@@ -19,18 +19,20 @@ publish = false
 
 [workspace.dependencies]
 # ambit: one commit for all crates, over https (what the checks trust). See ambit's ADOPTING.md.
-ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
-ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
-ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
-ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
-ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
-ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
-ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
-ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # spec only
-ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # spec only
-ambit-cli             = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }
-ambit-cli-native      = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # wiring only
-ambit-cli-sim         = { git = "https://github.com/eelcoh/ambit", rev = "14a65c8930d44c51dd52cbb705ded2b044108c22" }   # tests only
+ambit-caps            = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }
+ambit-caps-net        = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }
+ambit-caps-dir        = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }
+ambit-tui             = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }
+ambit-tui-native      = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring only
+ambit-caps-net-native = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring only
+ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring only
+ambit-caps-ws-native  = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring only
+ambit-lockdown        = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring and native caps only
+ambit-caps-sim        = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # spec only
+ambit-tui-sim         = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # spec only
+ambit-cli             = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }
+ambit-cli-native      = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # wiring only
+ambit-cli-sim         = { git = "https://github.com/eelcoh/ambit", rev = "3398b1eeab98cb2fad8055dcc55270a0fe1e9d98" }   # tests only
 
 crossload = { path = "apps/crossload" }
 crossload-adobe = { path = "caps/adobe" }

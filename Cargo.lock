@@ -72,19 +72,20 @@ checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 [[package]]
 name = "ambit-caps"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 
 [[package]]
 name = "ambit-caps-dir"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 
 [[package]]
 name = "ambit-caps-dir-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps-dir",
+ "ambit-lockdown",
  "cap-std",
  "rustix",
 ]
@@ -92,18 +93,17 @@ dependencies = [
 [[package]]
 name = "ambit-caps-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps",
  "ambit-caps-std",
  "getrandom 0.3.4",
- "redb",
 ]
 
 [[package]]
 name = "ambit-caps-net"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "http",
 ]
@@ -111,18 +111,18 @@ dependencies = [
 [[package]]
 name = "ambit-caps-net-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps-net",
+ "ambit-lockdown",
  "httparse",
- "tungstenite",
  "ureq",
 ]
 
 [[package]]
 name = "ambit-caps-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps",
  "ambit-caps-dir",
@@ -133,23 +133,31 @@ dependencies = [
 [[package]]
 name = "ambit-caps-std"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps",
 ]
 
 [[package]]
+name = "ambit-caps-ws-native"
+version = "0.1.0"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
+dependencies = [
+ "ambit-caps-net",
+ "ambit-lockdown",
+ "tungstenite",
+]
+
+[[package]]
 name = "ambit-cli"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 
 [[package]]
 name = "ambit-cli-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
- "ambit-caps-dir",
- "ambit-caps-dir-native",
  "ambit-caps-native",
  "ambit-cli",
  "rustix",
@@ -158,7 +166,7 @@ dependencies = [
 [[package]]
 name = "ambit-cli-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps-dir",
  "ambit-caps-sim",
@@ -166,9 +174,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ambit-lockdown"
+version = "0.1.0"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
+dependencies = [
+ "ambit-caps-dir",
+ "landlock",
+ "libc",
+ "seccompiler",
+]
+
+[[package]]
 name = "ambit-tui"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ratatui-core",
 ]
@@ -176,7 +195,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps-native",
  "ambit-tui",
@@ -188,7 +207,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=14a65c8930d44c51dd52cbb705ded2b044108c22#14a65c8930d44c51dd52cbb705ded2b044108c22"
+source = "git+https://github.com/eelcoh/ambit?rev=3398b1eeab98cb2fad8055dcc55270a0fe1e9d98#3398b1eeab98cb2fad8055dcc55270a0fe1e9d98"
 dependencies = [
  "ambit-caps-sim",
  "ambit-tui",
@@ -629,6 +648,7 @@ dependencies = [
  "ambit-caps-dir-native",
  "ambit-caps-net",
  "ambit-caps-net-native",
+ "ambit-caps-ws-native",
  "ambit-cli",
  "ambit-cli-native",
  "ambit-tui",
@@ -913,6 +933,26 @@ dependencies = [
  "rustversion",
  "scopeguard",
  "simdutf8",
+]
+
+[[package]]
+name = "enumflags2"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1027f7680c853e056ebcec683615fb6fbbc07dbaa13b4d5d9442b146ded4ecef"
+dependencies = [
+ "enumflags2_derive",
+]
+
+[[package]]
+name = "enumflags2_derive"
+version = "0.7.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67c78a4d8fdf9953a5c9d458f9efe940fd97a0cab0941c075a813ac594733827"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1449,6 +1489,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
 dependencies = [
  "hashbrown 0.16.1",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "landlock"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cca98e95f35b29d469dade6724c6f96cec9236640f745a0e99b0334ec320ab1"
+dependencies = [
+ "enumflags2",
+ "libc",
  "thiserror 2.0.20",
 ]
 
@@ -2089,15 +2140,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redb"
-version = "2.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d64e07496d293ad8ed401c4d193d5b9f0f97671fbd5bf21d691a0c7d2c53dc8"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2244,6 +2286,15 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "seccompiler"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4ae55de56877481d112a559bbc12667635fdaf5e005712fd4e2b2fa50ffc884"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "semver"
