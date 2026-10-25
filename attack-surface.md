@@ -8,7 +8,7 @@ What each program built here contains, and what runs while it's built. Generated
 
 ## `crossload`, `xteink` (crossload-cli, for x86_64-unknown-linux-gnu)
 
-259 crates ship: 5 from this workspace, 254 from outside it with 2,200,821 lines of Rust. 40 more run at build time.
+258 crates ship: 5 from this workspace, 253 from outside it with 2,185,963 lines of Rust. 40 more run at build time.
 
 | ships | version | from | lines | may use | build script may use |
 |---|---|---|--:|---|---|
@@ -266,7 +266,6 @@ What each program built here contains, and what runs while it's built. Generated
 | zerotrie | 0.2.5 | crates.io | 6,406 | unsafe | - |
 | zerovec | 0.11.8 | crates.io | 14,594 | unsafe | - |
 | zip | 2.4.2 | crates.io | 10,143 | unsafe | env |
-| zlib-rs | 0.6.7 | crates.io | 14,858 | unsafe | - |
 | zmij | 1.0.23 | crates.io | 1,885 | unsafe | env, process, terminate |
 | zopfli | 0.8.3 | crates.io | 4,167 | unsafe | - |
 | zune-core | 0.5.3 | crates.io | 2,970 |  | - |
