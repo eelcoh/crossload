@@ -133,6 +133,9 @@ pub(super) struct Model {
     /// A refresh asked for while something was already running, to be done
     /// when it finishes rather than refused.
     pub pending_refresh: bool,
+    /// How the last copy or removal went, shown again once the refresh it
+    /// started has finished.
+    pub outcome: Option<String>,
     /// A book's metadata being corrected, kept apart from the book until saved.
     pub correcting: Option<super::edit::Panel>,
     /// Room left at each place, read once when the copy dialog opens. A place
@@ -200,6 +203,7 @@ impl Model {
         };
         Self {
             pending_refresh: false,
+            outcome: None,
             correcting: None,
             room: vec![],
             ask: None,
@@ -567,7 +571,10 @@ impl Model {
                 self.pending_catalog = None;
                 let id = self.id();
                 self.loading = Some(id);
-                self.status = "Discovering Local, Kobo and CrossPoint independently…".into();
+                self.status = match &self.outcome {
+                    Some(outcome) => format!("{outcome} Refreshing the list…"),
+                    None => "Discovering Local, Kobo and CrossPoint independently…".into(),
+                };
                 return vec![Effect::Load { id }];
             }
             Message::Catalog(id, snapshot) if self.loading == Some(id) => {
@@ -626,8 +633,14 @@ impl Model {
                     }
                 }
                 self.loading = None;
-                if self.busy.is_none() {
-                    self.status=result.map(|_|"Library ready. Enter chooses a copy destination; r refreshes locations.".into()).unwrap_or_else(|e|format!("Discovery error: {e}"));
+                // A refresh still to come says what it is doing itself.
+                if self.busy.is_none() && !self.pending_refresh {
+                    self.status = match (self.outcome.take(), result) {
+                        (Some(outcome), Ok(())) => outcome,
+                        (Some(outcome), Err(e)) => format!("{outcome} Discovery error: {e}"),
+                        (None, Ok(())) => "Library ready. Enter chooses a copy destination; r refreshes locations.".into(),
+                        (None, Err(e)) => format!("Discovery error: {e}"),
+                    };
                 }
                 if let Some(effects) = self.deferred_refresh() {
                     return effects;
@@ -641,7 +654,16 @@ impl Model {
                 self.busy = None;
                 self.cancel = None;
                 self.step = None;
-                self.status = result.unwrap_or_else(|e| format!("Error: {e}"));
+                match result {
+                    // Something may have been copied or deleted: the list
+                    // follows by itself.
+                    Ok(outcome) => {
+                        self.status = outcome.clone();
+                        self.outcome = Some(outcome);
+                        self.pending_refresh = true;
+                    }
+                    Err(e) => self.status = format!("Error: {e}"),
+                }
                 if let Some(effects) = self.deferred_refresh() {
                     return effects;
                 }

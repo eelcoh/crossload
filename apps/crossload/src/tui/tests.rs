@@ -618,6 +618,47 @@ fn search_navigation_and_refresh_preserve_visible_selection() {
 }
 
 #[test]
+fn a_finished_copy_refreshes_the_list_and_keeps_saying_how_it_went() {
+    let mut model = Model::new(options());
+    model.update(Message::Refresh);
+    let id = model.loading.unwrap();
+    model.update(Message::CatalogFinished(id, Ok(())));
+    let job = 99;
+    model.busy = Some(job);
+    let effects = model.update(Message::Finished(
+        job,
+        Ok("Copied 2 of 2 books to CrossPoint.".into()),
+    ));
+    assert!(matches!(effects.as_slice(), [Effect::Load { .. }]));
+    let refresh = model.loading.unwrap();
+    assert_eq!(
+        model.status,
+        "Copied 2 of 2 books to CrossPoint. Refreshing the list…"
+    );
+    model.update(Message::Catalog(refresh, crate::books::Snapshot::default()));
+    model.update(Message::CatalogFinished(refresh, Ok(())));
+    assert_eq!(model.status, "Copied 2 of 2 books to CrossPoint.");
+    // A copy that failed changed nothing, so nothing is refreshed.
+    model.busy = Some(job);
+    let effects = model.update(Message::Finished(job, Err("no room".into())));
+    assert!(effects.is_empty());
+    assert!(model.loading.is_none());
+    assert_eq!(model.status, "Error: no room");
+    // Finished during a scan: the refresh waits for it, and the outcome stays.
+    model.update(Message::Refresh);
+    let scan = model.loading.unwrap();
+    model.busy = Some(job);
+    assert!(model
+        .update(Message::Finished(job, Ok("Deleted.".into())))
+        .is_empty());
+    let effects = model.update(Message::CatalogFinished(scan, Ok(())));
+    assert!(matches!(effects.as_slice(), [Effect::Load { .. }]));
+    let refresh = model.loading.unwrap();
+    model.update(Message::CatalogFinished(refresh, Ok(())));
+    assert_eq!(model.status, "Deleted.");
+}
+
+#[test]
 fn list_offset_keeps_the_selection_visible_with_a_margin() {
     use view::offset;
     // A list that fits never scrolls.

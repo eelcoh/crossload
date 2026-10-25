@@ -283,7 +283,7 @@ impl Crossload {
                 let progress =
                     |text: &str| p.send(Msg(Inner::Model(Message::Progress(id, text.to_owned()))));
                 let result = books::remove(&library, &book, place, &path, &progress)
-                    .map(|message| format!("{message}. Press r to refresh."))
+                    .map(|message| format!("{message}."))
                     .map_err(|e| format!("{e:#}"));
                 Msg(Inner::Model(Message::Finished(id, result)))
             }),
@@ -492,7 +492,7 @@ impl Crossload {
 /// abandon the rest; the summary names what went wrong.
 fn summary(job: &Job, stopped: bool) -> Result<String, String> {
     if job.total == 1 && job.failures.is_empty() {
-        return Ok(format!("{} Press r to refresh.", job.last));
+        return Ok(job.last.clone());
     }
     if job.total == 1 {
         return Err(job.failures[0].clone());
@@ -519,7 +519,6 @@ fn summary(job: &Job, stopped: bool) -> Result<String, String> {
             if job.failures.len() > 2 { "; …" } else { "" }
         ));
     }
-    summary.push_str(" Press r to refresh.");
     Ok(summary)
 }
 
