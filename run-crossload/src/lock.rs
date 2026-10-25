@@ -94,7 +94,6 @@ pub fn describe(grant: &Grant) -> String {
         Grant::Resolve => "looking up names".into(),
         Grant::Udp => "UDP".into(),
         Grant::Terminal => "the terminal".into(),
-        Grant::StartPrograms => "starting programs".into(),
     }
 }
 
