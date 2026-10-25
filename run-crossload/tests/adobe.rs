@@ -17,7 +17,7 @@ use std::{
     io::{Cursor, Write},
     os::unix::fs::{symlink, PermissionsExt},
     path::Path,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{RwLock, RwLockReadGuard},
 };
 use tempfile::TempDir;
 use zip::{write::SimpleFileOptions, ZipWriter};
@@ -32,7 +32,8 @@ fn locking() -> RwLockReadGuard<'static, ()> {
     STARTING.read().unwrap_or_else(|e| e.into_inner())
 }
 
-fn starting() -> RwLockWriteGuard<'static, ()> {
+#[cfg(target_os = "linux")]
+fn starting() -> std::sync::RwLockWriteGuard<'static, ()> {
     STARTING.write().unwrap_or_else(|e| e.into_inner())
 }
 
