@@ -17,9 +17,24 @@ use std::{
     io::{Cursor, Write},
     os::unix::fs::{symlink, PermissionsExt},
     path::Path,
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tempfile::TempDir;
 use zip::{write::SimpleFileOptions, ZipWriter};
+
+/// Held while a test starts the program. Starting it from a current folder forks this process,
+/// and until the child runs the program it holds every file open here, the state directory's
+/// lock among them: a test that unlocks and locks again in that moment finds it taken. So each
+/// call that locks the state directory waits for the start to finish, and the other way round.
+static STARTING: RwLock<()> = RwLock::new(());
+
+fn locking() -> RwLockReadGuard<'static, ()> {
+    STARTING.read().unwrap_or_else(|e| e.into_inner())
+}
+
+fn starting() -> RwLockWriteGuard<'static, ()> {
+    STARTING.write().unwrap_or_else(|e| e.into_inner())
+}
 
 /// The old `Store` calls, on the `Adept` capability and the app's import.
 struct Store {
@@ -34,11 +49,13 @@ impl Store {
     fn import_activation(&self, source: &Path) -> anyhow::Result<()> {
         let activation =
             crossload_adobe_native::read_activation(source).map_err(|e| anyhow::anyhow!(e.0))?;
+        let _locking = locking();
         self.adept
             .import_activation(&activation)
             .map_err(|e| anyhow::anyhow!(e.0))
     }
     fn status(&self) -> anyhow::Result<bool> {
+        let _locking = locking();
         self.adept.status().map_err(|e| anyhow::anyhow!(e.0))
     }
     fn import(&self, acsm: &Path, output: &Path) -> anyhow::Result<std::path::PathBuf> {
@@ -48,6 +65,7 @@ impl Store {
             dir: std::sync::Arc::new(ambit_caps_dir_native::NativeDir::open(output)?),
             display: output.display().to_string(),
         };
+        let _locking = locking();
         let book = crossload::acsm::import(&self.adept, &folder, &data)?;
         Ok(output.join(book.to_string()))
     }
@@ -390,6 +408,7 @@ fn the_locked_program_sets_up_and_imports() {
     let place = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let home = place.path().join("home");
     let run = |args: &[&str]| {
+        let starting = starting();
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_crossload"))
             .current_dir(place.path())
             .env("HOME", &home)
@@ -400,6 +419,7 @@ fn the_locked_program_sets_up_and_imports() {
             .args(args)
             .output()
             .unwrap();
+        drop(starting);
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         assert!(output.status.success(), "{args:?}: {stderr}");
         assert!(!stderr.contains("lockdown: not enforced"), "{stderr}");
