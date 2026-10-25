@@ -306,15 +306,28 @@ impl Reader {
         // The reader gets to contradict what it was prepared for. This is the
         // only moment its name is known for free, and a device copy sized for
         // another screen still opens, which is what makes it worth saying.
+        // Readers that share a screen share their copies, so only the screen counts.
+        let reader = crate::profile::for_device(&status.device);
         let note = self
             .made_for
-            .filter(|made_for| !made_for.device.eq_ignore_ascii_case(status.device.trim()))
-            .map(|made_for| {
-                format!(
-                    "Note: this book was prepared for a {} screen, but the reader says it is a {}. \
-                     Set profile, or use --no-optimize to send books as they are.",
-                    made_for.device, status.device
-                )
+            .filter(|made_for| reader.is_none_or(|reader| reader.marker != made_for.marker))
+            .map(|made_for| match reader {
+                Some(reader) => format!(
+                    "Note: this book was prepared for a {} screen ({}×{}), but the reader says it is \
+                     a {} ({}×{}). Set profile to {}, or use --no-optimize to send books as they are.",
+                    made_for.device,
+                    made_for.width,
+                    made_for.height,
+                    reader.device,
+                    reader.width,
+                    reader.height,
+                    reader.device
+                ),
+                None => format!(
+                    "Note: this book was prepared for a {} screen ({}×{}), but the reader says it is \
+                     a {}, whose screen is not known. Use --no-optimize to send books as they are.",
+                    made_for.device, made_for.width, made_for.height, status.device
+                ),
             });
         self.check_folder()?;
         let remote = format!("{}/{}", self.address.folder.trim_end_matches('/'), name);

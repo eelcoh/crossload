@@ -92,7 +92,7 @@ pub fn prepare(
     })
 }
 
-/// Match the X4 screen dimensions. Keep resource names and media types so all
+/// Fit the profile's screen. Keep resource names and media types so all
 /// OPF, CSS, SVG and XHTML references remain intact. Never crop or remove content.
 fn optimize_images(data: &[u8], profile: Profile) -> Result<(Vec<u8>, usize)> {
     let mut archive = ZipArchive::new(Cursor::new(data))?;

@@ -295,7 +295,23 @@ fn a_book_prepared_for_another_screen_says_so() {
         .prepared_for(Some(crossload::profile::X4))
         .send(NAME, &book())
         .unwrap();
-    assert!(sent.note.unwrap().contains("X4 screen"));
+    let note = sent.note.unwrap();
+    assert!(note.contains("X4 screen"), "{note}");
+    assert!(note.contains("Set profile to X3"), "{note}");
+}
+
+#[test]
+fn a_reader_with_the_same_screen_takes_the_copy_without_a_word() {
+    let world = World::new();
+    world.reader.status_body(
+        r#"{"version":"2.0.0-rc+cb2a4c7","firmwareFamily":"crosspoint","device":"xteink_x4_pro"}"#,
+    );
+    let sent = world
+        .wifi("/")
+        .prepared_for(Some(crossload::profile::X4))
+        .send(NAME, &book())
+        .unwrap();
+    assert_eq!(sent.note, None);
 }
 
 #[test]

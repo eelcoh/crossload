@@ -942,8 +942,20 @@ accept every format Crossload carries.
 
 Optimizing means resizing a book's images to the screen that will show them, so
 which screen matters. Crossload prepares for the XTeink X4's 480×800 unless
-`profile` names another, and the only screen it knows is the X4: a device is
-named here once its size is known from the hardware, because guessing would
+`profile` names another. It knows every reader CrossPoint is offered for, with
+the screen sizes from CrossPoint's firmware:
+
+| Screen  | Readers (`profile` names)                                                     |
+| ------- | ----------------------------------------------------------------------------- |
+| 480×800 | `X4`, `X4 Pro`, `X4 Classic` (`x4c`), `Sticky`, `PaperMono`, `Metalio E-INK4`, `BOOX Picco` |
+| 528×792 | `X3`                                                                          |
+| 540×960 | `M5Paper` (v1.1), `M5Paper S3`, `LilyGo T5`                                   |
+| 552×768 | `EEGO A4`                                                                     |
+
+Names are matched without case, spaces or punctuation, and the names a reader
+gives itself (such as `xteink_x4_pro`) work too. Readers in one row share their
+copies: a book prepared for an X4 is already prepared for an X4 Pro. A reader
+is named here once its size is known from the hardware, because guessing would
 degrade every image to a size no device has. Saving a name it does not know is
 refused at the time it is saved, rather than failing every command afterwards.
 
