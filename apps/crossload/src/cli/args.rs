@@ -131,6 +131,7 @@ pub(super) enum KoboCommand {
 }
 
 /// Where an imported book goes next.
+#[derive(Clone)]
 pub(super) struct Transfer {
     pub send_to: Option<String>,
     pub copy_to: Option<String>,

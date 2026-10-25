@@ -21,6 +21,7 @@ fn options() -> Options {
             kobo: None,
             card: None,
         },
+        given: [None; 6],
         color: true,
     }
 }
@@ -197,6 +198,44 @@ fn setup_explains_each_row_and_refuses_a_books_folder_that_is_not_a_path() {
     assert!(matches!(effects.as_slice(), [Effect::Load { .. }]));
     assert!(model.skipped && !model.options.first_run);
     assert!(model.settings.is_none());
+}
+
+#[test]
+fn a_setting_the_command_line_gave_says_it_still_applies_once_changed() {
+    let mut options = options();
+    options.given[0] = Some("--browse");
+    let mut panel = settings::Panel::new(&options, false);
+    assert_eq!(panel.marks[0], settings::Mark::Good("folder found"));
+    assert!(panel.hint().starts_with("Required."));
+    panel.values[0] = "/other".into();
+    panel.input(Key::new(KeyCode::Up));
+    panel.selected = 0;
+    assert_eq!(
+        panel.marks[0],
+        settings::Mark::Warn("the command line's applies")
+    );
+    assert_eq!(
+        panel.hint(),
+        "Started with --browse; that still applies after the restart."
+    );
+    panel.selected = 7;
+    assert!(panel.hint().ends_with(
+        "starts again with them. Started with --browse; that still applies after the restart."
+    ));
+    // A path that is wrong is still wrong, whoever gave it.
+    panel.values[0] = "relative".into();
+    panel.input(Key::new(KeyCode::Up));
+    assert_eq!(
+        panel.marks[0],
+        settings::Mark::Bad("must start with / or ~/")
+    );
+    // A setting the command line didn't give says nothing of it.
+    panel.values[1] = "/elsewhere".into();
+    panel.input(Key::new(KeyCode::Up));
+    assert_eq!(
+        panel.marks[1],
+        settings::Mark::Note("created on first import")
+    );
 }
 
 #[test]

@@ -176,7 +176,9 @@ fn send_to_a_reader_runs_locked() {
 }
 
 /// The program is locked while it runs: seccomp filters it (2 in `/proc/<pid>/status`), and it
-/// can't gain privileges. Seen while it waits on a catalogue that doesn't answer.
+/// can't gain privileges. Seen while it waits on a catalogue that doesn't answer. What was
+/// started is its supervisor, which stays outside the lock to start it again; the program is
+/// the supervisor's one child.
 #[test]
 fn the_command_line_is_locked_while_it_runs() {
     let place = place();
@@ -188,15 +190,30 @@ fn the_command_line_is_locked_while_it_runs() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let status = format!("/proc/{}/status", child.id());
+    let children = format!("/proc/{0}/task/{0}/children", child.id());
     let deadline = Instant::now() + Duration::from_secs(10);
-    let mut seen = String::new();
+    let (mut program, mut seen) = (None, String::new());
     while Instant::now() < deadline {
-        seen = fs::read_to_string(&status).unwrap_or_default();
-        if seen.contains("Seccomp:\t2") {
-            break;
+        program = fs::read_to_string(&children)
+            .unwrap_or_default()
+            .split_whitespace()
+            .next()
+            .map(str::to_owned);
+        if let Some(program) = &program {
+            seen = fs::read_to_string(format!("/proc/{program}/status")).unwrap_or_default();
+            if seen.contains("Seccomp:\t2") {
+                break;
+            }
         }
         std::thread::sleep(Duration::from_millis(20));
+    }
+    let supervisor = fs::read_to_string(format!("/proc/{}/status", child.id())).unwrap();
+    // The program first: the supervisor, killed, would leave it running.
+    if let Some(program) = &program {
+        Command::new("kill")
+            .args(["-KILL", program])
+            .status()
+            .unwrap();
     }
     child.kill().unwrap();
     let mut stderr = String::new();
@@ -209,6 +226,7 @@ fn the_command_line_is_locked_while_it_runs() {
     child.wait().unwrap();
     assert!(seen.contains("Seccomp:\t2"), "{seen}\n{stderr}");
     assert!(seen.contains("NoNewPrivs:\t1"), "{seen}");
+    assert!(supervisor.contains("Seccomp:\t0"), "{supervisor}");
 }
 
 fn walk(path: &Path) -> Vec<PathBuf> {

@@ -50,21 +50,36 @@ pub struct Tui {
     pub folder: String,
     pub settings: crate::books::Settings,
     optimize: bool,
+    /// The places as the command line gave them, before the saved settings filled in the rest.
+    asked: Asked,
+}
+
+/// The places the command line gave the terminal interface. They hold for as long as the program
+/// runs, restarts included: a locked program starts again with the same arguments.
+#[derive(Clone)]
+struct Asked {
+    transfer: Transfer,
+    device: Option<String>,
+    browse: Option<String>,
+    output: Option<String>,
 }
 
 impl Tui {
     #[allow(clippy::too_many_arguments)]
     fn new(
         defaults: config::Defaults,
-        transfer: Transfer,
-        device: Option<String>,
-        browse: Option<String>,
-        output: Option<String>,
+        asked: Asked,
         show_previews: bool,
         serial: Option<String>,
         optimize: bool,
         organized: bool,
     ) -> Result<Self> {
+        let transfer = resolve(asked.transfer.clone(), &defaults)?;
+        let (device, browse, output) = (
+            asked.device.clone(),
+            asked.browse.clone(),
+            asked.output.clone(),
+        );
         let explicit_reader = transfer.send_to.is_some();
         Ok(Self {
             first_run: output.is_none() && defaults.output.is_none(),
@@ -92,28 +107,63 @@ impl Tui {
             },
             optimize,
             defaults,
+            asked,
         })
     }
 
-    /// After a save, the saved settings are what count: the arguments that chose places give way
-    /// to them; the rest are kept.
+    /// The settings the command line gave a value of its own, by the option that gave it, in the
+    /// settings panel's order: books folder, import folder, Kobo, reader, card, reader folder. A
+    /// `--send-to` or `--copy-to` without a value stands for the saved setting, so it isn't one.
+    pub fn given(&self) -> [Option<&'static str>; 6] {
+        let Asked {
+            transfer,
+            device,
+            browse,
+            output,
+        } = &self.asked;
+        let own = |value: &Option<String>, saved: &str| {
+            value.as_deref().is_some_and(|value| value != saved)
+        };
+        [
+            browse.is_some().then_some("--browse"),
+            output.is_some().then_some("--output"),
+            device.is_some().then_some("--device"),
+            own(&transfer.send_to, "").then_some("--send-to"),
+            own(&transfer.copy_to, SAVED_COPY_DESTINATION).then_some("--copy-to"),
+            transfer.folder.is_some().then_some("--folder"),
+        ]
+    }
+
+    /// After a save, the saved settings fill in what the command line didn't give, as they do
+    /// when the program starts: a locked program starts again with the same arguments, so a place
+    /// the command line gave keeps its value either way.
     pub fn restart(&self, saved: config::Defaults) -> Result<Self> {
         Self::new(
             saved,
-            Transfer {
-                send_to: None,
-                copy_to: None,
-                folder: None,
-            },
-            None,
-            None,
-            None,
+            self.asked.clone(),
             self.settings.show_previews,
             self.settings.serial.clone(),
             self.optimize,
             self.settings.organized,
         )
     }
+}
+
+/// `--send-to` and `--copy-to` without a value, and a reader folder not given, as the saved
+/// settings say.
+fn resolve(mut transfer: Transfer, defaults: &config::Defaults) -> Result<Transfer> {
+    if transfer.send_to.as_deref() == Some("") {
+        transfer.send_to = Some(required(
+            None,
+            defaults.reader.clone(),
+            "--send-to/--reader",
+        )?);
+    }
+    if transfer.copy_to.as_deref() == Some(SAVED_COPY_DESTINATION) {
+        transfer.copy_to = Some(required(None, defaults.copy_to.clone(), "--copy-to")?);
+    }
+    transfer.folder = transfer.folder.or_else(|| defaults.folder.clone());
+    Ok(transfer)
 }
 
 /// An ACSM file named on the command line: the folder it's in, to read it and, once fulfilled,
@@ -403,19 +453,8 @@ impl Cli {
         Ok((file.name().to_owned(), data))
     }
 
-    fn resolve(&self, mut transfer: Transfer, defaults: &config::Defaults) -> Result<Transfer> {
-        if transfer.send_to.as_deref() == Some("") {
-            transfer.send_to = Some(required(
-                None,
-                defaults.reader.clone(),
-                "--send-to/--reader",
-            )?);
-        }
-        if transfer.copy_to.as_deref() == Some(SAVED_COPY_DESTINATION) {
-            transfer.copy_to = Some(required(None, defaults.copy_to.clone(), "--copy-to")?);
-        }
-        transfer.folder = transfer.folder.or_else(|| defaults.folder.clone());
-        Ok(transfer)
+    fn resolve(&self, transfer: Transfer, defaults: &config::Defaults) -> Result<Transfer> {
+        resolve(transfer, defaults)
     }
 
     /// The reader an imported book is sent to, if any; a card to copy it to must be there.
@@ -526,13 +565,14 @@ impl Cli {
                 serial,
                 transfer,
             } => {
-                let transfer = self.resolve(transfer, &defaults)?;
                 return Tui::new(
                     defaults,
-                    transfer,
-                    device,
-                    browse,
-                    output,
+                    Asked {
+                        transfer,
+                        device,
+                        browse,
+                        output,
+                    },
                     show_previews,
                     serial,
                     optimize,

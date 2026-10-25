@@ -103,6 +103,8 @@ pub(super) struct Panel {
     launched: [(String, Option<bool>); 6],
     /// Settings this panel does not show, carried through a save.
     kept: Defaults,
+    /// The option each value came from, when the command line gave it.
+    given: [Option<&'static str>; 6],
 }
 impl Panel {
     pub fn new(options: &Options, first_run: bool) -> Self {
@@ -150,6 +152,7 @@ impl Panel {
             home,
             launched,
             kept: options.defaults.clone(),
+            given: options.given,
         };
         panel.check();
         panel
@@ -161,16 +164,41 @@ impl Panel {
             return self.message.clone();
         }
         match self.selected {
-            7 => format!(
-                "Writes these settings to {} and starts again with them.",
-                self.path
-            ),
-            row => HINTS[row].to_owned(),
+            7 => {
+                let mut hint = format!(
+                    "Writes these settings to {} and starts again with them.",
+                    self.path
+                );
+                for row in 0..self.given.len() {
+                    if let Some(note) = self.overridden(row) {
+                        hint = format!("{hint} {note}");
+                    }
+                }
+                hint
+            }
+            row => self
+                .overridden(row)
+                .unwrap_or_else(|| HINTS[row].to_owned()),
         }
+    }
+    /// For a value changed here that the command line also gave: that the command line's still
+    /// counts once crossload starts again, since it starts with the same arguments.
+    fn overridden(&self, row: usize) -> Option<String> {
+        let option = (*self.given.get(row)?)?;
+        (self.values[row] != self.launched[row].0)
+            .then(|| format!("Started with {option}; that still applies after the restart."))
     }
     /// Judge one value on its own. Recomputed rather than read from `marks`, so
     /// validation never trusts a stale frame.
     fn mark(&self, index: usize) -> Mark {
+        match self.judge(index) {
+            Mark::Bad(reason) => Mark::Bad(reason),
+            _ if self.overridden(index).is_some() => Mark::Warn("the command line's applies"),
+            mark => mark,
+        }
+    }
+    /// What the value itself says, before the command line has its say.
+    fn judge(&self, index: usize) -> Mark {
         let value = self.values[index].trim();
         if value.is_empty() {
             return match index {

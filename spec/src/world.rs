@@ -191,6 +191,7 @@ impl World {
                 kobo: self.places.kobo.then_some(true),
                 card: self.places.card.then_some(true),
             },
+            given: [None; 6],
             color: true,
         }
     }

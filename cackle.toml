@@ -410,8 +410,17 @@ allow_apis = [
 ]
 
 [pkg.ambit-lockdown]
+# PENDING the owner's approval (ambit b5f9771, crossload's restart): env, process, terminate, for
+# the restart supervisor, which runs outside the lock. It reads its own program and arguments
+# (env::current_exe, args_os) and the variable that marks its child; starts the program again
+# with the same arguments (process), and signals itself to ask for that (rustix kill_process,
+# getpid, getppid); and exits with the program's status (terminate). Copied from ambit's
+# cackle.toml at b5f9771.
 allow_apis = [
+    "env",
     "fs",
+    "process",
+    "terminate",
 ]
 
 [pkg.ambit-caps-dir-native]

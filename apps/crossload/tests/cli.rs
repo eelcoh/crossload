@@ -571,8 +571,10 @@ fn a_reader_that_does_not_answer_fails_the_send_and_prints_no_result() {
     );
 }
 
+/// A save starts the interface again with the saved settings filling in what the command line
+/// didn't give. What it gave holds: a locked program starts again with the same arguments.
 #[test]
-fn tui_hands_back_what_to_start_and_a_save_starts_it_again_with_the_saved_places() {
+fn tui_hands_back_what_to_start_and_a_save_keeps_what_the_command_line_gave() {
     let world = World::new();
     let run = world.run(&[
         "crossload",
@@ -594,17 +596,22 @@ fn tui_hands_back_what_to_start_and_a_save_starts_it_again_with_the_saved_places
     assert!(tui.first_run);
     assert_eq!(tui.folder, "/");
     assert!(tui.settings.optimize.is_none());
+    assert_eq!(
+        tui.given(),
+        [Some("--browse"), None, None, None, Some("--copy-to"), None]
+    );
     let saved = crossload::config::Defaults {
         browse: Some("/home/reader/Books".into()),
         output: Some("/home/reader/out".into()),
+        folder: Some("/books".into()),
         ..Default::default()
     };
     let again = tui.restart(saved).unwrap();
-    assert_eq!(again.browse.as_deref(), Some("/home/reader/Books"));
-    assert_eq!(
-        again.copy_to, None,
-        "the card was the command line's, not the settings'"
-    );
+    assert_eq!(again.browse.as_deref(), Some("books"));
+    assert_eq!(again.output.as_deref(), Some("/home/reader/out"));
+    assert_eq!(again.copy_to.as_deref(), Some("card"));
+    assert_eq!(again.folder, "/books");
+    assert_eq!(again.given(), tui.given());
     assert_eq!(again.settings.serial.as_deref(), Some("N1"));
     assert!(again.settings.optimize.is_none());
     assert!(!again.first_run);

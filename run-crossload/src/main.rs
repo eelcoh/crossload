@@ -299,6 +299,8 @@ struct Tui {
     first_run: bool,
     defaults: crossload::config::Defaults,
     settings: crossload::books::Settings,
+    /// The settings the command line gave, by option, for the settings panel.
+    given: [Option<&'static str>; 6],
 }
 
 /// Books imported from a Kobo must not land back on it. Checked through symlinks, on the part
@@ -334,8 +336,10 @@ fn absolute(path: &Path) -> PathBuf {
 /// again with what `restart` makes of them: the folders and devices they name, opened afresh.
 ///
 /// Locked before it first starts, to what it opened then and the places devices appear. A lock
-/// can't be widened, so settings that need more end the program instead, with the message
-/// returned here: starting it again opens them.
+/// can't be widened, so settings that need more start the program again (its supervisor, outside
+/// the lock, does), with the same arguments: it opens and locks afresh from them and what was
+/// saved. The terminal interface has exited by then, so the terminal is restored. Only if that
+/// can't be done does it end, with the message returned here: starting it again opens them.
 fn run_tui(
     mut tui: Tui,
     restart: impl Fn(crossload::config::Defaults) -> Result<Tui>,
@@ -373,6 +377,11 @@ fn run_tui(
                     grants.into_iter().filter(|g| !asked.contains(g)).collect();
                 let missing = lock::uncovered(held, &wanted);
                 if !missing.is_empty() {
+                    // Returns only if it can't restart.
+                    let error = ambit_lockdown::restart();
+                    if ambit_lockdown::can_restart() {
+                        eprintln!("crossload: {error}");
+                    }
                     let needs: Vec<String> = missing.iter().map(lock::describe).collect();
                     return Ok(Some(format!(
                         "Settings saved. They need {}, which this run of crossload can't reach. \
@@ -442,6 +451,7 @@ fn tui_app(tui: &Tui) -> Result<(crossload::Crossload, Vec<Grant>)> {
         defaults: tui.defaults.clone(),
         kobos: detect_kobos(),
         opened,
+        given: tui.given,
         color: std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty()),
     };
     let kobo = tui
@@ -536,6 +546,7 @@ impl Tui {
             copy_to: asked.copy_to.as_ref().map(PathBuf::from),
             folder: asked.folder.clone(),
             first_run: asked.first_run,
+            given: asked.given(),
             defaults: asked.defaults,
             settings: asked.settings,
         })
@@ -789,6 +800,9 @@ fn lock_cli(
 }
 
 fn main() -> ExitCode {
+    // Before anything is opened: on Linux the program runs under a supervisor that can start it
+    // again, locked afresh, when new settings need more than its lock holds.
+    ambit_lockdown::restartable();
     let args = ambit_cli_native::args();
     let config = typed(&args, "--config").pop().map(PathBuf::from);
     let state_dir = typed(&args, "--state-dir").pop().map(PathBuf::from);

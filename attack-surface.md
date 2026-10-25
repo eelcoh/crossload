@@ -8,7 +8,7 @@ What each program built here contains, and what runs while it's built. Generated
 
 ## `crossload`, `xteink` (crossload-cli, for x86_64-unknown-linux-gnu)
 
-259 crates ship: 5 from this workspace, 254 from outside it with 2,200,722 lines of Rust. 40 more run at build time.
+259 crates ship: 5 from this workspace, 254 from outside it with 2,200,821 lines of Rust. 40 more run at build time.
 
 | ships | version | from | lines | may use | build script may use |
 |---|---|---|--:|---|---|
@@ -35,7 +35,7 @@ What each program built here contains, and what runs while it's built. Generated
 | ambit-caps-ws-native | 0.1.0 | git github.com/eelcoh/ambit | 157 | net | - |
 | ambit-cli | 0.1.0 | git github.com/eelcoh/ambit | 236 |  | - |
 | ambit-cli-native | 0.1.0 | git github.com/eelcoh/ambit | 53 | env, terminate | - |
-| ambit-lockdown | 0.1.0 | git github.com/eelcoh/ambit | 334 | fs | - |
+| ambit-lockdown | 0.1.0 | git github.com/eelcoh/ambit | 433 | env, fs, process, terminate | - |
 | ambit-tui | 0.1.0 | git github.com/eelcoh/ambit | 158 |  | - |
 | ambit-tui-native | 0.1.0 | git github.com/eelcoh/ambit | 352 |  | - |
 | anstyle | 1.0.14 | crates.io | 1,472 | unsafe | - |

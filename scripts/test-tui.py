@@ -60,11 +60,29 @@ class Terminal:
                 raise AssertionError((needle, self.output[-2000:]))
             if select.select([self.master], [], [], .1)[0]:
                 self.output += os.read(self.master, 65536)
+    def program(self):
+        """The running program. On Linux what was started is its supervisor, which stays outside
+        the lock to start it again, and the program is its one child; elsewhere it is the program."""
+        if not sys.platform.startswith('linux'):
+            return self.proc.pid
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                children = Path(f'/proc/{self.proc.pid}/task/{self.proc.pid}/children').read_text().split()
+            except OSError:
+                children = []
+            if children:
+                return int(children[0])
+            if time.monotonic() > deadline:
+                raise AssertionError(('no program under the supervisor', self.output[-2000:]))
+            time.sleep(.05)
     def locked(self):
-        """On Linux the program is locked while it runs: seccomp filters it."""
+        """On Linux the program is locked while it runs: seccomp filters it. Returns its pid."""
+        pid = self.program()
         if sys.platform.startswith('linux'):
-            status = Path(f'/proc/{self.proc.pid}/status').read_text()
+            status = Path(f'/proc/{pid}/status').read_text()
             assert 'Seccomp:\t2' in status, status
+        return pid
     def ended(self, needle):
         """The program ends by itself, saying `needle`, and leaves the terminal as it was."""
         deadline = time.monotonic() + 15
@@ -95,6 +113,12 @@ class Terminal:
         assert termios.tcgetattr(self.slave) == self.before, 'terminal settings not restored'
     def close(self):
         if self.proc.poll() is None:
+            # The program first: the supervisor, killed, would leave it running.
+            if sys.platform.startswith('linux'):
+                try:
+                    os.kill(self.program(), 9)
+                except (AssertionError, OSError):
+                    pass
             self.proc.kill()
             self.proc.wait()
         os.close(self.master)
@@ -137,25 +161,29 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-', dir=binary.parent.pare
         # nothing answers on, so this test never reaches a reader that happens
         # to be on the network. Then save with Ctrl+S from where we stand,
         # rather than walking down to the last row.
-        t.locked()
+        first = t.locked()
         t.send(b'\t\r\x15' + str(root / 'setup-imports').encode() + b'\r')
         t.send(b'\t\r\x15127.0.0.1:9\r')
         # Saving starts the interface again with the saved folders. On Linux the lock, made for
-        # what was opened at the start, can't take the new import folder and reader: it says so
-        # and ends. Elsewhere nothing is locked, and it starts again with them.
+        # what was opened at the start, can't take the new import folder and reader, so the
+        # program starts again, locked afresh. Elsewhere nothing is locked, and it starts again
+        # in the same run.
         t.send(b'\x13')
+        t.expect(b'Library ready.')
         if sys.platform.startswith('linux'):
-            t.ended(b'Start crossload again to use them.')
-            assert b'writing to ' + str(root / 'setup-imports').encode() in t.output
-            assert b'connecting to port 9' in t.output
-        else:
-            t.expect(b'Library ready.')
-            t.quit()
+            assert t.locked() != first
+        assert b'Start crossload again' not in t.output
+        t.quit()
         saved = json.loads(setup_config.read_text())
         assert saved['browse'] == str(books)
         assert saved['output'] == str(root / 'setup-imports')
         assert saved['reader'] == '127.0.0.1:9'
-        assert not (root / 'setup-imports').exists()
+        # Nothing is imported yet. On Linux the restart made the import folder, so its lock covers
+        # it; in the same run (elsewhere) it is made on the first import.
+        if sys.platform.startswith('linux'):
+            assert not any((root / 'setup-imports').iterdir())
+        else:
+            assert not (root / 'setup-imports').exists()
     finally:
         t.close()
     # Started again, it opens what the settings name.
@@ -199,6 +227,47 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-', dir=binary.parent.pare
         t.send(b'\x1b')
         t.expect(b'Library ready.')
         assert json.loads(setup_config.read_text()) == saved
+        # A setting the command line also gave keeps the command line's value after a restart,
+        # and the panel says so rather than letting a save look like it changed it.
+        t.send(b',')
+        t.expect(b'Test reader connection')
+        t.send(b'\r\x15/elsewhere\r')
+        t.expect(b"the command line's applies")
+        t.send(b'\x1b[A')
+        t.expect(b'Started with --browse; that still applies after the restart.')
+        t.send(b'\x1b')
+        t.expect(b'Library ready.')
+        t.quit()
+    finally:
+        t.close()
+    # Without --browse, the books folder is the saved one. Changed to a folder outside the lock,
+    # it starts again by itself (on Linux under a lock made afresh) and shows the books there.
+    more = root / 'more-books'
+    more.mkdir()
+    with zipfile.ZipFile(more / 'Other.epub', 'w') as z:
+        for name, data in {
+            'mimetype': 'application/epub+zip',
+            'META-INF/container.xml': "<container><rootfiles><rootfile full-path='book.opf'/></rootfiles></container>",
+            'book.opf': "<package xmlns:dc='http://purl.org/dc/elements/1.1/'><metadata><dc:title>Other Book</dc:title><dc:creator>Other Author</dc:creator></metadata><manifest><item id='c' href='chapter.xhtml' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>",
+            'chapter.xhtml': '<html><head/><body><p>Another synthetic book.</p></body></html>',
+        }.items():
+            z.writestr(name, data)
+    t = Terminal(['--config', str(setup_config), 'tui'])
+    try:
+        t.expect(b'Library ready.')
+        t.expect(b'Test Book')
+        first = t.locked()
+        t.send(b',')
+        t.expect(b'Test reader connection')
+        t.send(b'\r\x15' + str(more).encode() + b'\r')
+        t.expect(b'checked when saved')
+        t.send(b'\x13')
+        t.expect(b'Other Book')
+        t.expect(b'Library ready.')
+        if sys.platform.startswith('linux'):
+            assert t.locked() != first
+        assert b'Start crossload again' not in t.output
+        assert json.loads(setup_config.read_text())['browse'] == str(more)
         t.quit()
     finally:
         t.close()
@@ -238,4 +307,4 @@ with tempfile.TemporaryDirectory(prefix='crossload-tui-', dir=binary.parent.pare
         assert (card / 'Test Author/Test Book.epub').read_bytes() == original
     finally:
         t.close()
-print('TUI PTY passed: locked (Linux), setup/settings and restart, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.')
+print("TUI PTY passed: locked (Linux), setup/settings and restart (by itself under a new lock), the command line's settings kept, help/filter/sort, browse/search, verified copy, resize, error and terminal restoration.")

@@ -44,6 +44,9 @@ pub struct Options {
     pub kobos: Vec<String>,
     /// Which configured places the wiring could open at launch.
     pub opened: Opened,
+    /// The settings the command line gave, by option, in the settings panel's order
+    /// ([`crate::cli::Tui::given`]): they keep that value after a restart.
+    pub given: [Option<&'static str>; 6],
     pub color: bool,
 }
 #[derive(Clone, Copy, Debug, Default)]
