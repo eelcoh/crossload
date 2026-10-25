@@ -22,6 +22,9 @@ const UPLOAD_DEADLINE: Duration = Duration::from_secs(600);
 pub struct Status {
     pub version: String,
     pub device: String,
+    /// Sent from 2.0 on, which also names devices differently (`xteink_x4_pro`).
+    #[serde(rename = "firmwareFamily", default)]
+    family: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -163,7 +166,9 @@ impl Reader {
         let status: Status = serde_json::from_slice(&data)
             .context("Reader did not return CrossPoint status JSON")?;
         ensure!(
-            !status.version.is_empty() && matches!(status.device.as_str(), "X4" | "X3"),
+            !status.version.is_empty()
+                && (status.family.as_deref() == Some("crosspoint")
+                    || matches!(status.device.as_str(), "X4" | "X3")),
             "Unrecognized CrossPoint reader status"
         );
         Ok(status)

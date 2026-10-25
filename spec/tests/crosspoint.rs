@@ -299,6 +299,21 @@ fn a_book_prepared_for_another_screen_says_so() {
 }
 
 #[test]
+fn crosspoint_2_is_recognized_by_its_firmware_family() {
+    let world = World::new();
+    // As an X4 Pro on 2.0.0-rc answers, trimmed.
+    world.reader.status_body(
+        r#"{"version":"2.0.0-rc+cb2a4c7","firmwareFamily":"crosspoint","device":"xteink_x4_pro"}"#,
+    );
+    let status = world.wifi("/").status().unwrap();
+    assert_eq!(status.device, "xteink_x4_pro");
+    world
+        .reader
+        .status_body(r#"{"version":"2.0.0","firmwareFamily":"other","device":"xteink_x4_pro"}"#);
+    assert!(world.wifi("/").status().is_err());
+}
+
+#[test]
 fn inventory_recurses_and_fingerprints_renamed_books_without_writes() {
     let world = World::new();
     let bytes = book();
