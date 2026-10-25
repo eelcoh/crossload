@@ -7,7 +7,7 @@
 # download cut short cannot execute half of this.
 #
 # Settings, all optional:
-#   CROSSLOAD_VERSION=0.2.0   a version, rather than the newest release
+#   CROSSLOAD_VERSION=0.3.0   a version, rather than the newest release
 #   CROSSLOAD_BIN=~/.local/bin  where to put the binary
 set -eu
 

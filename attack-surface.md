@@ -12,11 +12,11 @@ What each program built here contains, and what runs while it's built. Generated
 
 | ships | version | from | lines | may use | build script may use |
 |---|---|---|--:|---|---|
-| crossload | 0.2.0 | workspace | - |  | - |
-| crossload-adobe | 0.2.0 | workspace | - |  | - |
-| crossload-adobe-native | 0.2.0 | workspace | - | unsafe, fs, path_fs | env |
-| crossload-kobo | 0.2.0 | workspace | - |  | - |
-| crossload-kobo-native | 0.2.0 | workspace | - | env, fs, path_fs | - |
+| crossload | 0.3.0 | workspace | - |  | - |
+| crossload-adobe | 0.3.0 | workspace | - |  | - |
+| crossload-adobe-native | 0.3.0 | workspace | - | unsafe, fs, path_fs | env |
+| crossload-kobo | 0.3.0 | workspace | - |  | - |
+| crossload-kobo-native | 0.3.0 | workspace | - | env, fs, path_fs | - |
 | adler2 | 2.0.1 | crates.io | 402 |  | - |
 | aes | 0.8.4 | crates.io | 5,617 | unsafe | - |
 | aes | 0.9.3 | crates.io | 3,635 | unsafe | - |

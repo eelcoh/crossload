@@ -586,7 +586,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crossload"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ambit-caps",
  "ambit-caps-dir",
@@ -614,11 +614,11 @@ dependencies = [
 
 [[package]]
 name = "crossload-adobe"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "crossload-adobe-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes 0.8.4",
  "ambit-lockdown",
@@ -641,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "crossload-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes 0.8.4",
  "ambit-caps",
@@ -676,14 +676,14 @@ dependencies = [
 
 [[package]]
 name = "crossload-kobo"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "crossload-kobo-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ambit-lockdown",
  "crossload-kobo",
@@ -2457,7 +2457,7 @@ checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 
 [[package]]
 name = "spec"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ambit-caps",
  "ambit-caps-dir",

@@ -250,7 +250,9 @@ impl World {
 fn help_and_version_are_answers_and_a_wrong_command_line_is_a_usage_error() {
     let world = World::new();
     let (out, err) = world.ok(&["crossload", "--version"]);
-    assert_eq!((out.as_str(), err.as_str()), ("crossload-cli 0.2.0\n", ""));
+    // The workspace's version, which this crate shares.
+    let version = format!("crossload-cli {}\n", env!("CARGO_PKG_VERSION"));
+    assert_eq!((out.as_str(), err.as_str()), (version.as_str(), ""));
     let (out, _) = world.ok(&["crossload", "kobo", "import", "--help"]);
     assert!(
         out.contains("Usage: crossload kobo import [OPTIONS] <BOOK_ID>"),
